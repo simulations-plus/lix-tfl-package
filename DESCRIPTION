@@ -1,0 +1,24 @@
+Package: MonolixSuiteTFL
+Type: Package
+Title: Creates Tables, Figures, and Listings for Reporting with MonolixSuite
+Version: 2024.1
+Authors@R: c(
+    person(given = "Stephanie",
+      family = "Kollmann",
+      email = "stephanie.kollmann@simulations-plus.com",
+      role = c("aut")),
+    person(given = "Chloe",
+      family = "Bracis",
+      email = "chloe.bracis@simulations-plus.com",
+      role = c("aut","cre"))
+      )
+Maintainer: Chloe Bracis <chloe.bracis@simulations-plus.com>
+Description: Provides helper functions to assemble tables, figures, and listings
+	for reports with the Monolix and PKanalix applications of MonolixSuite.
+License: BSD_2_clause + file LICENSE
+Roxygen: list(markdown = TRUE)
+Depends: R (>= 4.2.0)
+Imports: lixoftConnectors
+Suggests: ggplot2, testthat (>= 3.0.0)
+Encoding: UTF-8
+LazyData: true
