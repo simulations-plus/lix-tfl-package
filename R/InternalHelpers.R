@@ -27,15 +27,19 @@
 	else {
 		# CASE 2: Project argument provided
 
-		project_software <- .getSoftwareFromProjectFile(project_path)
+		project_software <- .getSoftwareFromProjectFile(projectFile)
 
 		# Get information on currently loaded project, if any
-		if (is.null(current_prj_info) || is.null(current_prj_info$project)) {
+		# Note: only Monolix provides getProjectInfo()$project, so the only one we can verify which project loaded
+		if (is.null(current_prj_info) || is.null(current_prj_info$project) || project_software != "monolix") {
 			same_project <- FALSE
 
 			if (is.null(connector_state)) {
 				# connectors not initialized
 				same_software <- FALSE
+			} else{
+				current_software <- connector_state$software
+				same_software <- project_software == current_software
 			}
 		}
 		else {
@@ -64,39 +68,53 @@
 
 #' Gets the software corresponding to the project file extension
 #'
+#' Note this only includes the three applications supported by the lixoftConnectors
+#'
 #' @param projectFile Project file
 #'
-#' @returns "pkanalix", "monolix", or "simulx"
+#' @returns "pkanalix", "monolix", or "simulx" (or "unknown" for unrecognized extension)
 .getSoftwareFromProjectFile = function(projectFile)
 {
 	ext <- tolower(tools::file_ext(projectFile))
 	software <- switch(ext,
 										 pkx = "pkanalix",
-										 mlxtran = "mlxtran",
+										 mlxtran = "monolix",
 										 smlx = "simulx",
 										 "unknown")
 	return(software)
 }
 
+#' Gets the extension corresponding to the specified software application
+#'
+#' @param software Software application
+#'
+#' @returns File extension (or "unknown" for unrecognized application)
+.getExtentionFromSoftware = function(software)
+{
+	software <- tolower(software)
+	ext <- switch(software,
+								pkanalix = "pkx",
+								monolix = "mlxtran",
+								simulx = "smlx",
+								sycomore = "syc",
+								"unknown")
+	return(ext)
+}
+
 
 #' Checks for project file
 #'
-#' Verifies project file is properly formatted and exists. Optionally verifies the file extension.
+#' Checks that project file is for the specified software application via the file extension.
 #'
 #' @param projectFile Project file
-#' @param ext [optional] File extension required
+#' @param software Software application required (multiple can be specified)
 #'
-.checkProjectFile = function(projectFile, ext = ".mlxtran")
+.checkProjectFile = function(projectFile, software)
 {
-	if (!is.character(projectFile))
-		stop("The argument 'project_file' must be a string.", call. = FALSE)
-
-	if (!endsWith(projectFile, ext))
+	ext = sapply(software, .getExtentionFromSoftware)
+	if (!any(endsWith(projectFile, ext)))
 		stop(paste0("The file extension of the argument 'projectFile' must be ", ext),
 				 call. = FALSE)
-
-	if (!file.exists(projectFile))
-		stop(paste0("Could not find project file ", path.expand(projectFile)), call. = FALSE)
 }
 
 #' Rounds number to specified number of digits

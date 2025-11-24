@@ -1,0 +1,21 @@
+[projectList]
+1\path=PK_run01.mlxtran
+1\used=true
+1\selected=true
+1\rating=1
+2\path=PK_run02.mlxtran
+2\used=true
+2\selected=true
+2\rating=2
+size=2
+
+[relationship]
+1\path=PK_run01.mlxtran
+size=2
+1\parent=
+1\children\1\child=PK_run02.mlxtran
+1\children\size=1
+2\path=PK_run02.mlxtran
+2\info=add logtWT on V and Cl
+2\parent=PK_run01.mlxtran
+2\children\size=0

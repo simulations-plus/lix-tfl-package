@@ -1,0 +1,120 @@
+<DATAFILE>
+
+[FILEINFO]
+file={path='sim_forest/DataFile/data_totDrug.csv'}
+delimiter = comma
+header={ID, TIME, DV, DOSE, AMT, SEX, WEIGHT, HEIGHT, AGE, CENS, LIMIT}
+
+[CONTENT]
+ID = {use=identifier}
+TIME = {use=time}
+DV = {use=observation, type=continuous}
+AMT = {use=amount}
+WEIGHT = {use=covariate, type=continuous}
+CENS = {use=censored}
+LIMIT = {use=limit}
+
+[FILTER]
+data_DV = {origin='sim_forest/DataFile/data_totDrug.csv'}
+
+<MODEL>
+
+[COVARIATE]
+input = WEIGHT
+
+EQUATION:
+logtWT = log(WEIGHT/93)
+
+[INDIVIDUAL]
+input = {Cl_pop, omega_Cl, Tlag_pop, omega_Tlag, V_pop, omega_V, ka_pop, omega_ka, logtWT, beta_Cl_logtWT, beta_V_logtWT}
+
+DEFINITION:
+Cl = {distribution=logNormal, typical=Cl_pop, covariate=logtWT, coefficient=beta_Cl_logtWT, sd=omega_Cl}
+Tlag = {distribution=logNormal, typical=Tlag_pop, sd=omega_Tlag}
+V = {distribution=logNormal, typical=V_pop, covariate=logtWT, coefficient=beta_V_logtWT, sd=omega_V}
+ka = {distribution=logNormal, typical=ka_pop, sd=omega_ka}
+
+[LONGITUDINAL]
+input = {a, b}
+
+file = 'lib:oral1_1cpt_TlagkaVCl.txt'
+
+DEFINITION:
+DV = {distribution=normal, prediction=Cc, errorModel=combined1(a, b)}
+
+<SIMULX>
+
+[SETTINGS]
+GLOBAL:
+exportpath='sim_forest'
+userFilesNextToProject=true
+
+[DEFINITION]
+OCCASION:
+file={path='sim_forest/ExternalFiles/mlx_subjects.txt'}
+
+POPULATION:
+parameters={Tlag_pop, ka_pop, V_pop, beta_V_logtWT, Cl_pop, beta_Cl_logtWT, omega_Cl, omega_Tlag, omega_V, omega_ka, a, b}
+'mlx_Pop' = {{{values={0.4122355077683484, 0.7035818341317087, 8.288851378731913, 1.26593081974218, 0.5544069435746996, 2.587771341978215, 0.2646474156887397, 0.110347963256583, 0.0604474097200255, 0.6908569271528466, 1.341505730458525, 0.1281866677404289}}}}
+'mlx_Typical' = {{{values={0.4122355077683484, 0.7035818341317087, 8.288851378731913, 1.26593081974218, 0.5544069435746996, 2.587771341978215, 0, 0, 0, 0, 1.341505730458525, 0.1281866677404289}}}}
+'mlx_PopUncertainSA' = {mean={-0.8861604721485837, -0.351571084911802, 2.114911404509197, 1.26593081974218, -0.5898563066994855, 2.587771341978215, 0.2646474156887397, 0.110347963256583, 0.0604474097200255, 0.6908569271528466, 1.341505730458525, 0.1281866677404289}, rse={3.62561262031455, 17.96123450954074, 2.792200550540237, 27.39609285719208, 6.371131876819139, 29.73638972676991, 17.32397729331785, 32.4824989614768, 58.89399052883818, 18.19623751238057, 23.12193053180735, 9.864443502460432}, covariance={0.0013119223407278, 0.0011467088828889, 0.0308027167659431, 0.000134937997299, 0.0009058623994212, 0.000778728213827, 0.0000074817693925, 0.0028528285059314, 0.0022712703553116, 0.1202810485314327, -0.0000009075357894, 0.0000983600642161, 0.0001377789968663, 0.0003496833642471, 0.0040346378956335, -0.0001261236934413, 0.0002078269654085, 0.0005033562299563, 0.0250755016275294, -0.0014769800595377, 0.5921452884159843, 0.0000144242773805, 0.0000708690084975, 0.0000743997929551, 0.0003963667080592, 0.0000376362745641, 0.0003489736742809, 0.0021019894235172, -0.0006255055047981, -0.0010022282197565, -0.0001229893744418, 0.0006893825452833, -0.0000058381121926, 0.0001534375451714, -0.000028906913216, 0.0012847762792881, 0.0001815188012303, 0.0006546657896888, 0.0003553750688599, 0.0021899508985481, 0.0000948785856926, 0.0007695086091859, 0.0002052788912076, -0.0002299132568537, 0.001267352292999, 0.0001003057045011, 0.0004290102251221, -0.0003042682341806, -0.0046005943597037, -0.0000327762342406, -0.0005666312574751, -0.0000156952648156, -0.0000303644982811, -0.0004706130170321, 0.0158029958874839, -0.0000132592440305, 0.0022612783670532, 0.002215940806909, 0.0069426482459792, -0.0001687258859308, 0.0038219299411715, 0.0010740860522558, -0.0002396591652513, 0.0013628162508973, -0.0002609418512044, 0.0962128874400382, 0.0000230774020727, -0.0000686591821847, -0.0000814253690912, -0.0004459488989564, 0.000008569745541, -0.0001872993602918, -0.0000532870278112, -0.000041758614746, -0.0001080295205098, 0.0000183653983676, -0.0024859161545662, 0.0001598935318442}, distribution={logNormal, logNormal, logNormal, normal, logNormal, normal, variance, variance, variance, variance, errorModel, errorModel}}
+'mlx_TypicalUncertainSA' = {mean={-0.8861604721485837, -0.351571084911802, 2.114911404509197, 1.26593081974218, -0.5898563066994855, 2.587771341978215, 0, 0, 0, 0, 1.341505730458525, 0.1281866677404289}, rse={3.62561262031455, 17.96123450954074, 2.792200550540237, 27.39609285719208, 6.371131876819139, 29.73638972676991, 0, 0, 0, 0, 23.12193053180735, 9.864443502460432}, covariance={0.0013119223407278, 0.0011467088828889, 0.0308027167659431, 0.000134937997299, 0.0009058623994212, 0.000778728213827, 0.0000074817693925, 0.0028528285059314, 0.0022712703553116, 0.1202810485314327, -0.0000009075357894, 0.0000983600642161, 0.0001377789968663, 0.0003496833642471, 0.0040346378956335, -0.0001261236934413, 0.0002078269654085, 0.0005033562299563, 0.0250755016275294, -0.0014769800595377, 0.5921452884159843, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -0.0000132592440305, 0.0022612783670532, 0.002215940806909, 0.0069426482459792, -0.0001687258859308, 0.0038219299411715, 0, 0, 0, 0, 0.0962128874400382, 0.0000230774020727, -0.0000686591821847, -0.0000814253690912, -0.0004459488989564, 0.000008569745541, -0.0001872993602918, 0, 0, 0, 0, -0.0024859161545662, 0.0001598935318442}, distribution={logNormal, logNormal, logNormal, normal, logNormal, normal, normal, normal, normal, normal, errorModel, errorModel}}
+
+OUTPUT:
+'mlx_DV' = {output=DV, file={path='sim_forest/ExternalFiles/mlx_DV.txt'}}
+'mlx_Cc' = {output=Cc, {{start=0.5, interval=0.3353413654618474, final=84}}}
+'Cc' = {output=Cc, {{start=0, interval=1, final=100}}}
+'AUCTau' = {output=AUCtau, {{times={100}}}}
+
+INDIVIDUAL:
+parameters={Tlag, ka, V, Cl}
+'mlx_PopIndiv' = {{{values={0.4122355077683484, 0.7035818341317087, 8.288851378731913, 0.5544069435746996}}}}
+'mlx_PopIndivCov' = {file={path='sim_forest/ExternalFiles/mlx_PopIndivCov.txt'}}
+'mlx_CondMean' = {file={path='sim_forest/ExternalFiles/mlx_CondMean.txt'}}
+'mlx_EBEs' = {file={path='sim_forest/ExternalFiles/mlx_EBEs.txt'}}
+'mlx_CondDistSample' = {file={path='sim_forest/ExternalFiles/mlx_CondDistSample.txt'}}
+
+COVARIATE:
+continuousCovariates={WEIGHT}
+'mlx_Cov' = {file={path='sim_forest/ExternalFiles/mlx_Cov.txt'}}
+'mlx_CovDist' = {{distribution=logNormal, typical=93.29320815339416, sd=0.0849937464134766}}
+'ref' = {{{values={90}}}}
+'WEIGHT_80' = {{{values={80}}}}
+'WEIGHT_105' = {{{values={105}}}}
+
+TREATMENT:
+'mlx_Adm1' = {file={path='sim_forest/ExternalFiles/mlx_Adm1.txt'}, adm=1}
+'dose_300mg' = {{{times={0}, amounts={2000}}}, adm=1}
+
+[SIMULATION]
+GROUPS:
+'Reference'={size=1, parameter='mlx_TypicalUncertainSA', remaining={a=1, b=1}, covariate='ref', outputs={'Cc', 'AUCTau'}, treatment={'dose_300mg'}}
+'WEIGHT_80_kg'={size=1, parameter='mlx_TypicalUncertainSA', remaining={a=1, b=1}, covariate='WEIGHT_80', outputs={'Cc', 'AUCTau'}, treatment={'dose_300mg'}}
+'WEIGHT_105_kg'={size=1, parameter='mlx_TypicalUncertainSA', remaining={a=1, b=1}, covariate='WEIGHT_105', outputs={'Cc', 'AUCTau'}, treatment={'dose_300mg'}}
+
+SETTINGS:
+nbReplicates=1000
+
+[EXPLORATION]
+GROUPS:
+'explorationGroup1'={remaining={a=1, b=1}, parameter='mlx_PopIndiv', outputs={'mlx_Cc'}, treatment={'mlx_Adm1'}}
+
+[ENDPOINT]
+OUTCOME:
+'Cmax' = {outputElement='Cc', usingID=true, processing={method=max, result=value}}
+'AUC_100' = {outputElement='AUCTau', usingID=true, processing={method=none, result=value}}
+
+OUTPUT:
+referenceGroup='Reference'
+decisionCriterion=false
+'mean_Cmax' = { outcome='Cmax', function=arithmeticMean, criterion={type=statisticalTest, test='value!=0', pValue=0.05} }
+'mean_AUC' = { outcome='AUC_100', function=arithmeticMean, criterion={type=statisticalTest, test='value!=0', pValue=0.05} }
+
+[TASKS]
+simulation()
+endpoint()
+
+[EXTENSION]
+AUCtau_0 = 0
+ddt_AUCtau = Cc
+
