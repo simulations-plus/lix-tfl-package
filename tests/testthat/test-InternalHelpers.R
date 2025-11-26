@@ -1,3 +1,7 @@
+mono_project_1 = "test-projects/monolix/PK_run01.mlxtran"
+mono_project_2 = "test-projects/monolix/PK_run02.mlxtran"
+sim_project = "test-projects/simulx/sim_forest.smlx"
+
 test_that("round_num method monolix", {
 	expect_equal(.round_num(123.456, 2), "123.46")
 	expect_equal(.round_num(123.456, 2, rounding_method = "monolix"), "123.46")
@@ -15,6 +19,13 @@ test_that("round_num rounding_method signif", {
 	expect_equal(.round_num(123.456789, 4, rounding_method = "signif"), "123.5")
 })
 
+test_that("round_num rounding_method none", {
+	expect_equal(.round_num(123.456, 2, rounding_method = "none"), 123.456)
+	expect_equal(.round_num(0.123456, 0, rounding_method = "none"), 0.123456)
+	expect_equal(.round_num(1/3, NA, rounding_method = "none"), 1/3)
+	expect_equal(.round_num(123, NULL, rounding_method = "none"), 123)
+})
+
 test_that("round_num vector", {
 	expect_equal(.round_num(c(123.456, 0.00123456), 2, rounding_method = "monolix"),
 							 c("123.46", "0.0012"))
@@ -22,50 +33,39 @@ test_that("round_num vector", {
 							 c("120", "0.0012"))
 })
 
-# note: each test file run in separate R session, thus connectors not initialized for first test
-test_that("ensureProjectLoaded initialize", {
-	project = "test-projects/monolix/PK_run01.mlxtran"
-	expect_message(.ensureProjectLoaded(project), "initialized")
-	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(project))
-})
+# note: tests run alphabetically, thus cannot explicitly test case of connectors not initialized here
+# test_that("ensureProjectLoaded initialize", {
+# 	expect_message(.ensureProjectLoaded(mono_project_1), "initialized")
+# 	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(mono_project_1))
+# })
 
 test_that("ensureProjectLoaded same project loaded", {
-	project = "test-projects/monolix/PK_run01.mlxtran"
+	.ensureProjectLoaded(mono_project_1)
+	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(mono_project_1))
 
-	.ensureProjectLoaded(project)
-	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(project))
-
-	expect_message(.ensureProjectLoaded(project), "Project already loaded")
-	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(project))
+	expect_message(.ensureProjectLoaded(mono_project_1), "Project already loaded")
+	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(mono_project_1))
 })
 
 test_that("ensureProjectLoaded different project loaded", {
-	project1 = "test-projects/monolix/PK_run01.mlxtran"
-	project2 = "test-projects/monolix/PK_run02.mlxtran"
+	.ensureProjectLoaded(mono_project_1)
+	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(mono_project_1))
 
-	.ensureProjectLoaded(project1)
-	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(project1))
-
-	expect_message(.ensureProjectLoaded(project2), "Loading new project")
-	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(project2))
+	expect_message(.ensureProjectLoaded(mono_project_2), "Loading new project")
+	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(mono_project_2))
 })
 
 test_that("ensureProjectLoaded NULL keeps same project loaded", {
-	project = "test-projects/monolix/PK_run01.mlxtran"
-
-	.ensureProjectLoaded(project)
-	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(project))
+	.ensureProjectLoaded(mono_project_1)
+	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(mono_project_1))
 
 	expect_message(.ensureProjectLoaded(NULL), "using project already loaded")
-	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(project))
+	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(mono_project_1))
 })
 
 test_that("ensureProjectLoaded change software", {
-	mono_project = "test-projects/monolix/PK_run01.mlxtran"
-	sim_project = "test-projects/simulx/sim_forest.smlx"
-
-	.ensureProjectLoaded(mono_project)
-	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(mono_project))
+	.ensureProjectLoaded(mono_project_1)
+	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(mono_project_1))
 
 	# note can only get project for Monolix
 	expect_message(.ensureProjectLoaded(sim_project), "Loading new project")
@@ -81,7 +81,7 @@ test_that("ensureProjectLoaded bad input", {
 	expect_message(.ensureProjectLoaded(123), "ERROR")
 })
 
-test_that("checkProjectFile", {
+test_that("checkProjectFile basic", {
 	expect_no_error(.checkProjectFile("testfile.mlxtran", "monolix"))
 	expect_no_error(.checkProjectFile("testfile.pkx", "pkanalix"))
 	expect_no_error(.checkProjectFile("testfile.mlxtran", c("pkanalix", "monolix")))
@@ -92,5 +92,9 @@ test_that("checkProjectFile", {
 	expect_error(.checkProjectFile("somefile.mlxtran", "badsoftware"))
 })
 
-
+test_that("checkProjectFile NULL projectFile", {
+	.ensureProjectLoaded(mono_project_1)
+	expect_no_error(.checkProjectFile(NULL, "monolix"))
+	expect_error(.checkProjectFile(NULL, "pkanalix"))
+})
 

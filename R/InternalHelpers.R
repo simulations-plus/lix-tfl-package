@@ -7,8 +7,9 @@
 #' Function to load specified project, which will do nothing in the case that the project
 #' is already loaded. Will switch software for lixoftConnectors if necessary.
 #'
-#' @param project Project file
+#' @param projectFile Project file
 #'
+#'@noRd
 .ensureProjectLoaded <- function(projectFile = NULL) {
 
 	# Retrieve current project and connector state
@@ -73,6 +74,7 @@
 #' @param projectFile Project file
 #'
 #' @returns "pkanalix", "monolix", or "simulx" (or "unknown" for unrecognized extension)
+#' @noRd
 .getSoftwareFromProjectFile = function(projectFile)
 {
 	ext <- tolower(tools::file_ext(projectFile))
@@ -89,6 +91,7 @@
 #' @param software Software application
 #'
 #' @returns File extension (or "unknown" for unrecognized application)
+#' @noRd
 .getExtentionFromSoftware = function(software)
 {
 	software <- tolower(software)
@@ -102,19 +105,41 @@
 }
 
 
-#' Checks for project file
+#' Checks the project file matches the specified software
 #'
 #' Checks that project file is for the specified software application via the file extension.
+#' If the project file is NULL, checks that there is a currently loaded project of the
+#' specified software application.
 #'
 #' @param projectFile Project file
 #' @param software Software application required (multiple can be specified)
 #'
+#'@noRd
 .checkProjectFile = function(projectFile, software)
 {
-	ext = sapply(software, .getExtentionFromSoftware)
-	if (!any(endsWith(projectFile, ext)))
-		stop(paste0("The file extension of the argument 'projectFile' must be ", ext),
-				 call. = FALSE)
+	# if project file is NULL, check that currently loaded project is correct software
+	if (is.null(projectFile)) {
+		# check if currently loaded project is the specified software application
+		current_prj_info  <- tryCatch(lixoftConnectors::getProjectSettings(), error = function(e) NULL)
+
+		if (is.null(current_prj_info) || is.null(current_prj_info$project)) {
+			stop("No project is currently loaded and no project path was provided.")
+		}
+		else {
+			connector_state <- tryCatch(lixoftConnectors::getLixoftConnectorsState(), error = function(e) NULL)
+
+			if (!(connector_state$ software %in% software)) {
+				stop("Currently loaded project not a ", software, " project")
+			}
+		}
+	}
+	# otherwise verify file extension of to be loaded project
+	else {
+		ext <- sapply(software, .getExtentionFromSoftware)
+		if (!any(endsWith(projectFile, ext)))
+			stop(paste0("The file extension of the argument 'projectFile' must be ", ext),
+					 call. = FALSE)
+	}
 }
 
 #' Rounds number to specified number of digits
@@ -123,14 +148,25 @@
 #' applications where all digits before the decimal are considered significant, and only digits
 #' after the decimal are rounded, and "signif" where the number of significant digits are specified.
 #'
+#' For the two rounding methods, the result is returned as character, while for "none" the numeric result
+#' is retained.
+#'
 #' @param number number to round
 #' @param digits number of digits to round to
-#' @param rounding_method "monolix" (default) or "signif"
+#' @param rounding_method "monolix" (default), "signif", or "none"
 #'
 #' @returns rounded number
-.round_num = function(number, digits, rounding_method = c("monolix", "signif")) {
+#' @noRd
+.round_num = function(number, digits, rounding_method = c("monolix", "signif", "none")) {
 	rounding_method <- match.arg(rounding_method)
 
+	if (rounding_method == "none") {
+		return(number)
+	}
+
+	if (!is.numeric(digits)) {
+		stop("digits argument must be numeric")
+	}
 	if (is.numeric(number)) {
 
 		if (rounding_method == "monolix") {
