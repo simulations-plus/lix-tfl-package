@@ -1,3 +1,15 @@
+#' Print a message (info) to the user, checking option if package should be verbose or not
+#'
+#' @param ... message components
+#'
+#' @noRd
+.TFL_message <- function(...) {
+	if (getOption("TFLMonolixSuite.verbose", FALSE)) {
+		message(...)
+	}
+}
+
+
 # Function to load specified project, which will do nothing in the case that the project
 # is already loaded
 #
@@ -12,23 +24,28 @@
 #'@noRd
 .ensureProjectLoaded <- function(projectFile = NULL) {
 
-	# Retrieve current project and connector state
-	current_prj_info  <- tryCatch(lixoftConnectors::getProjectSettings(), error = function(e) NULL)
-	connector_state <- tryCatch(lixoftConnectors::getLixoftConnectorsState(), error = function(e) NULL)
+	# suppress lixoftConnector messages (i.e., ERROR, WARNING, and INFO) in the case of connectors not initialized,
+	# no project loaded, etc., the functions return NULL in these cases
+	current_prj_info  <- suppressMessages(lixoftConnectors::getProjectSettings())
+	connector_state <- suppressMessages(lixoftConnectors::getLixoftConnectorsState())
 
 	if (is.null(projectFile)) {
 		# CASE 1: No project argument →  use current
 
 		if (is.null(current_prj_info) || is.null(current_prj_info$project)) {
-			stop("No project is currently loaded and no project path was provided.")
+			stop("No project is currently loaded and no project was provided.",
+					 call. = FALSE)
 		}
-		message("No project specified, using project already loaded: ",
+		.TFL_message("No project specified, using project already loaded: ",
 						current_prj_info$project)
 	}
 	else {
 		# CASE 2: Project argument provided
 
 		project_software <- .getSoftwareFromProjectFile(projectFile)
+		if (project_software == "unknown") {
+			stop("Unknown file type: ", projectFile)
+		}
 
 		# Get information on currently loaded project, if any
 		# Note: only Monolix provides getProjectInfo()$project, so the only one we can verify which project loaded
@@ -58,11 +75,11 @@
 			if (!same_software) {
 				lixoftConnectors::initializeLixoftConnectors(software = project_software, force = TRUE)
 			}
-			message("Loading new project: ", projectFile)
+			.TFL_message("Loading new project: ", projectFile)
 			lixoftConnectors::loadProject(projectFile = projectFile)
 		}
 		else {
-			message("Project already loaded: ", current_project)
+			.TFL_message("Project already loaded: ", current_project)
 		}
 	}
 }
@@ -123,13 +140,16 @@
 		current_prj_info  <- tryCatch(lixoftConnectors::getProjectSettings(), error = function(e) NULL)
 
 		if (is.null(current_prj_info) || is.null(current_prj_info$project)) {
-			stop("No project is currently loaded and no project path was provided.")
+			stop("No project is currently loaded and no project was provided.",
+					 call. = FALSE)
 		}
 		else {
 			connector_state <- tryCatch(lixoftConnectors::getLixoftConnectorsState(), error = function(e) NULL)
 
-			if (!(connector_state$ software %in% software)) {
-				stop("Currently loaded project not a ", software, " project")
+			if (!(connector_state$software %in% software)) {
+				stop("This function is only available for ", software,
+						 " projects,  while the current project uses ", connector_state$software, ".",
+						 call. = FALSE)
 			}
 		}
 	}
@@ -137,7 +157,7 @@
 	else {
 		ext <- sapply(software, .getExtentionFromSoftware)
 		if (!any(endsWith(projectFile, ext)))
-			stop(paste0("The file extension of the argument 'projectFile' must be ", ext),
+			stop("This function is only available for ", software, " projects, while the specified project is ", ext, ".",
 					 call. = FALSE)
 	}
 }
@@ -165,7 +185,7 @@
 	}
 
 	if (!is.numeric(digits)) {
-		stop("digits argument must be numeric")
+		stop("digits argument must be numeric", call. = FALSE)
 	}
 	if (is.numeric(number)) {
 

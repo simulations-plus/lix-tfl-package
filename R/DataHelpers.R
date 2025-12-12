@@ -78,9 +78,9 @@ tableContinuousCovariateSummary = function(projectFile,
 #' @examples
 #' # TODO
 tableCategoricalCovariateSummary <- function(projectFile,
-																					covDisplayLabels = NULL,
-																					categoryDisplayLabels = NULL,
-																					digits = 2)
+																						 covDisplayLabels = NULL,
+																						 categoryDisplayLabels = NULL,
+																						 digits = 2)
 {
 	.checkProjectFile(projectFile, c("monolix", "pkanalix"))
 	.ensureProjectLoaded(projectFile)

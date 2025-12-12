@@ -2,5 +2,6 @@
 
 export(tableCategoricalCovariateSummary)
 export(tableContinuousCovariateSummary)
+export(tableRunHistory)
 importFrom(dplyr,"%>%")
 importFrom(rlang,.data)

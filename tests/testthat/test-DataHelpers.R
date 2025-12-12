@@ -2,6 +2,7 @@ mono_project_1 = "test-projects/monolix/PK_run01.mlxtran"
 mono_project_2 = "test-projects/monolix/PK_run02.mlxtran"
 
 test_that("tableContinuousCovariateSummary default arguments", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	table = tableContinuousCovariateSummary(mono_project_1)
 	expect_equal(dim(table), c(3,9))
 	expect_equal(table$Covariate, c("AGE", "HEIGHT", "WEIGHT"))
@@ -9,6 +10,7 @@ test_that("tableContinuousCovariateSummary default arguments", {
 })
 
 test_that("tableCategoricalCovariateSummary default arguments", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	table = tableCategoricalCovariateSummary(mono_project_1)
 	expect_equal(dim(table), c(5,4))
 	expect_contains(table$Covariate, c("DOSE", "SEX"))
@@ -17,6 +19,7 @@ test_that("tableCategoricalCovariateSummary default arguments", {
 })
 
 test_that("tableContinuousCovariateSummary label df", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	cov = c("AGE", "HEIGHT", "WEIGHT")
 	lab = c("Age (yrs)", "Height (cm)", "Weight (kg)")
 	table = tableContinuousCovariateSummary(mono_project_1,
@@ -26,20 +29,22 @@ test_that("tableContinuousCovariateSummary label df", {
 })
 
 test_that("tableContinuousCovariateSummary label df", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	cov = c("DOSE", "SEX")
 	lab = c("Dose (mg)", "Sex")
 	catcov = c("DOSE", "DOSE", "DOSE", "SEX", "SEX")
 	catcat = c("150", "300", "800", "M", "F")
 	catlab = c("150 mg", "300 mg", "800 mg", "Male", "Female")
 	table = tableCategoricalCovariateSummary(mono_project_1,
-																					data.frame(covariate = cov, label = lab),
-																					data.frame(covariate = catcov, category = catcat, label = catlab))
+																					 data.frame(covariate = cov, label = lab),
+																					 data.frame(covariate = catcov, category = catcat, label = catlab))
 	expect_equal(dim(table), c(5,4))
 	expect_contains(table$Covariate, lab)
 	expect_equal(table$Category, catlab)
 })
 
 test_that("tableContinuousCovariateSummary digits and rounding arguments", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	table = tableContinuousCovariateSummary(mono_project_1, digits = 3, roundingMethod = "signif")
 	expect_equal(dim(table), c(3,9))
 	expect_equal(table$Mean, c("50.3", "180", "93.6"))
@@ -50,6 +55,7 @@ test_that("tableContinuousCovariateSummary digits and rounding arguments", {
 })
 
 test_that("tableCategoricalCovariateSummary digits arguments", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	table = tableCategoricalCovariateSummary(mono_project_1, digits = 4)
 	expect_equal(table$Percentage, c("0.3333", "0.3333", "0.3333", "0.5", "0.5"))
 
