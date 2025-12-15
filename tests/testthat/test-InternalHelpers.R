@@ -132,6 +132,24 @@ test_that("round_num vector", {
 							 c("120", "0.0012"))
 })
 
+test_that("round_num data.frame", {
+	df = data.frame(a = c(123.45678, 0.00123456),
+									b = c(-3.4567, -0.0001234),
+									c = c(TRUE, FALSE),
+									d = c("1.2345", "2.3456"))
+
+	expect_equal(.round_num(df, 3, rounding_method = "monolix"),
+							 data.frame(a = c("123.457", "0.00123"),
+							 					 b = c("-3.457", "-0.000123"),
+							 					 c = c(TRUE, FALSE),
+							 					 d = c("1.2345", "2.3456")))
+	expect_equal(.round_num(df, 3, rounding_method = "signif"),
+							 data.frame(a = c("123", "0.00123"),
+							 					 b = c("-3.46", "-0.000123"),
+							 					 c = c(TRUE, FALSE),
+							 					 d = c("1.2345", "2.3456")))
+})
+
 test_that("round_num error", {
 	expect_error(.round_num(123.456, "2"))
 	expect_error(.round_num(0.123456, "two"))
