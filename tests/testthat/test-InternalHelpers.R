@@ -107,6 +107,7 @@ test_that("round_num method monolix", {
 	expect_equal(.round_num(0.00123456, 2), "0.0012")
 	expect_equal(.round_num(123, 2), "123")
 	expect_equal(.round_num(123.456789, 4), "123.4568")
+	expect_equal(.round_num(-123.456, 2), "-123.46")
 })
 
 test_that("round_num rounding_method signif", {

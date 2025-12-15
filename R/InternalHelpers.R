@@ -190,8 +190,8 @@
 	if (is.numeric(number)) {
 
 		if (rounding_method == "monolix") {
-			digits = digits + ifelse(number < 1, abs(floor(log10(abs(number))) + 1), 0)
-			rr <- round(number, digits = digits)
+			decimal <- number - as.integer(number)
+			rr <- as.integer(number) + signif(decimal, digits = digits)
 		} else if (rounding_method == "signif") {
 			rr <- signif(number, digits = digits)
 		}
