@@ -1,3 +1,6 @@
+# quiets NOTE from R CMD check re: the .'s that appear in pipelines
+utils::globalVariables(c("."))
+
 #' Print a message (info) to the user, checking option if package should be verbose or not
 #'
 #' @param ... message components

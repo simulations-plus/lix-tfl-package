@@ -1,4 +1,4 @@
-#' Title
+#' Created a data.frame table of the Monolix run history from a Sycomore project.
 #'
 #' @param sycomoreProjectFile path to Sycomore .syc project file
 #' @param digits number of digits to display
@@ -117,16 +117,12 @@ tableRunHistory <- function(sycomoreProjectFile,
 
 		# extract LL and BIC
 		if (!is.null(dfLL$linearization)) {
-			dfall$BICclin[i] = round(dfLL$linearization[dfLL$criteria == 'BICc'], digits =
-															 	1)
-			dfall$LLlin[i] = round(dfLL$linearization[dfLL$criteria == 'OFV'], digits =
-														 	1)
+			dfall$BICclin[i] = dfLL$linearization[dfLL$criteria == 'BICc']
+			dfall$LLlin[i] = dfLL$linearization[dfLL$criteria == 'OFV']
 		}
 		if (!is.null(dfLL$importanceSampling)) {
-			dfall$BICcis[i] = round(dfLL$importanceSampling[dfLL$criteria == 'BICc'], digits =
-																1)
-			dfall$LLis[i] = round(dfLL$importanceSampling[dfLL$criteria == 'OFV'], digits =
-															1)
+			dfall$BICcis[i] = dfLL$importanceSampling[dfLL$criteria == 'BICc']
+			dfall$LLis[i] = dfLL$importanceSampling[dfLL$criteria == 'OFV']
 		}
 		# extract comments from mlxtran
 		mlxTranContent <- readLines(paste0(projPath, ".mlxtran"))
@@ -161,7 +157,278 @@ tableRunHistory <- function(sycomoreProjectFile,
 		dplyr::select(dplyr::where(~any(!is.na(.x)))) %>%
 		dplyr::relocate("Comments", "Rating", .after = dplyr::last_col()) %>%
 		dplyr::relocate("Run")
+	dfall <- .round_num(dfall, digits, roundingMethod)
 
 	return(dfall)
 
 }
+
+# TODO: consider adding shrinkage and support omegas in wide format
+
+#' Creates a table combining population parameter estimates with information on their uncertainties.
+#'
+#' The nameMapping data.frame provides the mapping between the Monolix parameter name (`Parameter`), the parameter
+#' display name (`Label`) and the parameter units (`Unit`).
+#'
+#' The display names or units can include special characters
+#' by using the Unicode code (e.g., `\U03C9` for omega). The order of the rows also controls the order of the parameters
+#' in the table. The results will always be grouped into sections of fixed effects, random effects,
+#' and error parameters, in that order, with a column Section identifying the parameter type.
+#'
+#' See the function [createNameMapping()] to more easily create the `nameMapping` data.frame.
+#'
+#' @param project_file path to Monolix .mlxtran project file, or NULL to use currently loaded project
+#' @param nameMapping data.frame with columns Parameter, Label, and Unit
+#' to specify the display name and units for the Monolix parameter name
+#' @param include_RSE TRUE to include a column for RSE in the table, FALSE to omit
+#' @param include_CI TRUE to include columns for confidence interval in the table, FALSE to omit
+#' @param include_CV TRUE to include rows for the coefficient of variation in the table, FALSE to omit
+#' @param include_bootstrap TRUE to include bootstrap results for uncertainties (P2.5, Median, P97.5), FALSE to omit
+#' @param std_err_method "" to use whichever method the project uses (linear in the case both are present), or
+#' "linear" or "stochasticApproximation" to specify the method
+#' @param digits number of digits to display
+#' @param roundingMethod "monolix" to use Monolix rounding where digits specifies the number of places after the decimal, or "signif"
+#' for digits to specify the number of significant figures
+#'
+#' @returns a table of parameter estimates and uncertainties
+#' @export
+#' @seealso [createNameMapping()]
+#'
+#' @examples
+#' # TODO
+tableParameterEstimates <- function(project_file, nameMapping = NULL, include_RSE = TRUE,
+																		include_CI = FALSE, include_CV = FALSE, include_bootstrap = FALSE,
+																		std_err_method = "",
+																		digits = 3, roundingMethod = c("monolix", "signif")) {
+
+	roundingMethod <- match.arg(roundingMethod)
+
+	.ensureProjectLoaded(project_file)
+	availableParam <- names(lixoftConnectors::getEstimatedPopulationParameters(coefficientsOfVariation = include_CV))
+
+	if (is.null(nameMapping)) {
+		nameMapping = data.frame(Parameter = availableParam, Label = sub("_pop$", "", availableParam))
+	}
+	if (!is.data.frame(nameMapping)) {
+		stop("The argument 'nameMapping' must be a dataframe.", call. = FALSE) }
+
+	if (!("Parameter" %in% names(nameMapping)) || !("Label" %in% names(nameMapping))) {
+		stop(paste0("The argument 'nameMapping' must contain the headers 'Parameter', 'Label' and optionally 'Unit', in this order. Found headers are: ",
+								paste(names(nameMapping), collapse = ", ")), call. = FALSE) }
+
+	if (is.null(availableParam) | length(availableParam) < 1) {
+		stop("The Monolix project does not contain valid results.", call. = FALSE) }
+
+	param_renaming <- nameMapping$parameter
+	wrong_param_renaming <- param_renaming[!(param_renaming %in% availableParam)]
+	if (length(wrong_param_renaming) > 0) {
+		warning(paste0("The column 'parameter' of the argument 'nameMapping' contains the following parameters which do not appear in the project: ",
+									 paste(wrong_param_renaming, collapse = ", "), ". They will be ignored." ), call. = FALSE) }
+
+
+	pop <- data.frame(lixoftConnectors::getEstimatedPopulationParameters(coefficientsOfVariation = include_CV))
+	names(pop) <- c("Estimate")
+	pop$Parameter <- rownames(pop)
+
+	err <- NULL
+
+	if (include_RSE) {
+		err <- lixoftConnectors::getEstimatedStandardErrors(method = std_err_method)
+		if (length(err) == 0) {
+			.TFL_message("Standard errors not available for method: ", std_err_method)
+		} else
+		{
+			if (length(err) > 1) {
+				.TFL_message("Standard errors available for multiple methods, selecting ", names(err)[[1]])
+			}
+			err <- err[[1]]
+		}
+
+		if (is.null(err)) {
+			err = data.frame(Parameter = pop$Parameter, RSE = NA)
+		}
+		else {
+			err$rse <- abs(as.numeric(err$rse)) # corrects bug that RSE has negative sign
+			err <- err %>%
+				dplyr::select(c("parameter", "rse")) %>%
+				dplyr::rename(Parameter = "parameter", RSE = "rse")
+		}
+	}
+
+	CI <- NULL
+
+	if (include_CI) {
+		CI  <- lixoftConnectors::getEstimatedConfidenceIntervals(method = std_err_method)
+		if (length(CI) == 0) {
+			.TFL_message("Standard errors not available for method: ", std_err_method)
+		} else
+		{
+			if (length(CI) > 1) {
+				.TFL_message("Standard errors available for multiple methods, selecting ", names(CI)[[1]])
+			}
+			CI <- CI[[1]]
+		}
+
+		if (is.null(CI)) {
+			CI = data.frame(Parameter = pop$Parameter,
+											P2.5 = NA,
+											P97.5 = NA)
+		}
+		names(CI) <- c("Parameter", "P2.5", "P97.5")
+	}
+
+	bootstrap <- NULL
+
+	if (include_bootstrap) {
+		# boot <- lixoftConnectors::getBootstrapResults()$populationSummary %>%
+		# 	dplyr::select("RSE(%)") %>%
+		# 	dplyr::rename("rse" = "RSE(%)")
+		# boot$Parameter <- rownames(boot)
+		bootstrap  <- lixoftConnectors::getBootstrapResults()$populationSummary
+		if (is.null(bootstrap)) {
+			bootstrap <- data.frame(Parameter = pop$Parameter,
+															P2.5 = NA,
+															Median = NA,
+															P97.5 = NA)
+		} else {
+			bootstrap  <- bootstrap %>%
+				dplyr::select(dplyr::starts_with("P"), "MEDIAN") %>%
+				dplyr::rename(Median = "MEDIAN") %>%
+				dplyr::mutate(Parameter = rownames(.)) %>%
+				dplyr::relocate("Parameter")
+		}
+		names(bootstrap) <- c("Parameter", paste0("Bootstrap_", names(bootstrap)[2:4]))
+	}
+
+	# TODO, handle wide format for omega's
+	pop$Section <-  ""
+	pop$Section[grep("_pop|beta_", pop$Parameter)] <- "Fixed effects"
+	pop$Section[grep("omega_|corr_", pop$Parameter)] <- "Random effects"
+	pop$Section[pop$Parameter %in% c("a", "b", "c")] <- "Residual error"
+
+	# Restrict to just the requested parameters in specified order
+	pop <- pop[match(nameMapping$Parameter, pop$Parameter),]
+
+	pop = dplyr::right_join(nameMapping, pop, by = "Parameter")
+
+	if (include_RSE) {
+		pop = dplyr::left_join(pop, err, by = "Parameter")
+	}
+	if (include_CI) {
+		pop = dplyr::left_join(pop, CI, by = "Parameter")
+	}
+	if (include_bootstrap) {
+		pop = dplyr::left_join(pop, bootstrap, by = "Parameter")
+	}
+	pop <- dplyr::select(pop, -"Parameter") %>%
+		dplyr::rename(Parameter = "Label")
+
+	pop <- pop %>%
+		dplyr::arrange(.data$Section) %>% # section titles are in alphabetical order or would need to use factor levels
+		dplyr::relocate("Section")
+	pop <- .round_num(pop, digits, roundingMethod)
+
+	return(pop)
+
+	# TODO move this to flextable function (and need to adapt row insertion to be based on new section column)
+
+	# iFirstRan <- suppressWarnings(min(which(
+	# 	grepl("omega_|corr_", pop$parameter) == TRUE
+	# )))
+	# iFirstRes <- suppressWarnings(min(which(
+	# 	grepl("omega_|corr_|_pop|beta_", pop$parameter) == FALSE
+	# )))
+	#
+	# if (iFirstRes != Inf) {
+	# 	pop <- pop %>% dplyr::add_row(label = "Residual error", .before = iFirstRes)
+	# }
+	# if (iFirstRan != Inf) {
+	# 	pop <- pop %>% dplyr::add_row(label = "Random effects", .before = iFirstRan)
+	# }
+	# pop <- pop %>% dplyr::add_row(label = "Fixed effects",	.before = 1)
+	#
+	# iFix <- which(pop$label == "Fixed effects")
+	# iRan <- which(pop$label == "Random effects")
+	# iRes <- which(pop$label == "Residual error")
+	#
+	# last_col <- if (include_CI) { "ULCI" }
+	# else if (include_RSE) { "rse" }
+	# else { "Estimate" }
+	#
+	# ft_est <- flextable(pop) %>%
+	# 	merge_h_range(i = iFix , j1 = "label", j2 = last_col) %>%
+	# 	hline(i = iFix, part = "body") %>%
+	# 	bold(part = "header") %>%
+	# 	bold(i = iFix, part = "body")
+	#
+	# if (length(iRes) > 0) {
+	# 	ft_est <- ft_est %>%
+	# 		merge_h_range(i = iRes) %>%
+	# 		hline(i = iRes - 1, part = "body") %>%
+	# 		hline(i = iRes, part = "body") %>%
+	# 		bold(i = iRes, part = "body")
+	# }
+	# if (length(iRan) > 0) {
+	# 	ft_est <- ft_est %>%
+	# 		merge_h_range(i = iRan, j1 = "label", j2 = last_col) %>%
+	# 		hline(i = iRan - 1, part = "body") %>%
+	# 		hline(i = iRan, part = "body") %>%
+	# 		bold(i = iRan, part = "body")
+	# }
+	#
+	# ft_est <- ft_est %>%
+	# 	set_header_labels(rse = "RSE(%)", label = "Parameter", parameter = "Monolix name", unit = "Unit") %>%
+	#
+	# return(ft_est)
+
+}
+
+#' Creates a mapping between parameter names used in the Monolix project and display names
+#'
+#' Creates a data.frame that can be used as the `nameMapping` argument to [tableParameterEstimates()] to specify mapping
+#' between the Monolix parameter name (`Parameter`), the parameter display name (`Label`) and the parameter units (`Unit`).
+#'
+#' The display names or units can include special characters by using the Unicode code (e.g., `\U03C9` for omega).
+#' The order of the rows also controls the order of the parameters in the table.
+#'
+#' @param ... a series a vectors with named arguments (`Parameter, Label, Unit`) or (`Parameter, Label`)
+#'
+#' @returns a data.frame that can be passed to [tableParameterEstimates()]
+#' @export
+#' @seealso [tableParameterEstimates()]
+#'
+#' @examples
+#'
+#' createNameMapping(
+#'   c(Parameter = "V_pop", Label = "V", Unit = "L"),
+#'   c(Parameter = "Cl_pop", Label = "Cl", Unit = "L/h"),
+#'   c(Parameter = "ka_pop", Label = "ka"))
+#'
+createNameMapping <- function(...) {
+	items <- list(...)
+
+	if (!all(sapply(items, is.vector)) | !all(sapply(items, is.character))) {
+		stop("Arguments must be all vectors of type character specifying (Parameter, Label, Unit)", call. = FALSE)
+	}
+	if (!all(sapply(items, length) %in% 2:3)) {
+		stop("Each vector must specify (Parameter, Label, Unit) or (Parameter, Label)", call. = FALSE)
+	}
+	if (any(sapply(sapply(items, names), is.null))) {
+		stop("Each vector must be named, e.g. c(Parameter = 'V_pop', Label = 'V', Unit = 'L')", call. = FALSE)
+	}
+
+	parameterMapping <- dplyr::bind_rows(lapply(items, as.data.frame.list))
+	parameterMapping[is.na(parameterMapping)] <- ""
+
+	if (!all(names(parameterMapping) %in% c("Parameter", "Label", "Unit"))) {
+		stop("Each vector must specify (Parameter, Label, Unit) or (Parameter, Label)", call. = FALSE)
+	}
+
+	if (!all(c("Parameter", "Label") %in% names(parameterMapping))) {
+		stop("Each vector must specify at minimum (Parameter, Label)", call. = FALSE)
+	}
+
+	return(parameterMapping)
+}
+
+

@@ -2,7 +2,7 @@
 % Please edit documentation in R/MonolixHelpers.R
 \name{tableRunHistory}
 \alias{tableRunHistory}
-\title{Title}
+\title{Created a data.frame table of the Monolix run history from a Sycomore project.}
 \usage{
 tableRunHistory(
   sycomoreProjectFile,
@@ -23,7 +23,7 @@ data.frame, including the run name, the parent run, the rating and comments, as 
 -2 * loglikelihood (OFV) and BICc values and the difference from the parent, if available
 }
 \description{
-Title
+Created a data.frame table of the Monolix run history from a Sycomore project.
 }
 \examples{
 # TODO
