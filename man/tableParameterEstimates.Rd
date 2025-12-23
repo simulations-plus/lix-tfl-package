@@ -11,6 +11,7 @@ tableParameterEstimates(
   include_CI = FALSE,
   include_CV = FALSE,
   include_bootstrap = FALSE,
+  use_wide_format_omegas = FALSE,
   std_err_method = "",
   digits = 3,
   roundingMethod = c("monolix", "signif")
@@ -29,6 +30,8 @@ to specify the display name and units for the Monolix parameter name}
 \item{include_CV}{TRUE to include rows for the coefficient of variation in the table, FALSE to omit}
 
 \item{include_bootstrap}{TRUE to include bootstrap results for uncertainties (P2.5, Median, P97.5), FALSE to omit}
+
+\item{use_wide_format_omegas}{TRUE for variability (omegas) in wide format, FALSE for long format}
 
 \item{std_err_method}{"" to use whichever method the project uses (linear in the case both are present), or
 "linear" or "stochasticApproximation" to specify the method}

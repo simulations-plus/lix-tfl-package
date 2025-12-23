@@ -163,7 +163,7 @@ tableRunHistory <- function(sycomoreProjectFile,
 
 }
 
-# TODO: consider adding shrinkage and support omegas in wide format
+# TODO: consider adding shrinkage and SE
 
 #' Creates a table combining population parameter estimates with information on their uncertainties.
 #'
@@ -184,6 +184,7 @@ tableRunHistory <- function(sycomoreProjectFile,
 #' @param include_CI TRUE to include columns for confidence interval in the table, FALSE to omit
 #' @param include_CV TRUE to include rows for the coefficient of variation in the table, FALSE to omit
 #' @param include_bootstrap TRUE to include bootstrap results for uncertainties (P2.5, Median, P97.5), FALSE to omit
+#' @param use_wide_format_omegas TRUE for variability (omegas) in wide format, FALSE for long format
 #' @param std_err_method "" to use whichever method the project uses (linear in the case both are present), or
 #' "linear" or "stochasticApproximation" to specify the method
 #' @param digits number of digits to display
@@ -198,7 +199,7 @@ tableRunHistory <- function(sycomoreProjectFile,
 #' # TODO
 tableParameterEstimates <- function(project_file, nameMapping = NULL, include_RSE = TRUE,
 																		include_CI = FALSE, include_CV = FALSE, include_bootstrap = FALSE,
-																		std_err_method = "",
+																		use_wide_format_omegas = FALSE, std_err_method = "",
 																		digits = 3, roundingMethod = c("monolix", "signif")) {
 
 	roundingMethod <- match.arg(roundingMethod)
@@ -300,7 +301,6 @@ tableParameterEstimates <- function(project_file, nameMapping = NULL, include_RS
 		names(bootstrap) <- c("Parameter", paste0("Bootstrap_", names(bootstrap)[2:4]))
 	}
 
-	# TODO, handle wide format for omega's
 	pop$Section <-  ""
 	pop$Section[grep("_pop|beta_", pop$Parameter)] <- "Fixed effects"
 	pop$Section[grep("omega_|corr_", pop$Parameter)] <- "Random effects"
@@ -320,6 +320,37 @@ tableParameterEstimates <- function(project_file, nameMapping = NULL, include_RS
 	if (include_bootstrap) {
 		pop = dplyr::left_join(pop, bootstrap, by = "Parameter")
 	}
+
+	if (use_wide_format_omegas) {
+		pop_idx <- grep("_pop", pop$Parameter)
+		omega_idx <- grep("omega_", pop$Parameter)
+		omega_cv_idx <- NULL
+
+		pop_root <- sub("_pop$", "", pop$Parameter[pop_idx])
+		omega_root <- sub("^omega_", "", pop$Parameter[omega_idx])
+
+		if (include_CV) {
+			omega_cv_idx <- omega_idx[endsWith(pop$Parameter[omega_idx], "_CV")]
+			omega_idx <- setdiff(omega_idx, omega_cv_idx)
+			omega_root <- sub("^omega_", "", pop$Parameter[omega_idx]) # to not duplicate
+		}
+
+		pop[,ifelse(include_CV, "Variability(CV)", "Variability")] <- ""
+
+		# TODO: variable for column name, need to use get()?
+		source_idx <- if (include_CV) { omega_cv_idx } else { omega_idx }
+		pop[pop_idx, ifelse(include_CV, "Variability(CV)", "Variability")] <-
+			pop[source_idx[match(pop_root, omega_root)], "Estimate"]
+
+		if (include_RSE) {
+			pop[,"Variability(RSE)"] <- ""
+			pop[pop_idx, "Variability(RSE)"] <-
+				pop[omega_idx[match(pop_root, omega_root)], "RSE"]
+		}
+
+		pop <- pop[-c(omega_idx, omega_cv_idx),]
+	}
+
 	pop <- dplyr::select(pop, -"Parameter") %>%
 		dplyr::rename(Parameter = "Label")
 
