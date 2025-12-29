@@ -47,7 +47,7 @@
     }
 
     df %>%
-        dplyr::mutate(!!"aliases" := vapply(dplyr::.data[["aliases"]], convert_sub_and_sup, character(1)))
+        dplyr::mutate(!!"aliases" := vapply(.data[["aliases"]], convert_sub_and_sup, character(1)))
 }
 
 
@@ -552,38 +552,38 @@
     df %>%
         dplyr::group_by(dplyr::across(dplyr::all_of(group_vars))) %>%
         dplyr::summarise(
-            N = if (!is.null(id_col)) dplyr::n_distinct(dplyr::.data[[id_col]]) else dplyr::n(),
-            min = min(dplyr::.data[[value_col]], na.rm = TRUE),
-            P05 = stats::quantile(dplyr::.data[[value_col]], 0.05, na.rm = TRUE),
-            Q1 = stats::quantile(dplyr::.data[[value_col]], 0.25, na.rm = TRUE),
-            mean = mean(dplyr::.data[[value_col]], na.rm = TRUE),
-            SD = stats::sd(dplyr::.data[[value_col]], na.rm = TRUE),
+            N = if (!is.null(id_col)) dplyr::n_distinct(.data[[id_col]]) else dplyr::n(),
+            min = min(.data[[value_col]], na.rm = TRUE),
+            P05 = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE),
+            Q1 = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE),
+            mean = mean(.data[[value_col]], na.rm = TRUE),
+            SD = stats::sd(.data[[value_col]], na.rm = TRUE),
             CV = if (is.na(mean) || mean == 0) NA_real_ else 100 * SD / mean,
-            median = stats::median(dplyr::.data[[value_col]], na.rm = TRUE),
-            Q3 = stats::quantile(dplyr::.data[[value_col]], 0.75, na.rm = TRUE),
-            P95 = stats::quantile(dplyr::.data[[value_col]], 0.95, na.rm = TRUE),
-            max = max(dplyr::.data[[value_col]], na.rm = TRUE),
+            median = stats::median(.data[[value_col]], na.rm = TRUE),
+            Q3 = stats::quantile(.data[[value_col]], 0.75, na.rm = TRUE),
+            P95 = stats::quantile(.data[[value_col]], 0.95, na.rm = TRUE),
+            max = max(.data[[value_col]], na.rm = TRUE),
 
             # geometric mean / sd / cv
             geoMean = {
-                mask <- is.finite(dplyr::.data[[value_col]]) & dplyr::.data[[value_col]] > 0
-                if (sum(mask) > 0) exp(mean(log(dplyr::.data[[value_col]][mask]), na.rm = TRUE)) else NA_real_
+                mask <- is.finite(.data[[value_col]]) & .data[[value_col]] > 0
+                if (sum(mask) > 0) exp(mean(log(.data[[value_col]][mask]), na.rm = TRUE)) else NA_real_
             },
             geoSD = {
-                mask <- is.finite(dplyr::.data[[value_col]]) & dplyr::.data[[value_col]] > 0
-                sdlog <- if (sum(mask) > 1) stats::sd(log(dplyr::.data[[value_col]][mask]), na.rm = TRUE) else NA_real_
+                mask <- is.finite(.data[[value_col]]) & .data[[value_col]] > 0
+                sdlog <- if (sum(mask) > 1) stats::sd(log(.data[[value_col]][mask]), na.rm = TRUE) else NA_real_
                 if (is.na(sdlog)) NA_real_ else exp(sdlog)
             },
             geoCV = {
-                mask <- is.finite(dplyr::.data[[value_col]]) & dplyr::.data[[value_col]] > 0
-                sdlog <- if (sum(mask) > 1) stats::sd(log(dplyr::.data[[value_col]][mask]), na.rm = TRUE) else NA_real_
+                mask <- is.finite(.data[[value_col]]) & .data[[value_col]] > 0
+                sdlog <- if (sum(mask) > 1) stats::sd(log(.data[[value_col]][mask]), na.rm = TRUE) else NA_real_
                 if (is.na(sdlog)) NA_real_ else 100 * sqrt(exp(sdlog^2) - 1)
             },
 
             # harmonic mean
             harmMean = {
-                mask <- is.finite(dplyr::.data[[value_col]]) & dplyr::.data[[value_col]] > 0
-                if (any(mask, na.rm = TRUE)) length(dplyr::.data[[value_col]][mask]) / sum(1 / dplyr::.data[[value_col]][mask]) else NA_real_
+                mask <- is.finite(.data[[value_col]]) & .data[[value_col]] > 0
+                if (any(mask, na.rm = TRUE)) length(.data[[value_col]][mask]) / sum(1 / .data[[value_col]][mask]) else NA_real_
             },
             .groups = "drop"
         )
@@ -623,9 +623,9 @@
 .combinedStats <- function(df) {
     df %>%
         dplyr::mutate(
-            MeanSD = paste0(dplyr::.data$mean, " (", dplyr::.data$SD, ")"),
-            GeomCV = paste0(dplyr::.data$geoMean, " (", dplyr::.data$geoCV, ")"),
-            GeomSD = paste0(dplyr::.data$geoMean, " (", dplyr::.data$geoSD, ")")
+            MeanSD = paste0(.data$mean, " (", .data$SD, ")"),
+            GeomCV = paste0(.data$geoMean, " (", .data$geoCV, ")"),
+            GeomSD = paste0(.data$geoMean, " (", .data$geoSD, ")")
         )
 }
 
@@ -697,6 +697,8 @@
 #' summarizes using .summarizeStats, rounds, and adds combined metrics.
 #'
 .prepareCovariateSummaryStats <- function(project, covariates, cont_cols, roundDigits, roundMethod) {
+
+
     # Base data: variables from dataset tagged as covariates
     # Note: We fetch ID to ensure we can count subjects correctly
     cov_df <- lixoftConnectors::getCovariateInformation()$covariate
@@ -718,8 +720,7 @@
         tidyr::pivot_longer(
             cols = dplyr::all_of(valid_cont_cols),
             names_to = "variable",
-            values_to = "value"
-        ) %>%
+            values_to = "value") %>%
         dplyr::mutate(value = suppressWarnings(as.numeric(value)))
 
     # Summarize & determine grouping

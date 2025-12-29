@@ -413,6 +413,16 @@ NCAParameterSummary_Table <- function(project = NULL,
                                       units = TRUE,
                                       aliases = TRUE,
                                       prettyLabels = TRUE) {
+
+#
+# 	project = prj3
+#   NCAparams = c("AUCINF_obs", "AUClast", "Cmax")
+# 	metrics = c("MeanSD", "GeomCV")
+# 	horizontal = TRUE
+# 	stratify_columns = TRUE
+# 	covariates = c("DAY", "DOSE_mg_kg_")
+# 	roundMethod = "monolix"
+
   roundMethod <- match.arg(roundMethod)
 
   # ==========================================================================

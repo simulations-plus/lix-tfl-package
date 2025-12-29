@@ -322,20 +322,22 @@ tableParameterEstimates <- function(project_file, nameMapping = NULL, include_RS
 	}
 
 	if (use_wide_format_omegas) {
-		pop_idx <- grep("_pop", pop$Parameter)
+		pop_idx   <- grep("_pop", pop$Parameter)
 		omega_idx <- grep("omega_", pop$Parameter)
 		omega_cv_idx <- NULL
 
-		pop_root <- sub("_pop$", "", pop$Parameter[pop_idx])
+		pop_root   <- sub("_pop$", "",   pop$Parameter[pop_idx])
 		omega_root <- sub("^omega_", "", pop$Parameter[omega_idx])
 
 		if (include_CV) {
 			omega_cv_idx <- omega_idx[endsWith(pop$Parameter[omega_idx], "_CV")]
-			omega_idx <- setdiff(omega_idx, omega_cv_idx)
-			omega_root <- sub("^omega_", "", pop$Parameter[omega_idx]) # to not duplicate
+			omega_idx    <- setdiff(omega_idx, omega_cv_idx)
+			omega_root   <- sub("^omega_", "", pop$Parameter[omega_idx]) # to not duplicate
 		}
 
-		pop[,ifelse(include_CV, "Variability(CV)", "Variability")] <- ""
+		var_col <- if (include_CV) "Variability(CV)" else "Variability"
+
+		pop[[var_col]] <- NA_real_
 
 		# TODO: variable for column name, need to use get()?
 		source_idx <- if (include_CV) { omega_cv_idx } else { omega_idx }
@@ -343,11 +345,10 @@ tableParameterEstimates <- function(project_file, nameMapping = NULL, include_RS
 			pop[source_idx[match(pop_root, omega_root)], "Estimate"]
 
 		if (include_RSE) {
-			pop[,"Variability(RSE)"] <- ""
+			pop[,"Variability(RSE)"] <- NA_real_
 			pop[pop_idx, "Variability(RSE)"] <-
 				pop[omega_idx[match(pop_root, omega_root)], "RSE"]
 		}
-
 		pop <- pop[-c(omega_idx, omega_cv_idx),]
 	}
 
