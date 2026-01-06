@@ -279,7 +279,7 @@
         return(rounded)
     }
 
-    # case 1: data frame â€” apply columnwise
+    # case 1: data frame apply columnwise
     if (is.data.frame(x)) {
         for (nm in names(x)) {
             if (!is.null(exclude) && nm %in% exclude) next
@@ -350,9 +350,9 @@
 #' Automatically appends the appropriate file extension (`.pkx`, `.mlxtran`, or `.smlx`)
 #' and suppresses the interactive "switch software" confirmation.
 #'
-#' @param project Character string giving the path to the project (with or without extension).
+#' @param projectFile Character string giving the path to the project (with or without extension).
 #'   If `NULL`, uses the currently loaded project.
-#'   If no project is loaded and `project = NULL`, the function throws an error.
+#'   If no project is loaded and `projectFile = NULL`, the function throws an error.
 #'
 #' @return Invisibly returns the path to the active project after ensuring it is loaded.
 #'
@@ -363,7 +363,7 @@
 #' # Load a new PKanalix project (auto-detects extension)
 #' ensureProjectLoaded("C:/Users/.../project_nominal_time")
 #'
-.ensureProjectLoaded <- function(project = NULL) {
+.ensureProjectLoaded <- function(projectFile = NULL) {
     # Retrieve current connection state
     current_prj_info <- tryCatch(lixoftConnectors::getProjectSettings(), error = function(e) NULL)
     current_connector <- tryCatch(lixoftConnectors::getLixoftConnectorsState(), error = function(e) NULL)
@@ -395,7 +395,7 @@
 
     # --------------------------------------------------
     # CASE 1: No project argument â†’ quietly use current
-    if (is.null(project)) {
+    if (is.null(projectFile)) {
         if (is.null(current_prj_info) || is.null(current_prj_info$directory)) {
             stop("No project is currently loaded and no project path was provided.")
         }
@@ -424,7 +424,7 @@
 
     # --------------------------------------------------
     # CASE 2: Project argument provided
-    project_path <- normalizePath(project, winslash = "/", mustWork = FALSE)
+    project_path <- normalizePath(projectFile, winslash = "/", mustWork = FALSE)
     inferred <- inferSoftwareFromPath(project_path)
 
     if (!is.null(inferred$ext) && !grepl(paste0("\\", inferred$ext, "$"), project_path)) {
@@ -696,9 +696,7 @@
 #' @description Fetches covariate data, reshapes to long format,
 #' summarizes using .summarizeStats, rounds, and adds combined metrics.
 #'
-.prepareCovariateSummaryStats <- function(project, covariates, cont_cols, roundDigits, roundMethod) {
-
-
+.prepareCovariateSummaryStats <- function(projectFile, covariates, cont_cols, roundDigits, roundMethod) {
     # Base data: variables from dataset tagged as covariates
     # Note: We fetch ID to ensure we can count subjects correctly
     cov_df <- lixoftConnectors::getCovariateInformation()$covariate
@@ -720,7 +718,8 @@
         tidyr::pivot_longer(
             cols = dplyr::all_of(valid_cont_cols),
             names_to = "variable",
-            values_to = "value") %>%
+            values_to = "value"
+        ) %>%
         dplyr::mutate(value = suppressWarnings(as.numeric(value)))
 
     # Summarize & determine grouping
@@ -900,7 +899,7 @@
 #'
 #' @keywords internal
 #'
-.prepareNCASummaryStats <- function(project,
+.prepareNCASummaryStats <- function(projectFile,
                                     NCAparams = NULL,
                                     covariates = NULL,
                                     roundDigits = 3,
