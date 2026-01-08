@@ -157,7 +157,7 @@ tableRunHistory <- function(sycomoreProjectFile,
 		dplyr::select(dplyr::where(~any(!is.na(.x)))) %>%
 		dplyr::relocate("Comments", "Rating", .after = dplyr::last_col()) %>%
 		dplyr::relocate("Run")
-	dfall <- .round_num(dfall, digits, roundingMethod)
+	dfall <- .round_num(dfall, digits, rounding_method = roundingMethod)
 
 	return(dfall)
 
@@ -358,7 +358,7 @@ tableParameterEstimates <- function(project_file, nameMapping = NULL, include_RS
 	pop <- pop %>%
 		dplyr::arrange(.data$Section) %>% # section titles are in alphabetical order or would need to use factor levels
 		dplyr::relocate("Section")
-	pop <- .round_num(pop, digits, roundingMethod)
+	pop <- .round_num(pop, digits, rounding_method = roundingMethod)
 
 	return(pop)
 

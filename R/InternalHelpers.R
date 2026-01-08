@@ -170,17 +170,16 @@ utils::globalVariables(c("."))
 #' Two rounding methods are supported: "monolix" which mirrors the behavior of MonolixSuite
 #' applications where all digits before the decimal are considered significant, and only digits
 #' after the decimal are rounded, and "signif" where the number of significant digits are specified.
-#'
-#' For the two rounding methods, the result is returned as character, while for "none" the numeric result
-#' is retained.
+#' To retain the original values and not round, use "none".
 #'
 #' @param to_round number, vector or data frame to round
 #' @param digits number of digits to round to
+#' @exclude names of columns to exclude
 #' @param rounding_method "monolix" (default), "signif", or "none"
 #'
 #' @returns rounded number
 #' @noRd
-.round_num = function(to_round, digits, rounding_method = c("monolix", "signif", "none")) {
+.round_num = function(to_round, digits, exclude = character(0), rounding_method = c("monolix", "signif", "none")) {
 	rounding_method <- match.arg(rounding_method)
 
 	if (rounding_method == "none") {
@@ -189,7 +188,8 @@ utils::globalVariables(c("."))
 
 	if (is.data.frame(to_round)) {
 		rr <- to_round %>%
-			dplyr::mutate(dplyr::across(tidyselect::where(is.double), .fns = ~.round_num(.x, digits, rounding_method)))
+			dplyr::mutate(dplyr::across(tidyselect::where(is.double) & !any_of(exclude),
+																	.fns = ~.round_num(.x, digits, rounding_method = rounding_method)))
 	}
 	else if (is.numeric(to_round)) {
 
@@ -199,7 +199,6 @@ utils::globalVariables(c("."))
 		} else if (rounding_method == "signif") {
 			rr <- signif(to_round, digits = digits)
 		}
-		rr <- as.character(rr)
 	}
 	else {
 		rr <- to_round

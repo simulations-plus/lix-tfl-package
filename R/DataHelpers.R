@@ -57,7 +57,7 @@ tableContinuousCovariateSummary <- function(projectFile,
             P95 = stats::quantile(.data$Value, 0.95),
             Max = max(.data$Value)
         ) %>%
-        dplyr::mutate_if(is.numeric, .round_num, digits, roundingMethod)
+        dplyr::mutate_if(is.numeric, .round_num, digits, rounding_method = roundingMethod)
 
     # rename covariates
     if (!is.null(covDisplayLabels)) {
@@ -74,6 +74,8 @@ tableContinuousCovariateSummary <- function(projectFile,
 #' @param covDisplayLabels (optional) data.frame with columns covariate and label for the dataset covariate name
 #' @param categoryDisplayLabels (optional) data.frame with columns covariate, category, and label for the dataset categorical covariate categories
 #' @param digits number of digits to display
+#' @param roundingMethod "monolix" to use MonolixSuite rounding where digits specifies the number of places after the decimal, or "signif"
+#' for digits to specify the number of significant figures
 #'
 #' @returns a data.frame
 #' @export
@@ -83,7 +85,8 @@ tableContinuousCovariateSummary <- function(projectFile,
 tableCategoricalCovariateSummary <- function(projectFile,
                                              covDisplayLabels = NULL,
                                              categoryDisplayLabels = NULL,
-                                             digits = 2) {
+                                             digits = 2,
+																						 roundingMethod = c("monolix", "signif", "none")) {
     .checkProjectFile(projectFile, c("monolix", "pkanalix"))
     .ensureProjectLoaded(projectFile)
 
@@ -132,7 +135,7 @@ tableCategoricalCovariateSummary <- function(projectFile,
             dplyr::mutate(
                 Covariate = "",
                 Category = !!as.name(c),
-                Percentage = .round_num(.data$Frequency / sum(.data$Frequency), digits, "monolix")
+                Percentage = .round_num(.data$Frequency / sum(.data$Frequency), digits, rounding_method = roundingMethod)
             ) %>%
             dplyr::select(!as.name(c)) %>%
             dplyr::relocate("Frequency", .before = "Percentage")

@@ -8,7 +8,8 @@ tableCategoricalCovariateSummary(
   projectFile,
   covDisplayLabels = NULL,
   categoryDisplayLabels = NULL,
-  digits = 2
+  digits = 2,
+  roundingMethod = c("monolix", "signif", "none")
 )
 }
 \arguments{
@@ -19,6 +20,9 @@ tableCategoricalCovariateSummary(
 \item{categoryDisplayLabels}{(optional) data.frame with columns covariate, category, and label for the dataset categorical covariate categories}
 
 \item{digits}{number of digits to display}
+
+\item{roundingMethod}{"monolix" to use MonolixSuite rounding where digits specifies the number of places after the decimal, or "signif"
+for digits to specify the number of significant figures}
 }
 \value{
 a data.frame

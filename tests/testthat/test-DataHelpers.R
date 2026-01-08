@@ -6,7 +6,7 @@ test_that("tableContinuousCovariateSummary default arguments", {
 	table = tableContinuousCovariateSummary(mono_project_1)
 	expect_equal(dim(table), c(3,9))
 	expect_equal(table$Covariate, c("AGE", "HEIGHT", "WEIGHT"))
-	expect_equal(table$Min, c("36", "165", "80"))
+	expect_equal(table$Min, c(36, 165, 80))
 })
 
 test_that("tableCategoricalCovariateSummary default arguments", {
@@ -47,18 +47,18 @@ test_that("tableContinuousCovariateSummary digits and rounding arguments", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	table = tableContinuousCovariateSummary(mono_project_1, digits = 3, roundingMethod = "signif")
 	expect_equal(dim(table), c(3,9))
-	expect_equal(table$Mean, c("50.3", "180", "93.6"))
+	expect_equal(table$Mean, c(50.3, 180, 93.6))
 
 	table = tableContinuousCovariateSummary(mono_project_1, digits = 1, roundingMethod = "monolix")
 	expect_equal(dim(table), c(3,9))
-	expect_equal(table$Mean, c("50.3", "180.2", "93.6"))
+	expect_equal(table$Mean, c(50.3, 180.2, 93.6))
 })
 
 test_that("tableCategoricalCovariateSummary digits arguments", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	table = tableCategoricalCovariateSummary(mono_project_1, digits = 4)
-	expect_equal(table$Percentage, c("0.3333", "0.3333", "0.3333", "0.5", "0.5"))
+	expect_equal(table$Percentage, c(0.3333, 0.3333, 0.3333, 0.5, 0.5))
 
 	table = tableCategoricalCovariateSummary(mono_project_1, digits = 3)
-	expect_equal(table$Percentage, c("0.333", "0.333", "0.333", "0.5", "0.5"))
+	expect_equal(table$Percentage, c(0.333, 0.333, 0.333, 0.5, 0.5))
 })

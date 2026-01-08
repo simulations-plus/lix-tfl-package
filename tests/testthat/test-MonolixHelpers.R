@@ -39,7 +39,7 @@ test_that("tableRunHistory run likelihood", {
 	expect_equal(table$Run, c("PK_run01", "PK_run02"))
 	expect_contains(names(table), c("LLlin", "LLis", "BICclin", "BICcis", "dLLlin"))
 	expect_disjoint(names(table), "dLLis")
-	expect_equal(table$dLLlin, c(NA, "-20.075"))
+	expect_equal(table$dLLlin, c(NA, -20.075))
 })
 
 test_that("tableParameterEstimates basic", {
@@ -112,14 +112,14 @@ test_that("tableParameterEstimates with std errs", {
 	suppressMessages(lixoftConnectors::runStandardErrorEstimation(linearization = FALSE))
 	table = tableParameterEstimates(mono_project_1, mapping, std_err_method = "linearization")
 	expect_all_false(is.na(table$RSE))
-	expect_equal(table$RSE[1], "2.795")
+	expect_equal(table$RSE[1], 2.795)
 	table = tableParameterEstimates(mono_project_1, mapping, std_err_method = "stochasticApproximation")
 	expect_all_false(is.na(table$RSE))
-	expect_equal(table$RSE[1], "2.886")
+	expect_equal(table$RSE[1], 2.886)
 	expect_message(tableParameterEstimates(mono_project_1, mapping), "multiple methods")
 	table = tableParameterEstimates(mono_project_1, mapping)
 	expect_all_false(is.na(table$RSE))
-	expect_equal(table$RSE[1], "2.795")
+	expect_equal(table$RSE[1], 2.795)
 })
 
 test_that("tableParameterEstimates include logicals", {
