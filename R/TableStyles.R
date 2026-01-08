@@ -2,11 +2,8 @@
 #-------------------------------Table Styles-----------------------------------#
 ################################################################################
 
-# Load required libraries
-# install.packages("flextable")
-suppressWarnings(library(flextable))
 
-print_table_flex <- function(data.flex, 
+print_table_flex <- function(data.flex,
                              grouping.columns = NULL,
                              header_level1    = NULL,
                              header_level2    = NULL,
@@ -14,60 +11,60 @@ print_table_flex <- function(data.flex,
                              color            = NULL, # e.g. c("BE","DP","PVAL","RSE","IIVRSE")
                              theme_fn         = theme_box,
                              soften_amount    = 0.50, # 0 = original, 1 = white
-                             html_alpha       = 0.18) # only used for html rgba) 
-{  
-  
+                             html_alpha       = 0.18) # only used for html rgba)
+{
+
   color <- toupper(color)  # optional but helpful
-  
+
   # Check if columns exist
   pval.flag   <- ("PVAL"   %in% color) && "p.value"    %in% colnames(data.flex)
   BE.flag     <- ("BE"     %in% color) && "Conclusion" %in% colnames(data.flex)
   RSE.flag    <- ("RSE"    %in% color) && "%RSE"       %in% colnames(data.flex)
   IIVRSE.flag <- ("IIVRSE" %in% color) && "IIV %RSE"   %in% colnames(data.flex)
   DP.flag     <- ("DP"     %in% color) && "Conclusion" %in% colnames(data.flex)
-   
+
   flextable::set_flextable_defaults(na_str = "NA")
-  
+
   # Reorder columns so grouping columns come first
   if (!is.null(grouping.columns)) {
     other.cols <- setdiff(names(data.flex), grouping.columns)
     data.flex  <- data.flex[, c(grouping.columns, other.cols), drop = FALSE]
   }
-  
-  
+
+
   ft <- flextable(data.flex)
   #-----------------------------------------------------------------------------
   # [Code Chunk of Alias Conversion]
   # Detect columns containing [[sub:...]] markers
-  # Only these columns need processing 
+  # Only these columns need processing
   alias_cols <- names(data.flex)[sapply(data.flex, function(col) {
     any(grepl("\\[\\[sub:", col, fixed = FALSE))
   })]
-  
+
   # Apply decoder to alias columns
   # Identified columns
   if (length(alias_cols) > 0) {
     for (col in alias_cols) {
-      
+
       # Process each row
       for (i in seq_len(nrow(data.flex))) {
         # CRITICAL: Must process cell-by-cell because flextable::compose() requires
         # specific row (i) and column (j) indices to target individual cells.
         # Cannot apply vectorized transformation to entire column at once.
         cell_value <- data.flex[[col]][i]
-        
+
         # Handle NA or empty strings
         if (is.na(cell_value) || !nzchar(as.character(cell_value))) {
           next  # Skip, leave as is
         }
-        
+
         cell_value <- as.character(cell_value)
-        
+
         # Only process if it contains [[sub:...]]
         if (!grepl("\\[\\[sub:", cell_value)) {
           next
         }
-        
+
         # --- BEGIN: Inline parsing logic (duplicate of .decode_flex_alias) ---
         # WHY INLINE? Because flextable::compose() needs to be called with specific
         # i/j coordinates for each cell. We can't pre-generate paragraphs and apply
@@ -75,7 +72,7 @@ print_table_flex <- function(data.flex,
         pattern <- "\\[\\[sub:([^]]+)\\]\\]"
         chunks <- list()
         current <- cell_value
-        
+
         repeat {
           m <- regexpr(pattern, current, perl = TRUE)
           if (m[1] == -1) {
@@ -87,7 +84,7 @@ print_table_flex <- function(data.flex,
           }
           start <- m[1]
           end   <- start + attr(m, "match.length") - 1
-          
+
           # Text before the [[sub:...]] marker
           before <- substr(current, 1, start - 1)
           if (nzchar(before)) {
@@ -97,42 +94,42 @@ print_table_flex <- function(data.flex,
           match_str <- substr(current, start, end)
           subtxt    <- sub(pattern, "\\1", match_str, perl = TRUE)
           chunks    <- append(chunks, list(flextable::as_sub(subtxt)))
-          
+
           # Continue with rest of string
           current <- substr(current, end + 1, nchar(current))
         }
-        
+
         # Apply to this specific cell
-        ft <- flextable::compose(ft, i = i, j = col, value = do.call(flextable::as_paragraph, chunks)) # i... row index, j... column name, 
+        ft <- flextable::compose(ft, i = i, j = col, value = do.call(flextable::as_paragraph, chunks)) # i... row index, j... column name,
       }
     }
   }
-  
+
   #-----------------------------------------------------------------------------
   # [End of Alias conversion]
   #-----------------------------------------------------------------------------
-  
-  
+
+
   #-----------------------------------------------------------------------------
   # Initialize flextable with theme
   ft <- theme_fn(ft)
   ft <- fontsize(ft, size = 8, part = "all")
-  
+
   # Merge vertical grouping columns
   if (!is.null(grouping.columns)) {
     ft <- merge_v(ft, j = grouping.columns)
   }
-  
+
   # Center all table content
   ft <- align(ft, align = "center", part = "all")
-  
+
   # left-align each grouping column by name
   if (!is.null(grouping.columns)) {
     for (col in grouping.columns) {
       ft <- align(ft, j = col, align = "left", part = "all")
     }
   }
-  
+
   # ---------------------------------------------------------------------------
   # Header levels (1 = topmost)
   # ---------------------------------------------------------------------------
@@ -145,20 +142,20 @@ print_table_flex <- function(data.flex,
     if (length(x) == 0) return(NULL)
     x[1]  # take first element if someone passes a vector
   }
-  
+
   h1 <- .as_header_string(header_level1)
   h2 <- .as_header_string(header_level2)
   h3 <- .as_header_string(header_level3)
-  
+
   # Add from lowest to highest so level 1 ends up on top
   # add_header_lines() inserts ABOVE the existing header each time
   for (line in na.omit(c(h3, h2, h1))) {
     ft <- flextable::add_header_lines(ft, values = line)
   }
-  
+
   ft <- flextable::align(ft, align = "center", part = "header")
-  
-  
+
+
   # ---------------------------------------------------------------------------
   # SOFT COLOR PALETTE (embedded)
   # ---------------------------------------------------------------------------
@@ -167,27 +164,27 @@ print_table_flex <- function(data.flex,
     new <- rgb + (1 - rgb) * amount
     grDevices::rgb(new[1], new[2], new[3])
   }
-  
+
   rgba <- function(hex, alpha = 0.2) {
     rgb <- grDevices::col2rgb(hex)
     sprintf("rgba(%d,%d,%d,%.2f)", rgb[1], rgb[2], rgb[3], alpha)
   }
-  
+
   is_html <- function() {
     tryCatch(knitr::is_html_output(), error = function(e) FALSE)
   }
-  
+
   base_yellow <- "#FFD700"
   base_orange <- "#EE7600"
   base_red    <- "#8B1A1A"
   base_green  <- "#458B00"
-  
+
   # Default: pastel hex (good for docx/pptx and generally safe)
   col_yellow <- soften_hex(base_yellow, soften_amount)
   col_orange <- soften_hex(base_orange, soften_amount)
   col_red    <- soften_hex(base_red,    soften_amount)
   col_green  <- soften_hex(base_green,  soften_amount)
-  
+
   # If HTML output, optionally use rgba for transparency
   if (is_html()) {
     col_yellow <- rgba(base_yellow, html_alpha)
@@ -195,7 +192,7 @@ print_table_flex <- function(data.flex,
     col_red    <- rgba(base_red,    html_alpha)
     col_green  <- rgba(base_green,  html_alpha)
   }
-  
+
   # Apply conditional background formatting
   if (RSE.flag) {
     ft <- ft %>%
@@ -203,14 +200,14 @@ print_table_flex <- function(data.flex,
       flextable::bg(i = ~ `%RSE` >= 100 & `%RSE` < 200, j = ~ `%RSE`, bg = col_orange, part = "body") %>%
       flextable::bg(i = ~ `%RSE` > 200,                 j = ~ `%RSE`, bg = col_red,    part = "body")
   }
-  
+
   if (IIVRSE.flag) {
     ft <- ft %>%
       flextable::bg(i = ~ `IIV %RSE` >= 50  & `IIV %RSE` < 100, j = ~ `IIV %RSE`, bg = col_yellow, part = "body") %>%
       flextable::bg(i = ~ `IIV %RSE` >= 100 & `IIV %RSE` < 200, j = ~ `IIV %RSE`, bg = col_orange, part = "body") %>%
       flextable::bg(i = ~ `IIV %RSE` > 200,                     j = ~ `IIV %RSE`, bg = col_red,    part = "body")
   }
-  
+
   if (pval.flag) {
     ft <- ft %>%
       flextable::bg(i = ~ p.value <= 0.01,                  j = ~ p.value, bg = col_red,    part = "body") %>%
@@ -234,9 +231,9 @@ print_table_flex <- function(data.flex,
 }
 
 ################################################################################
-# Vanilla table style  = theme_vanilla()  
-# Zebra table style    = theme_zebra()  
-# Booktabs table style = theme_booktabs() 
+# Vanilla table style  = theme_vanilla()
+# Zebra table style    = theme_zebra()
+# Booktabs table style = theme_booktabs()
 # Box table style      = theme_box(ft)
-# Thron table style    = theme_tron() 
+# Thron table style    = theme_tron()
 ################################################################################
