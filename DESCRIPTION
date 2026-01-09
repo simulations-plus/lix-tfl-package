@@ -18,8 +18,8 @@ Description: Provides helper functions to assemble tables, figures, and listings
 License: BSD_2_clause + file LICENSE
 Roxygen: list(markdown = TRUE)
 Depends: R (>= 4.2.0)
-Imports: lixoftConnectors, ggplot2, dplyr, tidyr, rlang, flextable
-Suggests: testthat (>= 3.0.0), withr
+Imports: lixoftConnectors, ggplot2, dplyr, tidyr, rlang
+Suggests: flextable, testthat (>= 3.0.0), withr
 Encoding: UTF-8
 Config/testthat/edition: 3
 RoxygenNote: 7.3.3
