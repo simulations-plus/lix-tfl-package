@@ -245,52 +245,52 @@
 #' # Example usage:
 #' # df <- data.frame(param = c("AUC", "Cmax"), value1 = c(123.456, 67.891), value2 = c("234.567", "89.123"))
 #' # RoundNumericCols(df, digits = 2)
-.roundNumericCols <- function(x,
-                              digits = 3,
-                              exclude = NULL,
-                              rounding_method = c("monolix", "signif")) {
-    rounding_method <- match.arg(rounding_method)
-
-    # Inner function: rounds a single numeric vector
-    .round_num <- function(number, digits, rounding_method) {
-        # handle NA/NaN
-        if (!is.numeric(number)) {
-            number <- suppressWarnings(as.numeric(as.character(number)))
-        }
-
-        if (!is.numeric(number)) {
-            return(number)
-        }
-
-        if (rounding_method == "monolix") {
-            adj_digits <- digits + ifelse(
-                abs(number) < 1 & number != 0 & !is.na(number),
-                abs(floor(log10(abs(number))) + 1),
-                0
-            )
-            rounded <- round(number, digits = adj_digits)
-        } else {
-            rounded <- signif(number, digits = digits)
-        }
-
-        # keep NaN/NA as-is
-        rounded[is.nan(number)] <- NaN
-        rounded[is.na(number)] <- NA
-        return(rounded)
-    }
-
-    # case 1: data frame apply columnwise
-    if (is.data.frame(x)) {
-        for (nm in names(x)) {
-            if (!is.null(exclude) && nm %in% exclude) next
-            x[[nm]] <- .round_num(x[[nm]], digits, rounding_method)
-        }
-        return(as.data.frame(x))
-    }
-
-    # case 2: atomic vector
-    return(.round_num(x, digits, rounding_method))
-}
+# .roundNumericCols <- function(x,
+#                               digits = 3,
+#                               exclude = NULL,
+#                               rounding_method = c("monolix", "signif")) {
+#     rounding_method <- match.arg(rounding_method)
+#
+#     # Inner function: rounds a single numeric vector
+#     .round_num <- function(number, digits, rounding_method) {
+#         # handle NA/NaN
+#         if (!is.numeric(number)) {
+#             number <- suppressWarnings(as.numeric(as.character(number)))
+#         }
+#
+#         if (!is.numeric(number)) {
+#             return(number)
+#         }
+#
+#         if (rounding_method == "monolix") {
+#             adj_digits <- digits + ifelse(
+#                 abs(number) < 1 & number != 0 & !is.na(number),
+#                 abs(floor(log10(abs(number))) + 1),
+#                 0
+#             )
+#             rounded <- round(number, digits = adj_digits)
+#         } else {
+#             rounded <- signif(number, digits = digits)
+#         }
+#
+#         # keep NaN/NA as-is
+#         rounded[is.nan(number)] <- NaN
+#         rounded[is.na(number)] <- NA
+#         return(rounded)
+#     }
+#
+#     # case 1: data frame apply columnwise
+#     if (is.data.frame(x)) {
+#         for (nm in names(x)) {
+#             if (!is.null(exclude) && nm %in% exclude) next
+#             x[[nm]] <- .round_num(x[[nm]], digits, rounding_method)
+#         }
+#         return(as.data.frame(x))
+#     }
+#
+#     # case 2: atomic vector
+#     return(.round_num(x, digits, rounding_method))
+# }
 
 
 ##################################################################################
@@ -744,156 +744,152 @@
 #' @keywords internal
 #'
 .prepareNCASummaryStats <- function(projectFile,
-                                    NCAparams = NULL,
-                                    covariates = NULL,
-                                    roundDigits = 3,
-                                    roundMethod = "monolix",
-                                    units = TRUE,
-                                    aliases = TRUE,
-                                    by_time = FALSE,
-                                    useNominalTime = TRUE) {
-    if (by_time) {
-        # CONCENTRATION MODE: Calculate stats by timepoint
-        # Set Stratification
-        lixoftConnectors::setNCAResultsStratification() # reset
-        if (!is.null(covariates)) {
-            lixoftConnectors::setNCAResultsStratification(split = covariates)
-        }
+																		NCAparams = NULL,
+																		covariates = NULL,
+																		roundDigits,
+																		roundMethod,
+																		units = TRUE,
+																		aliases = TRUE,
+																		by_time = FALSE,
+																		useNominalTime = TRUE) {
 
-        # Check if nominal time exists
-        has_nomtime <- FALSE
-        if (useNominalTime) {
-            data <- lixoftConnectors::getData()
-            has_nomtime <- any(data$headerTypes == "nominaltime")
-            if (!has_nomtime) {
-                warning("No nominal time available in project; Actual time will be used instead.")
-            }
-        }
 
-        # Get concentration data
-        df <- lixoftConnectors::getNCAConcentrations(useNominalTime = has_nomtime)
+	if (by_time) {
+		# CONCENTRATION MODE: Calculate stats by timepoint
+		# Set Stratification
+		lixoftConnectors::setNCAResultsStratification() # reset
+		if (!is.null(covariates)) {
+			lixoftConnectors::setNCAResultsStratification(split = covariates)
+		}
 
-        if (is.null(df)) {
-            return(NULL)
-        }
+		# Check if nominal time exists
+		has_nomtime <- FALSE
+		if (useNominalTime) {
+			data <- lixoftConnectors::getData()
+			has_nomtime <- any(data$headerTypes == "nominaltime")
+			if (!has_nomtime) {
+				warning("No nominal time available in project; Actual time will be used instead.")
+			}
+		}
 
-        # Fix column swap bug
-        df_fixed <- .fixNCAConcentrationsColumnSwap(df, covariates)
+		# Get concentration data
+		df <- lixoftConnectors::getNCAConcentrations(useNominalTime = has_nomtime)
 
-        # Choose label column
-        stat_col <- if ("metric" %in% names(df_fixed)) "metric" else "subject"
+		if (is.null(df)) {
+			return(NULL)
+		}
 
-        # Keep only summary stats (filter out individual subjects)
-        summary_only <- df_fixed %>%
-            dplyr::filter(!grepl("^\\d+$", !!rlang::sym(stat_col)))
+		# Fix column swap bug
+		df_fixed <- .fixNCAConcentrationsColumnSwap(df, covariates)
 
-        # Pivot time columns to rows
-        cols_to_pivot <- setdiff(names(df_fixed), c(covariates, stat_col))
+		# Choose label column
+		stat_col <- if ("metric" %in% names(df_fixed)) "metric" else "subject"
 
-        summary_long <- summary_only %>%
-            tidyr::pivot_longer(
-                cols      = dplyr::all_of(cols_to_pivot),
-                names_to  = "Time",
-                values_to = "Value"
-            )
+		# Keep only summary stats (filter out individual subjects)
+		summary_only <- df_fixed %>%
+			dplyr::filter(!grepl("^\\d+$", !!rlang::sym(stat_col)))
 
-        # Convert to numeric for proper rounding
-        summary_long$Value <- suppressWarnings(as.numeric(summary_long$Value))
+		# Pivot time columns to rows
+		cols_to_pivot <- setdiff(names(df_fixed), c(covariates, stat_col))
 
-        # Pivot metrics to columns
-        summary_stats <- summary_long %>%
-            tidyr::pivot_wider(names_from = !!rlang::sym(stat_col), values_from = "Value") %>%
-            dplyr::arrange(dplyr::across(dplyr::any_of(covariates)), as.numeric(Time)) %>%
-            dplyr::mutate(dplyr::across(dplyr::any_of(covariates), as.character))
+		summary_long <- summary_only %>%
+			tidyr::pivot_longer(
+				cols      = dplyr::all_of(cols_to_pivot),
+				names_to  = "Time",
+				values_to = "Value")
 
-        # Apply Rounding
-        summary_stats <- .roundNumericCols(
-            summary_stats,
-            digits = roundDigits,
-            rounding_method = roundMethod,
-            exclude = c("Time", covariates)
-        )
+		# Convert to numeric for proper rounding
+		summary_long$Value <- suppressWarnings(as.numeric(summary_long$Value))
 
-        # Add Combined Metrics
-        summary_stats <- .combinedStats(summary_stats)
+		# Pivot metrics to columns
+		summary_stats <- summary_long %>%
+			tidyr::pivot_wider(names_from = !!rlang::sym(stat_col), values_from = "Value") %>%
+			dplyr::arrange(dplyr::across(dplyr::any_of(covariates)), as.numeric(Time)) %>%
+			dplyr::mutate(dplyr::across(dplyr::any_of(covariates), as.character))
 
-        # Note: units and aliases are not applicable for concentration data
+		# Apply Rounding
+		summary_stats <- .round_num(
+			to_round        = summary_stats,
+			digits          = roundDigits,
+			rounding_method = roundMethod,
+			exclude         = c("Time", covariates))
 
-        return(summary_stats)
-    } else {
-        # PARAMETER MODE: Original logic (calculate stats by parameter)
-        # Set Stratification
-        lixoftConnectors::setNCAResultsStratification() # reset
-        if (!is.null(covariates)) {
-            lixoftConnectors::setNCAResultsStratification(split = covariates)
-        }
+		# Add Combined Metrics
+		summary_stats <- .combinedStats(summary_stats)
 
-        # Get Summary Stats (from getNCAParameterStatistics)
-        summary_stats <- lixoftConnectors::getNCAParameterStatistics(parameters = NCAparams)$statistics
-        if (is.null(summary_stats)) {
-            # Return NULL if no stats, parent function will handle
-            return(NULL)
-        }
-        summary_stats$parameter <- as.character(summary_stats$parameter)
+		# Note: units and aliases are not applicable for concentration data
 
-        # Get Individual Parameters & Stats
-        indiv <- lixoftConnectors::getNCAIndividualParameters()$parameters
+		return(summary_stats)
+	} else {
+		# PARAMETER MODE: Original logic (calculate stats by parameter)
+		# Set Stratification
+		lixoftConnectors::setNCAResultsStratification() # reset
+		if (!is.null(covariates)) {
+			lixoftConnectors::setNCAResultsStratification(split = covariates)
+		}
 
-        # Identify grouping and pivoting structure
-        grouping_vars <- c("id", covariates)
+		# Get Summary Stats (from getNCAParameterStatistics)
+		summary_stats <- lixoftConnectors::getNCAParameterStatistics(parameters = NCAparams)$statistics
+		if (is.null(summary_stats)) {
+			# Return NULL if no stats, parent function will handle
+			return(NULL)
+		}
+		summary_stats$parameter <- as.character(summary_stats$parameter)
 
-        # Keep only numeric columns + covariates + id
-        indiv_long <- indiv %>%
-            dplyr::select(dplyr::all_of(grouping_vars), dplyr::where(is.numeric)) %>%
-            tidyr::pivot_longer(
-                cols = -dplyr::all_of(grouping_vars),
-                names_to = "parameter",
-                values_to = "value"
-            ) %>%
-            dplyr::relocate(dplyr::any_of(covariates), id, parameter, value)
+		# Get Individual Parameters & Stats
+		indiv <- lixoftConnectors::getNCAIndividualParameters()$parameters
 
-        # Summarize (handles stats automatically)
-        if (is.null(covariates)) {
-            descr_stats <- .summarizeStats(
-                df         = indiv_long,
-                group_vars = "parameter",
-                value_col  = "value",
-                id_col     = "id"
-            ) %>%
-                dplyr::select("parameter", P05, Q1, median, Q3, P95, max) %>%
-                dplyr::arrange(parameter)
-        } else {
-            descr_stats <- .summarizeStats(
-                df         = indiv_long,
-                group_vars = c(covariates, "parameter"),
-                value_col  = "value",
-                id_col     = "id"
-            ) %>%
-                dplyr::select(dplyr::all_of(c(covariates, "parameter")), P05, Q1, median, Q3, P95, max) %>%
-                dplyr::arrange(dplyr::across(dplyr::all_of(c(covariates, "parameter"))))
-        }
+		# Identify grouping and pivoting structure
+		grouping_vars <- c("id", covariates)
 
-        # Merge Summaries
-        join_cols <- c("parameter", covariates)
-        summary_stats <- dplyr::left_join(summary_stats, descr_stats, by = join_cols)
+		# Keep only numeric columns + covariates + id
+		indiv_long <- indiv %>%
+			dplyr::select(dplyr::all_of(grouping_vars), dplyr::where(is.numeric)) %>%
+			tidyr::pivot_longer(
+				cols = -dplyr::all_of(grouping_vars),
+				names_to = "parameter",
+				values_to = "value") %>%
+			dplyr::relocate(dplyr::any_of(covariates), id, parameter, value)
 
-        # Apply Rounding & Combining
-        summary_stats <- .roundNumericCols(
-            summary_stats,
-            digits          = roundDigits,
-            rounding_method = roundMethod,
-            exclude         = c("parameter", covariates)
-        )
+		# Summarize (handles stats automatically)
+		if (is.null(covariates)) {
+			descr_stats <- .summarizeStats(
+				df         = indiv_long,
+				group_vars = "parameter",
+				value_col  = "value",
+				id_col     = "id") %>%
+				dplyr::select("parameter", P05, Q1, median, Q3, P95, max) %>%
+				dplyr::arrange(parameter)
+		} else {
+			descr_stats <- .summarizeStats(
+				df         = indiv_long,
+				group_vars = c(covariates, "parameter"),
+				value_col  = "value",
+				id_col     = "id") %>%
+				dplyr::select(dplyr::all_of(c(covariates, "parameter")), P05, Q1, median, Q3, P95, max) %>%
+				dplyr::arrange(dplyr::across(dplyr::all_of(c(covariates, "parameter"))))
+		}
 
-        summary_stats <- .combinedStats(summary_stats)
+		# Merge Summaries
+		join_cols <- c("parameter", covariates)
+		summary_stats <- dplyr::left_join(summary_stats, descr_stats, by = join_cols)
 
-        # Apply Labels (Units/Aliases only)
-        if (isTRUE(units) || isTRUE(aliases)) {
-            summary_stats <- .addUnitsAliases(summary_stats, add_units = units, add_aliases = aliases)
-        }
+		# Apply Rounding & Combining
+		summary_stats <- .round_num(
+			to_round        = summary_stats,
+			digits          = roundDigits,
+			rounding_method = roundMethod,
+			exclude         = c("parameter", covariates))
 
-        return(summary_stats)
-    }
+		summary_stats <- .combinedStats(summary_stats)
+
+		# Apply Labels (Units/Aliases only)
+		if (isTRUE(units) || isTRUE(aliases)) {
+			summary_stats <- .addUnitsAliases(summary_stats, add_units = units, add_aliases = aliases)
+		}
+
+		return(summary_stats)
+	}
 }
 
 
@@ -996,18 +992,15 @@
 #'
 .format_frequency_table <- function(summary_tbl, digits, method, exclude_cols) {
     # 1. Apply rounding (respects roundMethod)
-    summary_tbl <- .roundNumericCols(
-        summary_tbl,
-        digits          = digits,
-        rounding_method = method,
-        exclude         = exclude_cols
-    )
+    summary_tbl <- .round_num(
+    	to_round        = summary_tbl,
+      digits          = digits,
+      rounding_method = method,
+      exclude         = exclude_cols)
 
     # 2. Create the final combined display metric N (%)
     summary_tbl <- summary_tbl %>%
-        dplyr::mutate(
-            `N (%)` = paste0(Count, " (", sprintf(paste0("%.", digits, "f"), Percentage), ")")
-        ) %>%
+        dplyr::mutate(`N (%)` = paste0(Count, " (", sprintf(paste0("%.", digits, "f"), Percentage), ")")) %>%
         dplyr::select(-Count, -Percentage)
 
     return(summary_tbl)

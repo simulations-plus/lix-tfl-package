@@ -46,6 +46,7 @@
 #' @param roundMethod Character string specifying the rounding method. Options are:
 #'   - `"monolix"` (default): Adaptive rounding that adds extra digits for values < 1
 #'   - `"signif"`: Standard significant figures rounding
+#'   - `"none"`: No rounding performed
 #'
 #' @param prettyLabels Logical; if `TRUE` (default), converts column names to
 #'   human-readable labels (e.g., "CV" becomes "CV (%)", "geoMean" becomes "Geometric Mean").
@@ -92,11 +93,8 @@ NCAConcentrationSummary_Table <- function(projectFile = NULL,
                                           stratify_columns = FALSE,
                                           covariate_labels = NULL,
                                           roundDigits = 3,
-                                          roundMethod = c("monolix", "signif"),
+                                          roundMethod = c("monolix", "signif", "none"),
                                           prettyLabels = TRUE) {
-  # covariates <- "TINFCAT"
-  # stratify_columns <- TRUE
-  # metrics <- c("MeanSD", "GeomCV")
 
   roundMethod <- match.arg(roundMethod)
 
@@ -118,8 +116,7 @@ NCAConcentrationSummary_Table <- function(projectFile = NULL,
   if (!is.null(covariates)) {
     raw_strat <- .prepareNCASummaryStats(
       project = projectFile, NCAparams = NULL, covariates = covariates, roundDigits = roundDigits, roundMethod = roundMethod,
-      units = FALSE, aliases = FALSE, by_time = TRUE, useNominalTime = useNominalTime
-    )
+      units = FALSE, aliases = FALSE, by_time = TRUE, useNominalTime = useNominalTime)
   } else {
     raw_strat <- NULL
   }
@@ -127,8 +124,7 @@ NCAConcentrationSummary_Table <- function(projectFile = NULL,
   # Fetch Overall Data (Always needed if we want an Overall column or if no covariates exist)
   raw_overall <- .prepareNCASummaryStats(
     project = projectFile, NCAparams = NULL, covariates = NULL, roundDigits = roundDigits, roundMethod = roundMethod,
-    units = FALSE, aliases = FALSE, by_time = TRUE, useNominalTime = useNominalTime
-  )
+    units = FALSE, aliases = FALSE, by_time = TRUE, useNominalTime = useNominalTime)
 
   if (is.null(raw_overall) && is.null(raw_strat)) stop("No NCA results available.")
 
@@ -143,9 +139,9 @@ NCAConcentrationSummary_Table <- function(projectFile = NULL,
     # ----------------------------------------------------------------------
 
     # Validate Metrics existence
-    available_cols <- names(raw_strat)
-    descriptor_cols <- c(time_col, covariates, "Nobs")
-    selected_metrics <- .validateAndSelectMetrics(available_cols, user_metrics, descriptor_cols)
+    available_cols   <- names(raw_strat)
+    descriptor_cols  <- c(time_col, covariates, "Nobs")
+    selected_metrics <- .validateAndSelectMetrics(available_cols, metrics, descriptor_cols)
 
     # Prepare Labels
     if (is.null(covariate_labels)) labels <- covariates else labels <- covariate_labels
@@ -219,7 +215,7 @@ NCAConcentrationSummary_Table <- function(projectFile = NULL,
     source_df <- if (!is.null(covariates)) raw_strat else raw_overall
 
     descriptor_cols <- c(time_col, covariates) # Keep covariates as columns on the left
-    selected_metrics <- .validateAndSelectMetrics(names(source_df), user_metrics, descriptor_cols)
+    selected_metrics <- .validateAndSelectMetrics(names(source_df), metrics, descriptor_cols)
 
     # Filter columns
     cols_to_keep <- intersect(c(descriptor_cols, selected_metrics), names(source_df))
@@ -312,18 +308,10 @@ NCAParameterSummary_Table <- function(projectFile = NULL,
                                       stratify_columns = FALSE,
                                       covariate_labels = NULL,
                                       roundDigits = 3,
-                                      roundMethod = c("monolix", "signif"),
+                                      roundMethod = c("monolix", "signif", "none"),
                                       units = TRUE,
                                       aliases = TRUE,
                                       prettyLabels = TRUE) {
-  #
-  # 	project = prj3
-  #   NCAparams = c("AUCINF_obs", "AUClast", "Cmax")
-  # 	metrics = c("MeanSD", "GeomCV")
-  # 	horizontal = TRUE
-  # 	stratify_columns = TRUE
-  # 	covariates = c("DAY", "DOSE_mg_kg_")
-  # 	roundMethod = "monolix"
 
   roundMethod <- match.arg(roundMethod)
 
@@ -377,8 +365,7 @@ NCAParameterSummary_Table <- function(projectFile = NULL,
     selected_metrics <- .validateAndSelectMetrics(
       available_cols = names(summary_stats),
       user_metrics   = user_metrics,
-      descriptors    = descriptor_cols
-    )
+      descriptors    = descriptor_cols)
 
     # --- Case 1: Stratified summary (requires Overall) ---
     if (!is.null(covariates)) {
@@ -432,8 +419,7 @@ NCAParameterSummary_Table <- function(projectFile = NULL,
           dplyr::rename_with(~ ifelse(
             .x %in% n_per_stratum$header,
             n_per_stratum$header_N[match(.x, n_per_stratum$header)],
-            .x
-          ))
+            .x))
 
         overall_label <- unique(overall$header_N)
         summary_stats <- df_strat %>%
@@ -453,8 +439,7 @@ NCAParameterSummary_Table <- function(projectFile = NULL,
           dplyr::rename_with(~ ifelse(
             .x %in% n_per_stratum$header,
             n_per_stratum$header_N[match(.x, n_per_stratum$header)],
-            .x
-          ))
+            .x))
 
         summary_stats <- df_strat %>%
           dplyr::left_join(overall, by = param_col) %>%
@@ -497,8 +482,7 @@ NCAParameterSummary_Table <- function(projectFile = NULL,
     selected_metrics <- .validateAndSelectMetrics(
       available_cols = names(summary_stats),
       user_metrics   = metrics,
-      descriptors    = descriptor_cols
-    )
+      descriptors    = descriptor_cols)
 
     # Filter dataframe
     cols_to_keep <- intersect(c(descriptor_cols, selected_metrics), names(summary_stats))
@@ -515,14 +499,12 @@ NCAParameterSummary_Table <- function(projectFile = NULL,
         tidyr::pivot_longer(
           cols = dplyr::all_of(stat_cols),
           names_to = "Statistic",
-          values_to = "Value"
-        ) %>%
+          values_to = "Value") %>%
         dplyr::mutate(Statistic = factor(Statistic, levels = stat_order)) %>%
         tidyr::pivot_wider(
           id_cols = c(dplyr::any_of(covariates), Statistic),
           names_from = dplyr::all_of(param_col),
-          values_from = Value
-        ) %>%
+          values_from = Value) %>%
         dplyr::arrange(dplyr::across(dplyr::any_of(covariates)), Statistic) %>%
         dplyr::select(dplyr::any_of(covariates), Statistic, dplyr::all_of(as.character(param_order)))
     }
@@ -578,14 +560,24 @@ NCAParameterSummary_Table <- function(projectFile = NULL,
 #' # Stratified by DOSE and VISIT, results in long format:
 #' NCARatioSummary_Table(covariates = c("DOSE", "VISIT"), horizontal = FALSE)
 #'
-NCARatioSummary_Table <- function(projectFile = NULL,
-                                  covariates = NULL,
-                                  ratioParams = NULL,
-                                  metrics = NULL,
-                                  horizontal = TRUE,
-                                  roundDigits = 3,
-                                  roundMethod = c("monolix", "signif"),
+NCARatioSummary_Table <- function(projectFile  = NULL,
+                                  covariates   = NULL,
+                                  ratioParams  = NULL,
+                                  metrics      = NULL,
+                                  horizontal   = TRUE,
+                                  roundDigits  = 3,
+                                  roundMethod  = c("monolix", "signif", "none"),
                                   prettyLabels = TRUE) {
+
+	# projectFile  = prj3
+	# covariates   = NULL
+	# ratioParams  = NULL
+	# metrics      = NULL
+	# horizontal   = TRUE
+	# roundDigits  = 3
+	# roundMethod = "monolix"
+	# prettyLabels = TRUE
+
   roundMethod <- match.arg(roundMethod)
 
   # Ensure the correct project is loaded
@@ -614,8 +606,7 @@ NCARatioSummary_Table <- function(projectFile = NULL,
     indivratio,
     cols      = dplyr::all_of(ratio_cols),
     names_to  = "Parameter",
-    values_to = "Ratio"
-  )
+    values_to = "Ratio")
 
   # Filter to specific ratio parameters (if requested)
   # ratioParams sanity check
@@ -635,10 +626,7 @@ NCARatioSummary_Table <- function(projectFile = NULL,
     }
     if (length(missing_params)) {
       warning(
-        paste0(
-          "Ignoring unknown ratio parameters: ",
-          paste(missing_params, collapse = ", ")
-        )
+        paste0( "Ignoring unknown ratio parameters: ", paste(missing_params, collapse = ", "))
       )
     }
     long_df <- dplyr::filter(long_df, Parameter %in% valid_params)
@@ -651,41 +639,37 @@ NCARatioSummary_Table <- function(projectFile = NULL,
       df         = long_df,
       group_vars = c(covariates, "Parameter"),
       value_col  = "Ratio",
-      id_col     = "id"
-    ) %>%
+      id_col     = "id") %>%
       dplyr::arrange(dplyr::across(dplyr::all_of(c(covariates, "Parameter"))))
   } else {
     summary_tbl <- .summarizeStats(
       df         = long_df,
       group_vars = "Parameter",
       value_col  = "Ratio",
-      id_col     = "id"
-    ) %>%
+      id_col     = "id") %>%
       dplyr::arrange(Parameter)
   }
 
   # -------------------------------------------------
   # Apply rounding settings
-  summary_tbl <- .roundNumericCols(
-    summary_tbl,
+  summary_tbl <- .round_num(
+  	to_round        = summary_tbl,
     digits          = roundDigits,
     rounding_method = roundMethod,
-    exclude         = c("Parameter", covariates)
-  )
+    exclude         = c("Parameter", covariates))
 
   # Add combined metrics
   summary_tbl <- .combinedStats(summary_tbl)
 
   # Filter to specific metrics (if requested)
   # metrics sanity check: use internal helper for consistent validation
-  descriptor_cols <- c("Parameter", covariates, "Nobs")
+  descriptor_cols <- c("Parameter", covariates, "N")
   # Note: standardizing count column name if necessary, though usually .summarizeStats is consistent
 
   selected_metrics <- .validateAndSelectMetrics(
     available_cols = names(summary_tbl),
     user_metrics   = metrics,
-    descriptors    = descriptor_cols
-  )
+    descriptors    = descriptor_cols)
 
   # keep descriptor columns (Parameter + grouping vars) and requested metrics
   summary_tbl <- summary_tbl[, c(descriptor_cols, selected_metrics), drop = FALSE]
@@ -705,16 +689,14 @@ NCARatioSummary_Table <- function(projectFile = NULL,
     summary_tbl <- summary_tbl %>%
       dplyr::mutate(dplyr::across(dplyr::all_of(stat_cols), as.character)) %>% # <--- force character to pivot
       tidyr::pivot_longer(
-        cols = dplyr::all_of(stat_cols),
-        names_to = "Statistic",
-        values_to = "Value"
-      ) %>%
+        cols      = dplyr::all_of(stat_cols),
+        names_to  = "Statistic",
+        values_to = "Value") %>%
       dplyr::mutate(Statistic = factor(Statistic, levels = stat_order)) %>%
       tidyr::pivot_wider(
-        id_cols = c(dplyr::any_of(covariates), Statistic),
-        names_from = dplyr::all_of(param_col),
-        values_from = Value
-      ) %>%
+        id_cols     = c(dplyr::any_of(covariates), Statistic),
+        names_from  = dplyr::all_of(param_col),
+        values_from = Value) %>%
       dplyr::arrange(dplyr::across(dplyr::any_of(covariates)), Statistic)
   }
 
