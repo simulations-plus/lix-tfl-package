@@ -3,7 +3,7 @@ mono_project_2 = "test-projects/monolix/PK_run02.mlxtran"
 
 test_that("tableContinuousCovariateSummary default arguments", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
-	table = tableContinuousCovariateSummary(mono_project_1)
+	table = tableContinuousCovariateSummary(mono_project_1, prettyLabels = FALSE)
 	expect_equal(dim(table), c(3,9))
 	expect_equal(table$Covariate, c("AGE", "HEIGHT", "WEIGHT"))
 	expect_equal(table$Min, c(36, 165, 80))
@@ -18,7 +18,7 @@ test_that("tableCategoricalCovariateSummary default arguments", {
 	expect_equal(table$Frequency, c(6, 6, 6, 9, 9))
 })
 
-test_that("tableContinuousCovariateSummary label df", {
+test_that("tableContinuousCovariateSummary extra labels in df", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	cov = c("AGE", "HEIGHT", "WEIGHT")
 	lab = c("Age (yrs)", "Height (cm)", "Weight (kg)")
@@ -28,7 +28,17 @@ test_that("tableContinuousCovariateSummary label df", {
 	expect_equal(table$Covariate, lab)
 })
 
-test_that("tableContinuousCovariateSummary label df", {
+test_that("tableContinuousCovariateSummary on some with new labels", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	cov = c("HEIGHT", "WEIGHT")
+	lab = c("Height (cm)", "Weight (kg)")
+	table = tableContinuousCovariateSummary(mono_project_1,
+																					data.frame(covariate = cov, label = lab))
+	expect_equal(dim(table), c(3,9))
+	expect_equal(table$Covariate, c("AGE", lab))
+})
+
+test_that("tableCategoricalCovariateSummary label df", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	cov = c("DOSE", "SEX")
 	lab = c("Dose (mg)", "Sex")

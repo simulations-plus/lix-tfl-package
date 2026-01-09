@@ -66,7 +66,7 @@ test_that("ensureProjectLoaded NULL keeps same project loaded", {
 	expect_message(.ensureProjectLoaded(mono_project_1), "project")
 	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(mono_project_1))
 
-	expect_message(.ensureProjectLoaded(NULL), "using project already loaded")
+	expect_message(.ensureProjectLoaded(NULL), "No project specified, using project results")
 	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(mono_project_1))
 })
 

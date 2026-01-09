@@ -29,18 +29,19 @@ utils::globalVariables(c("."))
 
 	# suppress lixoftConnector messages (i.e., ERROR, WARNING, and INFO) in the case of connectors not initialized,
 	# no project loaded, etc., the functions return NULL in these cases
+	# Note: directory and seed are only project settings common to all 3 software
 	current_prj_info  <- suppressMessages(lixoftConnectors::getProjectSettings())
 	connector_state <- suppressMessages(lixoftConnectors::getLixoftConnectorsState())
 
 	if (is.null(projectFile)) {
 		# CASE 1: No project argument →  use current
 
-		if (is.null(current_prj_info) || is.null(current_prj_info$project)) {
+		if (is.null(current_prj_info) || is.null(current_prj_info$directory)) {
 			stop("No project is currently loaded and no project was provided.",
 					 call. = FALSE)
 		}
-		.TFL_message("No project specified, using project already loaded: ",
-						current_prj_info$project)
+		.TFL_message("No project specified, using project results from: ",
+						current_prj_info$directory)
 	}
 	else {
 		# CASE 2: Project argument provided
@@ -165,6 +166,29 @@ utils::globalVariables(c("."))
 	}
 }
 
+.checkFlextable <- function() {
+	if (!requireNamespace("flextable", quietly = TRUE))
+	{
+		stop("The flextable package is necessary for this function. Please install it from CRAN.",
+				 call. = FALSE)
+	}
+}
+
+# TODO: decide if we want to check for this in .ensureProjectLoaded (that is zip loaded and not connectors)
+# problem is that we would not necessarily be able to detect all problem cases (e.g. both already attached but in wrong order)
+.checkZipLoadedOrAttached <- function() {
+	session = sessionInfo()
+	zipLoaded = FALSE
+
+	attached = sapply(session$otherPkgs, function(x) x$Package)
+	loaded = sapply(session$loadedOnly, function(x) x$Package)
+
+	if ("zip" %in% attached || "zip" %in% loaded) {
+		zipLoaded = TRUE
+	}
+	return(zipLoaded)
+}
+
 #' Rounds numbers to specified number of digits
 #'
 #' Two rounding methods are supported: "monolix" which mirrors the behavior of MonolixSuite
@@ -204,4 +228,67 @@ utils::globalVariables(c("."))
 		rr <- to_round
 	}
 	return(rr)
+}
+
+#' Combines two metrics into a single column, rounding them first
+#'
+#' @param value1 main metric
+#' @param value2 metric in parentheses
+#' @param digits number of digits to round to
+#' @exclude names of columns to exclude
+#' @param rounding_method "monolix" (default), "signif", or "none"
+#'
+#' @returns "value1 (value2)"
+.combineMetrics <- function(value1, value2,
+														digits, rounding_method = c("monolix", "signif", "none")) {
+	paste0(.round_num(value1, digits, rounding_method = rounding_method),
+				 " (", .round_num(value2, digits, rounding_method = rounding_method), ")" )
+}
+
+#' PrettyLabels
+#'
+#' Converts statistical parameter column names to human-readable, formatted labels
+#' for presentation in tables and reports. Maps common statistical abbreviations
+#' to their full, properly formatted names.
+#'
+#' @param df A data frame containing statistical columns to be relabeled.
+#'
+#' @return A data frame with column names converted to pretty, human-readable labels.
+.prettyLabels <- function(df) {
+	stat_labels <- c(
+		"parameter"           = "Parameter",
+		"mean"                = "Mean",
+		"sd"                  = "SD",
+		"se"                  = "SE",
+		"CV"                  = "CV (%)",
+		"Min"                 = "Minimum",
+		"Max"                 = "Maximum",
+		"median"              = "Median",
+		"geoMean"             = "Geometric\nMean",
+		"GeoMean"             = "Geometric\nMean",
+		"geoSD"               = "Geometric\nSD",
+		"geoCV"               = "Geometric\nCV (%)",
+		"GeomCV"              = "Geometric\nMean (CV %)",
+		"GeomSD"              = "Geometric\nMean (SD)",
+		"MeanSD"              = "Arithmetric\nMean (SD)",
+		"harmMean"            = "Harmonic\nMean",
+		"P05"                 = "5th Percentile",
+		"P95"                 = "95th Percentile",
+		"Ntot"                = "N Total",
+		"Nobs"                = "N", # "N Observed"
+		"Nmiss"               = "N Missing",
+		"p.value"             = "p-value",
+		"Dosing.range"        = "Dosing Range",
+		"Point.estimate"      = "Point Estimate",
+		"Criteria.interval"   = "Criteria Interval",
+		"Confidence.interval" = "Confidence Interval"
+	)
+
+	# Replace column names where matches are found
+	col_names <- names(df)
+	labelIdx <- match(col_names, names(stat_labels))
+	col_names[!is.na(labelIdx)] <- stat_labels[stats::na.omit(labelIdx)]
+
+	names(df) <- col_names
+	return(df)
 }

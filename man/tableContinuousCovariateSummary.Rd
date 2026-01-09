@@ -7,14 +7,24 @@
 tableContinuousCovariateSummary(
   projectFile,
   covDisplayLabels = NULL,
+  splitCovariates = NULL,
+  additionalMetrics = NULL,
+  metricsAsRows = FALSE,
   digits = 2,
-  roundingMethod = c("monolix", "signif", "none")
+  roundingMethod = c("monolix", "signif", "none"),
+  prettyLabels = TRUE
 )
 }
 \arguments{
 \item{projectFile}{path to project file (Monolix: .mlxtran or PKanalix: .pkx) or NULL to use the currently loaded project}
 
 \item{covDisplayLabels}{(optional) data.frame with columns covariate and label for the dataset covariate name}
+
+\item{splitCovariates}{vector of categorical covariates to stratify by, or NULL}
+
+\item{additionalMetrics}{vector of additional metrics to calculate, see \code{\link[=getAdditionalContinuousCovariateMetrics]{getAdditionalContinuousCovariateMetrics()}} or NULL}
+
+\item{metricsAsRows}{TRUE to display metrics as rows, or FALSE (default) to display them as columns}
 
 \item{digits}{number of digits to display}
 
@@ -29,4 +39,7 @@ Creates a data frame summarizing the continuous covariates in the dataset with d
 }
 \examples{
 # TODO
+}
+\seealso{
+\code{\link[=getAdditionalContinuousCovariateMetrics]{getAdditionalContinuousCovariateMetrics()}}
 }

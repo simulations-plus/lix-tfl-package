@@ -67,7 +67,7 @@
 #' # df <- data.frame(parameter = "AUC", mean = 100, sd = 20, CV = 15)
 #' # PrettyLabels(df)
 #'
-.prettyLabels <- function(df) {
+.prettyLabels_ <- function(df) {
     # Mapping of common stat names to pretty labels
     stat_labels <- c(
         "parameter"           = "Parameter",

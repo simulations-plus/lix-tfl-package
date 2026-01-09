@@ -2,11 +2,15 @@
 #'
 #' @param projectFile path to project file (Monolix: .mlxtran or PKanalix: .pkx) or NULL to use the currently loaded project
 #' @param covDisplayLabels (optional) data.frame with columns covariate and label for the dataset covariate name
+#' @param splitCovariates vector of categorical covariates to stratify by, or NULL
+#' @param additionalMetrics vector of additional metrics to calculate, see [getAdditionalContinuousCovariateMetrics()] or NULL
+#' @param metricsAsRows TRUE to display metrics as rows, or FALSE (default) to display them as columns
 #' @param digits number of digits to display
 #' @param roundingMethod "monolix" to use MonolixSuite rounding where digits specifies the number of places after the decimal, or "signif"
 #' for digits to specify the number of significant figures
 #'
 #' @returns a data.frame
+#' @seealso [getAdditionalContinuousCovariateMetrics()]
 #' @importFrom dplyr %>%
 #' @importFrom rlang .data
 #' @export
@@ -15,8 +19,12 @@
 #' # TODO
 tableContinuousCovariateSummary <- function(projectFile,
                                             covDisplayLabels = NULL,
+																						splitCovariates = NULL,
+																						additionalMetrics = NULL,
+																						metricsAsRows = FALSE,
                                             digits = 2,
-                                            roundingMethod = c("monolix", "signif", "none"))
+                                            roundingMethod = c("monolix", "signif", "none"),
+																						prettyLabels = TRUE)
 # allow null project file to use currently loaded project, also pass in mapping table of names
 {
     .checkProjectFile(projectFile, c("monolix", "pkanalix"))
@@ -25,47 +33,126 @@ tableContinuousCovariateSummary <- function(projectFile,
     if (!is.null(covDisplayLabels) && !is.data.frame(covDisplayLabels)) {
         stop("The argument 'covDisplayLabels' must be a dataframe.", call. = FALSE)
     }
-
-    if (!is.null(covDisplayLabels) &&
-        !identical(names(covDisplayLabels), c("covariate", "label"))) {
-        stop(
-            paste0(
-                "The argument 'covDisplayLabels' must contain the headers 'covariate' and 'label' Found headers are: ",
-                paste(names(covDisplayLabels), collapse = ", ")
-            ),
-            call. = FALSE
-        )
+    if (!is.null(covDisplayLabels) && !identical(names(covDisplayLabels), c("covariate", "label"))) {
+    	stop(paste0("The argument 'covDisplayLabels' must contain the headers 'covariate' and 'label' Found headers are: ",
+    							paste(names(covDisplayLabels), collapse = ", ")
+    	), call. = FALSE )
+    }
+    if (metricsAsRows && !is.null(splitCovariates)) {
+    	stop("Splitting by covariates not supported for displaying metrics as rows.", call. = FALSE)
     }
 
     cov_info <- lixoftConnectors::getCovariateInformation()
 
-    cov_summary <- cov_info$covariate %>%
-        dplyr::select(cov_info$name[cov_info$type == "continuous"]) %>%
+    if (!is.null(splitCovariates)) {
+    	if (!all(splitCovariates %in% cov_info$name[cov_info$type == "categorical"])) {
+    		stop("Covariates to use for splitting must be categorical covariates (headerTypes == 'catcov').")
+    	}
+    }
+		cont_covs <- cov_info$name[cov_info$type == "continuous"]
+		cov_summary <- cov_info$covariate %>%
+        dplyr::select(dplyr::all_of(c(cont_covs, splitCovariates))) %>%
         tidyr::pivot_longer(
-            cols = dplyr::everything(),
+            cols = dplyr::all_of(cont_covs),
             names_to = "Covariate",
             values_to = "Value"
         ) %>%
-        dplyr::summarise(
-            .by = "Covariate",
-            N = dplyr::n(),
-            Mean = mean(.data$Value),
-            SD = stats::sd(.data$Value),
-            Med = stats::median(.data$Value),
-            Min = min(.data$Value),
-            P5 = stats::quantile(.data$Value, 0.05),
-            P95 = stats::quantile(.data$Value, 0.95),
-            Max = max(.data$Value)
-        ) %>%
+      dplyr::summarise(
+          .by = dplyr::all_of(c("Covariate", splitCovariates)),
+          N = dplyr::n(),
+          Min = min(.data$Value),
+          P05 = stats::quantile(.data$Value, 0.05),
+          Q1 = stats::quantile(.data$Value, 0.25),
+          Mean = mean(.data$Value),
+          SD = stats::sd(.data$Value),
+          CV = 100 * .data$SD / .data$Mean,
+          MeanSD = .combineMetrics(.data$Mean, .data$SD, digits, roundingMethod),
+          MeanCV = .combineMetrics(.data$Mean, .data$CV, digits, roundingMethod),
+          Med = stats::median(.data$Value),
+          Q3 = stats::quantile(.data$Value, 0.75),
+          P95 = stats::quantile(.data$Value, 0.95),
+          Max = max(.data$Value),
+          geoMean = {
+          	mask <- is.finite(.data$Value) & .data$Value > 0
+          	if (sum(mask) > 0) exp(mean(log(.data$Value[mask]), na.rm = TRUE)) else NA_real_
+          },
+          geoSD = {
+          	mask <- is.finite(.data$Value) & .data$Value > 0
+          	sdlog <- if (sum(mask) > 1) stats::sd(log(.data$Value[mask]), na.rm = TRUE) else NA_real_
+          	if (is.na(sdlog)) NA_real_ else exp(sdlog)
+          },
+          geoCV = {
+          	mask <- is.finite(.data$Value) & .data$Value > 0
+          	sdlog <- if (sum(mask) > 1) stats::sd(log(.data$Value[mask]), na.rm = TRUE) else NA_real_
+          	if (is.na(sdlog)) NA_real_ else 100 * sqrt(exp(sdlog^2) - 1)
+          },
+          GeomSD = .combineMetrics(.data$geoMean, .data$geoSD, digits, roundingMethod),
+          GeomCV = .combineMetrics(.data$geoMean, .data$geoCV, digits, roundingMethod),
+          harmMean = {
+          	mask <- is.finite(.data$Value) & .data$Value > 0
+          	if (any(mask, na.rm = TRUE)) length(.data$Value[mask]) / sum(1 / .data$Value[mask]) else NA_real_
+          }
+       )
+
+    # remove additional (non-basic) metrics that aren't included as additionalMetrics
+    metrics_to_remove <- NULL
+
+    if (!is.null(additionalMetrics)) {
+    	missing_metrics <- setdiff(additionalMetrics, getAdditionalContinuousCovariateMetrics())
+    	valid_metrics <- intersect(additionalMetrics, getAdditionalContinuousCovariateMetrics())
+
+    	if (length(missing_metrics) > 0) {
+    		.TFL_message(paste0("Use getAdditionalContinuousCovariateMetrics() to find available metrics. Ignoring unknown metrics: ",
+    												paste(missing_metrics, collapse = ", ")))	}
+
+    	metrics_to_remove <- setdiff(getAdditionalContinuousCovariateMetrics(), valid_metrics)
+    }
+    else {
+    	metrics_to_remove <- getAdditionalContinuousCovariateMetrics()
+    }
+
+    cov_summary <- cov_summary %>%
+    	dplyr::select(-dplyr::all_of(metrics_to_remove))
+
+    # now round
+    cov_summary <- cov_summary %>%
         dplyr::mutate_if(is.numeric, .round_num, digits, rounding_method = roundingMethod)
 
     # rename covariates
     if (!is.null(covDisplayLabels)) {
-        cov_summary <- cov_summary %>%
-            dplyr::mutate(Covariate = covDisplayLabels$label[match(.data$Covariate, covDisplayLabels$covariate)])
+    	labelIdx <- match(cov_summary$Covariate, covDisplayLabels$covariate)
+    	cov_summary$Covariate[!is.na(labelIdx)] <- covDisplayLabels$label[stats::na.omit(labelIdx)]
+    }
+
+    if (prettyLabels) {
+    	cov_summary <- .prettyLabels(cov_summary)
+    }
+
+    # transpose if requested
+    if (metricsAsRows) {
+    	col_names = cov_summary$Covariate
+    	cov_summary <- cov_summary %>%
+    		dplyr::select(-"Covariate") %>%
+    		t() %>%
+    		as.data.frame() %>%
+    		setNames(col_names) %>%
+    		tibble::rownames_to_column("Statistic")
     }
 
     return(cov_summary)
+}
+
+#' Available additional metrics for continuous covariates
+#'
+#' Metrics that can be passed to the 'additionalMetrics' argument of [tableContinuousCovariateSummary()]
+#'
+#' @returns vector of possible additional metrics to calculate
+#' @seealso [tableContinuousCovariateSummary()]
+#' @export
+#'
+#' @examples
+getAdditionalContinuousCovariateMetrics <- function() {
+	return( c("Q1", "Q3", "CV", "geoMean", "geoSD", "geoCV", "harmMean", "MeanSD", "MeanCV", "GeomSD", "GeomCV") )
 }
 
 #' Creates a table summarizing the frequency of categorical covariates in the dataset.
