@@ -143,7 +143,7 @@ utils::globalVariables(c("."))
 		# check if currently loaded project is the specified software application
 		current_prj_info  <- tryCatch(lixoftConnectors::getProjectSettings(), error = function(e) NULL)
 
-		if (is.null(current_prj_info) || is.null(current_prj_info$project)) {
+		if (is.null(current_prj_info) || is.null(current_prj_info$directory)) {
 			stop("No project is currently loaded and no project was provided.",
 					 call. = FALSE)
 		}
@@ -212,8 +212,19 @@ utils::globalVariables(c("."))
 
 	if (is.data.frame(to_round)) {
 		rr <- to_round %>%
-			dplyr::mutate(dplyr::across(tidyselect::where(is.double) & !any_of(exclude),
-																	.fns = ~.round_num(.x, digits, rounding_method = rounding_method)))
+			dplyr::mutate(dplyr::across(tidyselect::where(is.double) & !dplyr::any_of(exclude),
+																	.fns = ~.round_num(.x, digits, rounding_method = rounding_method))) %>%
+		# Character-to-numeric conversion if needed
+		dplyr::mutate(dplyr::across(
+			tidyselect::where(is.character) & !dplyr::any_of(exclude),
+			.fns = ~{num_converted <- suppressWarnings(as.numeric(.x))
+				if (any(!is.na(num_converted))) {
+					.round_num(num_converted, digits, rounding_method = rounding_method)
+				} else {
+					.x
+				}
+			}
+			))
 	}
 	else if (is.numeric(to_round)) {
 
