@@ -93,13 +93,19 @@
         "Nobs"                = "N", # "N Observed"
         "Nmiss"               = "N Missing",
         "p.value"             = "p-value",
-        "%RSE"                = "%RSE",
-        "IIV %RSE"            = "IIV %RSE",
+        "RSE"                 = "%RSE",
+        "CI"                  = "Confidence \nInterval",
+        "FE_Estimate"         = "Fixed Effect \nEstimate",
+        "FE_RSE"              = "%RSE",
+        "IIV_SD"              = "IIV (SD)",
+        "IIV_RSE"             = "%RSE (IIV)",
+        "IOV_SD"              = "IOV (SD)",
+        "IOV_RSE"             = "%RSE (IOV)",
+        # "IIV %RSE"            = "IIV %RSE",
         "Dosing.range"        = "Dosing Range",
         "Point.estimate"      = "Point Estimate",
         "Criteria.interval"   = "Criteria Interval",
-        "Confidence.interval" = "Confidence Interval"
-    )
+        "Confidence.interval" = "Confidence Interval")
 
     # Replace column names where matches are found
     new_names <- names(df)
