@@ -202,10 +202,17 @@ tableRunHistory <- function(sycomoreProjectFile,
 #'
 #' @examples
 #' # TODO
-tableParameterEstimates <- function(project_file = NULL, nameMapping = NULL, include_RSE = TRUE,
-                                    include_CI = FALSE, include_CV = FALSE, include_bootstrap = FALSE,
-                                    use_wide_format_omegas = FALSE, std_err_method = "",
-                                    digits = 3, roundingMethod = c("monolix", "signif")) {
+tableParameterEstimates <- function(project_file = NULL,
+                                    nameMapping = NULL,
+                                    include_RSE = TRUE,
+                                    include_IIV = TRUE,
+                                    include_IOV = TRUE,
+                                    include_CI = FALSE,
+                                    include_CV = FALSE,
+                                    include_bootstrap = FALSE,
+                                    use_wide_format = FALSE,
+                                    std_err_method = "", digits = 3, roundingMethod = c("monolix", "signif", "none"),
+																		prettyLabels = TRUE) {
     roundingMethod <- match.arg(roundingMethod)
 
     .ensureProjectLoaded(project_file)
@@ -280,11 +287,9 @@ tableParameterEstimates <- function(project_file = NULL, nameMapping = NULL, inc
         }
 
         if (is.null(CI)) {
-            CI <- data.frame(
-                Parameter = pop$Parameter,
-                P2.5 = NA,
-                P97.5 = NA
-            )
+            CI <- data.frame(Parameter = pop$Parameter,
+                             P2.5      = NA,
+                             P97.5     = NA)
         }
         names(CI) <- c("Parameter", "P2.5", "P97.5")
     }
@@ -300,9 +305,9 @@ tableParameterEstimates <- function(project_file = NULL, nameMapping = NULL, inc
         if (is.null(bootstrap)) {
             bootstrap <- data.frame(
                 Parameter = pop$Parameter,
-                P2.5 = NA,
-                Median = NA,
-                P97.5 = NA
+                P2.5      = NA,
+                Median    = NA,
+                P97.5     = NA
             )
         } else {
             bootstrap <- bootstrap %>%
@@ -315,62 +320,141 @@ tableParameterEstimates <- function(project_file = NULL, nameMapping = NULL, inc
     }
 
     pop$Section <- ""
-    pop$Section[grep("_pop|beta_", pop$Parameter)] <- "Fixed effects"
-    pop$Section[grep("omega_", pop$Parameter)] <- "Random effects (IIV)"
-    pop$Section[grep("^corr_", pop$Parameter)] <- "Correlations"
-    pop$Section[grep("^corr1_", pop$Parameter)] <- "Correlations (IIV)"
-    pop$Section[grep("gamma_", pop$Parameter)] <- "Random effects (IOV)"
-    pop$Section[grep("^corr2_", pop$Parameter)] <- "Correlations (IOV)"
-    pop$Section[pop$Parameter %in% c("a", "b", "c")] <- "Residual error"
+    pop$Section[grep("_pop|beta_", pop$Parameter)]   <- "FE"
+    pop$Section[grep("omega_",     pop$Parameter)]   <- "IIV"
+    pop$Section[grep("^corr_",     pop$Parameter)]   <- "CORR"
+    pop$Section[grep("^corr1_",    pop$Parameter)]   <- "CORR_IIV"
+    pop$Section[grep("gamma_",     pop$Parameter)]   <- "IOV"
+    pop$Section[grep("^corr2_",    pop$Parameter)]   <- "CORR_IOV"
+    pop$Section[pop$Parameter %in% c("a", "b", "c")] <- "RES_ERR"
 
     # Restrict to just the requested parameters in specified order
     pop <- pop[match(nameMapping$Parameter, pop$Parameter), ]
 
     pop <- dplyr::right_join(nameMapping, pop, by = "Parameter")
 
+    # Add CV column in long format if requested (only when NOT using wide format)
+    # Must be done before RSE join to get correct column order: Estimate -> CV -> RSE -> CI
+    if (include_CV && !use_wide_format) {
+        pop[["CV"]] <- NA_real_
+        # Extract CV values for omega and gamma parameters
+        cv_params <- grep("_CV$", pop$Parameter, value = TRUE)
+        if (length(cv_params) > 0) {
+            # For each CV parameter, assign it to the corresponding base parameter
+            for (cv_param in cv_params) {
+                base_param <- sub("_CV$", "", cv_param)
+                cv_value <- pop[pop$Parameter == cv_param, "Estimate"]
+                if (base_param %in% pop$Parameter && length(cv_value) > 0) {
+                    pop[pop$Parameter == base_param, "CV"] <- cv_value
+                }
+            }
+            # Remove the _CV parameter rows from the table
+            pop <- pop[!endsWith(pop$Parameter, "_CV"), ]
+        }
+    }
+
     if (include_RSE) {
         pop <- dplyr::left_join(pop, err, by = "Parameter")
     }
     if (include_CI) {
         pop <- dplyr::left_join(pop, CI, by = "Parameter")
+        # Round CI values before combining them
+        if ("P2.5" %in% names(pop) && "P97.5" %in% names(pop)) {
+            # Round the CI values using the same logic as the main rounding
+            ci_rounded <- .round_num(pop[, c("P2.5", "P97.5")], digits, rounding_method = roundingMethod)
+            # Combine CI columns into single column with format (P2.5; P97.5)
+            pop[["CI_2.5_97.5"]] <- paste0("(", ci_rounded[["P2.5"]], "; ", ci_rounded[["P97.5"]], ")")
+            pop <- pop[, !(names(pop) %in% c("P2.5", "P97.5"))]
+        }
     }
     if (include_bootstrap) {
         pop <- dplyr::left_join(pop, bootstrap, by = "Parameter")
     }
 
-    if (use_wide_format_omegas) {
-        pop_idx <- grep("_pop", pop$Parameter)
-        omega_idx <- grep("omega_", pop$Parameter)
+    if (use_wide_format) {
+        # Rename fixed effect columns using hierarchical naming with underscore separator
+        names(pop)[names(pop) == "Estimate"] <- "FE_Estimate"
+        if (include_RSE && "RSE" %in% names(pop)) {
+            names(pop)[names(pop) == "RSE"] <- "FE_RSE"
+        }
+        if (include_CI && "CI_2.5_97.5" %in% names(pop)) {
+            names(pop)[names(pop) == "CI_2.5_97.5"] <- "FE_CI"
+        }
+
+        pop_idx      <- grep("_pop", pop$Parameter)
+        omega_idx    <- grep("omega_", pop$Parameter)
         omega_cv_idx <- NULL
 
-        pop_root <- sub("_pop$", "", pop$Parameter[pop_idx])
+        pop_root   <- sub("_pop$", "", pop$Parameter[pop_idx])
         omega_root <- sub("^omega_", "", pop$Parameter[omega_idx])
 
         if (include_CV) {
             omega_cv_idx <- omega_idx[endsWith(pop$Parameter[omega_idx], "_CV")]
-            omega_idx <- setdiff(omega_idx, omega_cv_idx)
-            omega_root <- sub("^omega_", "", pop$Parameter[omega_idx]) # to not duplicate
+            omega_idx    <- setdiff(omega_idx, omega_cv_idx)
+            omega_root   <- sub("^omega_", "", pop$Parameter[omega_idx]) # to not duplicate
         }
 
-        var_col <- if (include_CV) "Variability(CV)" else "Variability"
+        # Add IIV columns if requested (default TRUE)
+        if (include_IIV && length(omega_idx) > 0) {
+            pop[["IIV_SD"]] <- NA_real_
+            pop[pop_idx, "IIV_SD"] <- pop[omega_idx[match(pop_root, omega_root)], "FE_Estimate"]
 
-        pop[[var_col]] <- NA_real_
+            # Add IIV CV column right after SD
+            if (include_CV && length(omega_cv_idx) > 0) {
+                pop[["IIV_CV"]] <- NA_real_
+                pop[pop_idx, "IIV_CV"] <- pop[omega_cv_idx[match(pop_root, omega_root)], "FE_Estimate"]
+            }
 
-        # TODO: variable for column name, need to use get()?
-        source_idx <- if (include_CV) {
-            omega_cv_idx
-        } else {
-            omega_idx
+            if (include_RSE && "FE_RSE" %in% names(pop)) {
+                pop[["IIV_RSE"]] <- NA_real_
+                pop[pop_idx, "IIV_RSE"] <- pop[omega_idx[match(pop_root, omega_root)], "FE_RSE"]
+            }
+
+            if (include_CI && "FE_CI" %in% names(pop)) {
+                pop[["IIV_CI"]] <- NA_character_
+                pop[pop_idx, "IIV_CI"] <- pop[omega_idx[match(pop_root, omega_root)], "FE_CI"]
+            }
         }
-        pop[pop_idx, ifelse(include_CV, "Variability(CV)", "Variability")] <-
-            pop[source_idx[match(pop_root, omega_root)], "Estimate"]
 
-        if (include_RSE) {
-            pop[, "Variability(RSE)"] <- NA_real_
-            pop[pop_idx, "Variability(RSE)"] <-
-                pop[omega_idx[match(pop_root, omega_root)], "RSE"]
+        # Add IOV columns if requested (default TRUE)
+        gamma_idx    <- grep("gamma_", pop$Parameter)
+        gamma_cv_idx <- NULL
+
+        if (include_IOV && length(gamma_idx) > 0) {
+            gamma_root <- sub("^gamma_", "", pop$Parameter[gamma_idx])
+
+            if (include_CV) {
+                gamma_cv_idx <- gamma_idx[endsWith(pop$Parameter[gamma_idx], "_CV")]
+                gamma_idx    <- setdiff(gamma_idx, gamma_cv_idx)
+                gamma_root   <- sub("^gamma_", "", pop$Parameter[gamma_idx]) # to not duplicate
+            }
+
+            pop[["IOV_SD"]] <- NA_real_
+            pop[pop_idx, "IOV_SD"] <- pop[gamma_idx[match(pop_root, gamma_root)], "FE_Estimate"]
+
+            # Add IOV CV column right after SD
+            if (include_CV && length(gamma_cv_idx) > 0) {
+                pop[["IOV_CV"]] <- NA_real_
+                pop[pop_idx, "IOV_CV"] <- pop[gamma_cv_idx[match(pop_root, gamma_root)], "FE_Estimate"]
+            }
+
+            if (include_RSE && "FE_RSE" %in% names(pop)) {
+                pop[["IOV_RSE"]] <- NA_real_
+                pop[pop_idx, "IOV_RSE"] <- pop[gamma_idx[match(pop_root, gamma_root)], "FE_RSE"]
+            }
+
+            if (include_CI && "FE_CI" %in% names(pop)) {
+                pop[["IOV_CI"]] <- NA_character_
+                pop[pop_idx, "IOV_CI"] <- pop[gamma_idx[match(pop_root, gamma_root)], "FE_CI"]
+            }
         }
-        pop <- pop[-c(omega_idx, omega_cv_idx), ]
+
+        # Remove omega and gamma rows from long format
+        rows_to_remove <- c(omega_idx, omega_cv_idx, gamma_idx, gamma_cv_idx)
+        if (length(rows_to_remove) > 0) {
+            pop <- pop[-rows_to_remove, ]
+        }
+
     }
 
     pop <- dplyr::select(pop, -"Parameter") %>%
@@ -378,18 +462,26 @@ tableParameterEstimates <- function(project_file = NULL, nameMapping = NULL, inc
 
     # Set Section as factor with desired order
     pop$Section <- factor(pop$Section,
-        levels = c(
-            "Fixed effects",
-            "Random effects (IIV)", "Random effects (IOV)",
-            "Correlations", "Correlations (IIV)", "Correlations (IOV)",
-            "Residual error"
-        )
-    )
+        levels = c("FE",
+                   "IIV", "IOV",
+                   "CORR", "CORR_IIV", "CORR_IOV",
+                   "RES_ERR"))
 
     pop <- pop %>%
         dplyr::arrange(.data$Section) %>%
         dplyr::relocate("Section")
     pop <- .round_num(pop, digits, rounding_method = roundingMethod)
+
+    # Apply pretty labels if requested for nice column names display
+    if (prettyLabels) {
+    	pop <- .prettyLabels(pop)
+    }
+
+    # for later identfication in flextable function
+    attr(pop, "table_type")  <- "pop"
+    attr(pop, "format")      <- if (use_wide_format) "wide" else "long"
+    attr(pop, "include_IIV") <- use_wide_format && include_IIV
+    attr(pop, "include_IOV") <- use_wide_format && include_IOV
 
     return(pop)
 
