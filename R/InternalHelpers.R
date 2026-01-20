@@ -272,8 +272,8 @@ utils::globalVariables(c("."))
 		"sd"                  = "SD",
 		"se"                  = "SE",
 		"CV"                  = "CV (%)",
-		"Min"                 = "Minimum",
-		"Max"                 = "Maximum",
+		"min"                 = "Minimum",
+		"max"                 = "Maximum",
 		"median"              = "Median",
 		"geoMean"             = "Geometric\nMean",
 		"GeoMean"             = "Geometric\nMean",
@@ -285,15 +285,30 @@ utils::globalVariables(c("."))
 		"harmMean"            = "Harmonic\nMean",
 		"P05"                 = "5th Percentile",
 		"P95"                 = "95th Percentile",
+		"N"                   = "N",
 		"Ntot"                = "N Total",
 		"Nobs"                = "N", # "N Observed"
 		"Nmiss"               = "N Missing",
 		"p.value"             = "p-value",
+		"RSE"                 = "RSE (%)",
+		"CI"                  = "Confidence \nInterval",
+		"CI_2.5_97.5"         = "95% CI", # or Confidence Interval\n(2.5%-97.5%)?
+		"FE_Estimate"         = "Fixed Effect \nEstimate",
+		"FE_RSE"              = "RSE (%)",
+		"FE_CI"               = "95% CI",
+		"IIV_SD"              = "IIV\nSD",
+		"IIV_CV"              = "IIV\nCV (%)",
+		"IIV_RSE"             = "IIV\nRSE (%)",
+		"IIV_CI"              = "IIV\n95% CI",
+		"IOV_SD"              = "IOV\nSD",
+		"IOV_CV"              = "IOV\nCV (%)",
+		"IOV_RSE"             = "IOV\nRSE (%)",
+		"IOV_CI"              = "IOV\n95% CI",
+		# "IIV %RSE"            = "IIV %RSE",
 		"Dosing.range"        = "Dosing Range",
 		"Point.estimate"      = "Point Estimate",
 		"Criteria.interval"   = "Criteria Interval",
-		"Confidence.interval" = "Confidence Interval"
-	)
+		"Confidence.interval" = "Confidence Interval")
 
 	# Replace column names where matches are found
 	col_names <- names(df)
