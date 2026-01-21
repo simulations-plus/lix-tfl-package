@@ -8,27 +8,33 @@ print_table_flex <- function(data.flex,
                              header_level1    = NULL,
                              header_level2    = NULL,
                              header_level3    = NULL,
-                             color            = NULL, # e.g. c("BE","DP","PVAL","RSE","IIVRSE")
+                             color            = NULL, # e.g. c("BE","DP","PVAL","RSE")
                              theme_fn         = theme_box,
                              soften_amount    = 0.50, # 0 = original, 1 = white
                              html_alpha       = 0.18) # only used for html rgba)
 {
-
-  color <- toupper(color)  # optional but helpful
+  color <- toupper(color) # optional but helpful
 
   # Check if columns exist
-  pval.flag   <- ("PVAL"   %in% color) && "p.value"    %in% colnames(data.flex)
-  BE.flag     <- ("BE"     %in% color) && "Conclusion" %in% colnames(data.flex)
-  RSE.flag    <- ("RSE"    %in% color) && "%RSE"       %in% colnames(data.flex)
-  IIVRSE.flag <- ("IIVRSE" %in% color) && "IIV %RSE"   %in% colnames(data.flex)
-  DP.flag     <- ("DP"     %in% color) && "Conclusion" %in% colnames(data.flex)
+  pval.flag <- ("PVAL" %in% color) && "p.value" %in% colnames(data.flex)
+  BE.flag <- ("BE" %in% color) && "Conclusion" %in% colnames(data.flex)
+  DP.flag <- ("DP" %in% color) && "Conclusion" %in% colnames(data.flex)
+
+  # RSE flag: detect any columns containing "RSE" in their name
+  # This covers: "RSE", "%RSE", "RSE (%)", "FE_RSE", "IIV_RSE", "IOV_RSE", "IIV\nRSE (%)", etc.
+  RSE.flag <- "RSE" %in% color
+  RSE.cols <- character(0)
+  if (RSE.flag) {
+    RSE.cols <- grep("RSE", colnames(data.flex), value = TRUE, ignore.case = TRUE)
+    RSE.flag <- length(RSE.cols) > 0
+  }
 
   flextable::set_flextable_defaults(na_str = "NA")
 
   # Reorder columns so grouping columns come first
   if (!is.null(grouping.columns)) {
     other.cols <- setdiff(names(data.flex), grouping.columns)
-    data.flex  <- data.flex[, c(grouping.columns, other.cols), drop = FALSE]
+    data.flex <- data.flex[, c(grouping.columns, other.cols), drop = FALSE]
   }
 
 
@@ -45,7 +51,6 @@ print_table_flex <- function(data.flex,
   # Identified columns
   if (length(alias_cols) > 0) {
     for (col in alias_cols) {
-
       # Process each row
       for (i in seq_len(nrow(data.flex))) {
         # CRITICAL: Must process cell-by-cell because flextable::compose() requires
@@ -55,7 +60,7 @@ print_table_flex <- function(data.flex,
 
         # Handle NA or empty strings
         if (is.na(cell_value) || !nzchar(as.character(cell_value))) {
-          next  # Skip, leave as is
+          next # Skip, leave as is
         }
 
         cell_value <- as.character(cell_value)
@@ -83,7 +88,7 @@ print_table_flex <- function(data.flex,
             break
           }
           start <- m[1]
-          end   <- start + attr(m, "match.length") - 1
+          end <- start + attr(m, "match.length") - 1
 
           # Text before the [[sub:...]] marker
           before <- substr(current, 1, start - 1)
@@ -92,8 +97,8 @@ print_table_flex <- function(data.flex,
           }
           # Extract subscript text
           match_str <- substr(current, start, end)
-          subtxt    <- sub(pattern, "\\1", match_str, perl = TRUE)
-          chunks    <- append(chunks, list(flextable::as_sub(subtxt)))
+          subtxt <- sub(pattern, "\\1", match_str, perl = TRUE)
+          chunks <- append(chunks, list(flextable::as_sub(subtxt)))
 
           # Continue with rest of string
           current <- substr(current, end + 1, nchar(current))
@@ -135,12 +140,16 @@ print_table_flex <- function(data.flex,
   # ---------------------------------------------------------------------------
   # Allow passing either a string or a 1-column data.frame
   .as_header_string <- function(x) {
-    if (is.null(x)) return(NULL)
+    if (is.null(x)) {
+      return(NULL)
+    }
     if (is.data.frame(x)) x <- x[[1]]
     x <- as.character(x)
     x <- x[!is.na(x)]
-    if (length(x) == 0) return(NULL)
-    x[1]  # take first element if someone passes a vector
+    if (length(x) == 0) {
+      return(NULL)
+    }
+    x[1] # take first element if someone passes a vector
   }
 
   h1 <- .as_header_string(header_level1)
@@ -176,55 +185,58 @@ print_table_flex <- function(data.flex,
 
   base_yellow <- "#FFD700"
   base_orange <- "#EE7600"
-  base_red    <- "#8B1A1A"
-  base_green  <- "#458B00"
+  base_red <- "#8B1A1A"
+  base_green <- "#458B00"
 
   # Default: pastel hex (good for docx/pptx and generally safe)
   col_yellow <- soften_hex(base_yellow, soften_amount)
   col_orange <- soften_hex(base_orange, soften_amount)
-  col_red    <- soften_hex(base_red,    soften_amount)
-  col_green  <- soften_hex(base_green,  soften_amount)
+  col_red <- soften_hex(base_red, soften_amount)
+  col_green <- soften_hex(base_green, soften_amount)
 
   # If HTML output, optionally use rgba for transparency
   if (is_html()) {
     col_yellow <- rgba(base_yellow, html_alpha)
     col_orange <- rgba(base_orange, html_alpha)
-    col_red    <- rgba(base_red,    html_alpha)
-    col_green  <- rgba(base_green,  html_alpha)
+    col_red <- rgba(base_red, html_alpha)
+    col_green <- rgba(base_green, html_alpha)
   }
 
-  # Apply conditional background formatting
-  if (RSE.flag) {
-    ft <- ft %>%
-      flextable::bg(i = ~ `%RSE` >= 50  & `%RSE` < 100, j = ~ `%RSE`, bg = col_yellow, part = "body") %>%
-      flextable::bg(i = ~ `%RSE` >= 100 & `%RSE` < 200, j = ~ `%RSE`, bg = col_orange, part = "body") %>%
-      flextable::bg(i = ~ `%RSE` > 200,                 j = ~ `%RSE`, bg = col_red,    part = "body")
-  }
+  # Apply conditional background formatting for RSE columns
+  if (RSE.flag && length(RSE.cols) > 0) {
+    for (rse_col in RSE.cols) {
+      # Use backtick notation to handle column names with special characters
+      col_expr <- paste0("`", rse_col, "`")
 
-  if (IIVRSE.flag) {
-    ft <- ft %>%
-      flextable::bg(i = ~ `IIV %RSE` >= 50  & `IIV %RSE` < 100, j = ~ `IIV %RSE`, bg = col_yellow, part = "body") %>%
-      flextable::bg(i = ~ `IIV %RSE` >= 100 & `IIV %RSE` < 200, j = ~ `IIV %RSE`, bg = col_orange, part = "body") %>%
-      flextable::bg(i = ~ `IIV %RSE` > 200,                     j = ~ `IIV %RSE`, bg = col_red,    part = "body")
+      # Build formulas as strings and convert to formulas
+      formula_yellow <- as.formula(paste("~", col_expr, ">= 50 &", col_expr, "< 100"))
+      formula_orange <- as.formula(paste("~", col_expr, ">= 100 &", col_expr, "< 200"))
+      formula_red <- as.formula(paste("~", col_expr, "> 200"))
+
+      ft <- ft %>%
+        flextable::bg(i = formula_yellow, j = rse_col, bg = col_yellow, part = "body") %>%
+        flextable::bg(i = formula_orange, j = rse_col, bg = col_orange, part = "body") %>%
+        flextable::bg(i = formula_red, j = rse_col, bg = col_red, part = "body")
+    }
   }
 
   if (pval.flag) {
     ft <- ft %>%
-      flextable::bg(i = ~ p.value <= 0.01,                  j = ~ p.value, bg = col_red,    part = "body") %>%
-      flextable::bg(i = ~ p.value > 0.01 & p.value <= 0.05, j = ~ p.value, bg = col_orange, part = "body") %>%
-      flextable::bg(i = ~ p.value > 0.05 & p.value <= 0.09, j = ~ p.value, bg = col_yellow, part = "body")
+      flextable::bg(i = ~ p.value <= 0.01, j = ~p.value, bg = col_red, part = "body") %>%
+      flextable::bg(i = ~ p.value > 0.01 & p.value <= 0.05, j = ~p.value, bg = col_orange, part = "body") %>%
+      flextable::bg(i = ~ p.value > 0.05 & p.value <= 0.09, j = ~p.value, bg = col_yellow, part = "body")
   }
   # Apply conditional background formatting
   if (DP.flag) {
     ft <- ft %>%
-      flextable::bg(i = ~ Conclusion == "Proportional",     j = ~ Conclusion, bg = col_green,  part = "body") %>%
-      flextable::bg(i = ~ Conclusion == "Inconclusive",     j = ~ Conclusion, bg = col_yellow, part = "body") %>%
-      flextable::bg(i = ~ Conclusion == "Not Proportional", j = ~ Conclusion, bg = col_red,    part = "body")
+      flextable::bg(i = ~ Conclusion == "Proportional", j = ~Conclusion, bg = col_green, part = "body") %>%
+      flextable::bg(i = ~ Conclusion == "Inconclusive", j = ~Conclusion, bg = col_yellow, part = "body") %>%
+      flextable::bg(i = ~ Conclusion == "Not Proportional", j = ~Conclusion, bg = col_red, part = "body")
   }
   if (BE.flag) {
     ft <- ft %>%
-      flextable::bg(i = ~ Conclusion == "Bioequivalent",     j = ~ Conclusion, bg = col_green, part = "body") %>%
-      flextable::bg(i = ~ Conclusion == "Not bioequivalent", j = ~ Conclusion, bg = col_red,   part = "body")
+      flextable::bg(i = ~ Conclusion == "Bioequivalent", j = ~Conclusion, bg = col_green, part = "body") %>%
+      flextable::bg(i = ~ Conclusion == "Not bioequivalent", j = ~Conclusion, bg = col_red, part = "body")
   }
   ft <- set_table_properties(ft, width = 1, layout = "autofit")
   return(ft)

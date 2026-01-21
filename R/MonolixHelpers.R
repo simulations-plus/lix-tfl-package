@@ -202,17 +202,17 @@ tableRunHistory <- function(sycomoreProjectFile,
 #'
 #' @examples
 #' # TODO
-tableParameterEstimates <- function(project_file = NULL,
-                                    nameMapping = NULL,
-                                    include_RSE = TRUE,
-                                    include_IIV = TRUE,
-                                    include_IOV = TRUE,
-                                    include_CI = FALSE,
-                                    include_CV = FALSE,
+tableParameterEstimates <- function(project_file    = NULL,
+                                    nameMapping     = NULL,
+                                    include_RSE     = TRUE,
+                                    include_IIV     = TRUE,
+                                    include_IOV     = TRUE,
+                                    include_CI      = FALSE,
+                                    include_CV      = FALSE,
                                     include_bootstrap = FALSE,
                                     use_wide_format = FALSE,
-                                    std_err_method = "", digits = 3, roundingMethod = c("monolix", "signif", "none"),
-																		prettyLabels = TRUE) {
+                                    std_err_method  = "", digits = 3, roundingMethod = c("monolix", "signif", "none"),
+                                    prettyLabels    = TRUE) {
     roundingMethod <- match.arg(roundingMethod)
 
     .ensureProjectLoaded(project_file)
@@ -287,9 +287,10 @@ tableParameterEstimates <- function(project_file = NULL,
         }
 
         if (is.null(CI)) {
-            CI <- data.frame(Parameter = pop$Parameter,
-                             P2.5      = NA,
-                             P97.5     = NA)
+            CI <- data.frame(
+                Parameter = pop$Parameter,
+                P2.5      = NA,
+                P97.5     = NA)
         }
         names(CI) <- c("Parameter", "P2.5", "P97.5")
     }
@@ -307,8 +308,7 @@ tableParameterEstimates <- function(project_file = NULL,
                 Parameter = pop$Parameter,
                 P2.5      = NA,
                 Median    = NA,
-                P97.5     = NA
-            )
+                P97.5     = NA)
         } else {
             bootstrap <- bootstrap %>%
                 dplyr::select(dplyr::starts_with("P"), "MEDIAN") %>%
@@ -320,12 +320,12 @@ tableParameterEstimates <- function(project_file = NULL,
     }
 
     pop$Section <- ""
-    pop$Section[grep("_pop|beta_", pop$Parameter)]   <- "FE"
-    pop$Section[grep("omega_",     pop$Parameter)]   <- "IIV"
-    pop$Section[grep("^corr_",     pop$Parameter)]   <- "CORR"
-    pop$Section[grep("^corr1_",    pop$Parameter)]   <- "CORR_IIV"
-    pop$Section[grep("gamma_",     pop$Parameter)]   <- "IOV"
-    pop$Section[grep("^corr2_",    pop$Parameter)]   <- "CORR_IOV"
+    pop$Section[grep("_pop|beta_", pop$Parameter)] <- "FE"
+    pop$Section[grep("omega_",     pop$Parameter)] <- "IIV"
+    pop$Section[grep("^corr_",     pop$Parameter)] <- "CORR"
+    pop$Section[grep("^corr1_",    pop$Parameter)] <- "CORR_IIV"
+    pop$Section[grep("gamma_",     pop$Parameter)] <- "IOV"
+    pop$Section[grep("^corr2_",    pop$Parameter)] <- "CORR_IOV"
     pop$Section[pop$Parameter %in% c("a", "b", "c")] <- "RES_ERR"
 
     # Restrict to just the requested parameters in specified order
@@ -381,8 +381,8 @@ tableParameterEstimates <- function(project_file = NULL,
             names(pop)[names(pop) == "CI_2.5_97.5"] <- "FE_CI"
         }
 
-        pop_idx      <- grep("_pop", pop$Parameter)
-        omega_idx    <- grep("omega_", pop$Parameter)
+        pop_idx <- grep("_pop", pop$Parameter)
+        omega_idx <- grep("omega_", pop$Parameter)
         omega_cv_idx <- NULL
 
         pop_root   <- sub("_pop$", "", pop$Parameter[pop_idx])
@@ -417,7 +417,7 @@ tableParameterEstimates <- function(project_file = NULL,
         }
 
         # Add IOV columns if requested (default TRUE)
-        gamma_idx    <- grep("gamma_", pop$Parameter)
+        gamma_idx <- grep("gamma_", pop$Parameter)
         gamma_cv_idx <- NULL
 
         if (include_IOV && length(gamma_idx) > 0) {
@@ -454,7 +454,6 @@ tableParameterEstimates <- function(project_file = NULL,
         if (length(rows_to_remove) > 0) {
             pop <- pop[-rows_to_remove, ]
         }
-
     }
 
     pop <- dplyr::select(pop, -"Parameter") %>%
@@ -465,7 +464,7 @@ tableParameterEstimates <- function(project_file = NULL,
         levels = c("FE",
                    "IIV", "IOV",
                    "CORR", "CORR_IIV", "CORR_IOV",
-                   "RES_ERR"))
+        					 "RES_ERR"))
 
     pop <- pop %>%
         dplyr::arrange(.data$Section) %>%
@@ -474,7 +473,7 @@ tableParameterEstimates <- function(project_file = NULL,
 
     # Apply pretty labels if requested for nice column names display
     if (prettyLabels) {
-    	pop <- .prettyLabels(pop)
+        pop <- .prettyLabels(pop)
     }
 
     # for later identfication in flextable function
