@@ -1,0 +1,3 @@
+Factor,Df,SumSq,MeanSq,FValue,Pr(>F)
+DOSE_mg,2,0.218247,0.109123,1.28315,0.305903
+Residuals,15,1.27565,0.0850435,,

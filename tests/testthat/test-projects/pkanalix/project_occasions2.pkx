@@ -1,0 +1,63 @@
+<DATAFILE>
+
+[FILEINFO]
+file={path='data_2_periods.csv'}
+delimiter = comma
+header={ID, TIME, CONC, AMOUNT, TREAT, FOOD, occT, occF}
+
+[CONTENT]
+ID = {use=identifier}
+TIME = {use=time}
+CONC = {use=observation, type=continuous}
+AMOUNT = {use=amount}
+TREAT = {use=covariate, type=categorical}
+FOOD = {use=covariate, type=categorical}
+occT = {use=occasion}
+occF = {use=occasion}
+
+[SETTINGS]
+enableUnits = true
+units = {time={factor=1, unit=h}, concentration={factor=1, unit=mg/L}, dose={factor=1}}
+
+<MODEL>
+
+[COVARIATE]
+input = {FOOD, TREAT}
+
+FOOD = {type=categorical, categories={'no', 'yes'}}
+TREAT = {type=categorical, categories={'ref', 'test'}}
+
+[LONGITUDINAL]
+file = 'lib:oral0_1cpt_Tk0Vk.txt'
+
+<FIT>
+data = 'CONC'
+model = Cc
+
+<PKANALIX>
+
+[TASKS]
+bioequivalence(run=false)
+
+[SETTINGS]
+GLOBAL:
+dataNextToProject = yes
+
+NCA:
+obsIdToUse = 'CONC'
+administrationType = {1 = extravascular}
+startTimeNotBefore = {use=no, value=0}
+integralMethod = upDownTrapUpDownInterp
+partialAUCTime = {use=no, value={{0, 24}}}
+addSteadyState = {use=no, value=24}
+computedParameters = {{value = Rsq}, {value = Rsq_adjusted}, {value = No_points_lambda_z}, {value = Lambda_z}, {value = HL_Lambda_z}, {value = Lambda_z_intercept}, {value = Tmax_Rate}, {value = Max_Rate}, {value = Rate_last}, {value = AURC_last}, {value = AURC_INF_obs}, {value = Tmax}, {value = Tmax_SS}, {value = Cmax}, {value = Cmax_SS}, {value = Tlast}, {value = Clast}, {value = AUClast}, {value = AUCINF_obs}, {value = Vz_F_obs}, {value = Cl_F_obs}, {value = Cl_obs}, {value = Ctau}, {value = AUC_TAU}, {value = Vz_obs}, {value = Vz_F}, {value = CLss_F}, {value = AURC_Int, partialInt = 0}, {value = AURC_Int_D, partialInt = 0}, {value = AUC_Int, partialInt = 0}, {value = AUC_Int_D, partialInt = 0}}
+sparseDataCensoring = {type = singlerule, rule = zero, checkMeanSamples = {no, {loq = 0, blqBeforeTmax = zero, blqAfterTmax = missing}}}
+
+CA:
+initialvalues = {Tk0={value=23.46, constraint=positive}, V={value=0.285, constraint=positive}, k={value=3.129, constraint=positive}}
+
+BIOEQUIVALENCE:
+computedParameters = {{value = Max_Rate, log = yes}, {value = AURC_last, log = yes}, {value = Cmax, log = yes}, {value = AUClast, log = yes}, {value = AUCINF_obs, log = yes}}
+design = crossover
+factors = {id={'ID'}, period={'occT'}, formulation={'TREAT'}, reference={'ref'}}
+

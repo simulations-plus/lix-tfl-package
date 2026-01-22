@@ -1,0 +1,59 @@
+<DATAFILE>
+
+[FILEINFO]
+file={path='pkpdRemifentanil.csv'}
+delimiter = comma
+header={ID, TIME, AMT, RATE, DV, YTYPE, MDV, AGE, SEX, LBM, TINFCAT}
+
+[CONTENT]
+ID = {use=identifier}
+TIME = {use=time}
+AMT = {use=amount}
+RATE = {use=rate}
+DV = {use=observation, yname={'1', '2'}, type={continuous, continuous}}
+YTYPE = {use=observationtype}
+MDV = {use=missingdependentvariable}
+AGE = {use=covariate, type=continuous}
+SEX = {use=covariate, type=categorical}
+LBM = {use=covariate, type=continuous}
+TINFCAT = {use=covariate, type=categorical}
+
+[SETTINGS]
+enableUnits = true
+units = {time={factor=1, unit=h}, concentration={factor=1, unit=ug/mL}, dose={factor=1}}
+
+<MODEL>
+
+[COVARIATE]
+input = {AGE, LBM, SEX, TINFCAT}
+
+SEX = {type=categorical, categories={'0', '1'}}
+TINFCAT = {type=categorical, categories={'10', '14', '20', '4', '5', '7', '8'}}
+
+<PKANALIX>
+
+[TASKS]
+bioequivalence(run=false)
+
+[SETTINGS]
+GLOBAL:
+dataNextToProject = yes
+
+NCA:
+obsIdToUse = '1'
+administrationType = {1 = intravenous}
+startTimeNotBefore = {use=no, value=0}
+partialAUCTime = {use=no, value={{0, 230.05}}}
+addSteadyState = {use=no, value=230.05}
+ajdR2AcceptanceCriteria = {use=yes, value=0.95}
+computedParameters = {{value = Rsq}, {value = Rsq_adjusted}, {value = No_points_lambda_z}, {value = Lambda_z}, {value = Lambda_z_intercept}, {value = Tmax_Rate}, {value = Max_Rate}, {value = Rate_last}, {value = AURC_last}, {value = AURC_INF_obs}, {value = Tmax}, {value = Tmax_SS}, {value = Cmax}, {value = Cmax_SS}, {value = Tlast}, {value = Clast}, {value = AUClast}, {value = AUCINF_obs}, {value = Vz_F_obs}, {value = Cl_F_obs}, {value = Cl_obs}, {value = Ctau}, {value = AUC_TAU}, {value = Vz_obs}, {value = Vz_F}, {value = CLss_F}, {value = AURC_Int, partialInt = 0}, {value = AURC_Int_D, partialInt = 0}, {value = AUC_Int, partialInt = 0}, {value = AUC_Int_D, partialInt = 0}}
+sparseDataCensoring = {type = singlerule, rule = zero, checkMeanSamples = {no, {loq = 0, blqBeforeTmax = zero, blqAfterTmax = missing}}}
+
+CA:
+initialvalues = {}
+
+BIOEQUIVALENCE:
+computedParameters = {{value = Max_Rate, log = yes}, {value = AURC_last, log = yes}, {value = Cmax, log = yes}, {value = AUClast, log = yes}, {value = AUCINF_obs, log = yes}}
+design = parallel
+factors = {formulation={'SEX'}, reference={'1'}}
+

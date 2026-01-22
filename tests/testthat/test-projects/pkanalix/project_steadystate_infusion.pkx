@@ -1,0 +1,46 @@
+<DATAFILE>
+
+[FILEINFO]
+file={path='data_SS_infusion.csv'}
+delimiter = comma
+header={ID, TIME, DV, AMOUNT, INFDUR, SS, II}
+
+[CONTENT]
+ID = {use=identifier}
+TIME = {use=time}
+DV = {use=observation, type=continuous}
+AMOUNT = {use=amount}
+INFDUR = {use=infusiontime}
+SS = {use=steadystate, nbdoses=5}
+II = {use=interdoseinterval}
+
+[SETTINGS]
+enableUnits = true
+units = {time={factor=1, unit=h}, concentration={factor=1, unit=ug/L}, dose={factor=1}}
+
+<PKANALIX>
+
+[TASKS]
+bioequivalence(run=false)
+
+[SETTINGS]
+GLOBAL:
+dataNextToProject = yes
+
+NCA:
+obsIdToUse = 'DV'
+administrationType = {1 = intravenous}
+startTimeNotBefore = {use=no, value=0}
+integralMethod = upDownTrapUpDownInterp
+partialAUCTime = {use=no, value={{0, 24}}}
+addSteadyState = {use=no, value=24}
+computedParameters = {{value = Rsq}, {value = Rsq_adjusted}, {value = No_points_lambda_z}, {value = Lambda_z}, {value = Lambda_z_intercept}, {value = Tmax_Rate}, {value = Max_Rate}, {value = Rate_last}, {value = AURC_last}, {value = AURC_INF_obs}, {value = Tmax}, {value = Tmax_SS}, {value = Cmax}, {value = Cmax_SS}, {value = Tlast}, {value = Clast}, {value = AUClast}, {value = AUCINF_obs}, {value = Vz_F_obs}, {value = Cl_F_obs}, {value = Cl_obs}, {value = Ctau}, {value = AUC_TAU}, {value = Vz_obs}, {value = Vz_F}, {value = CLss_F}, {value = MRTINF_obs}, {value = AURC_Int, partialInt = 0}, {value = AURC_Int_D, partialInt = 0}, {value = AUC_Int, partialInt = 0}, {value = AUC_Int_D, partialInt = 0}}
+sparseDataCensoring = {type = singlerule, rule = zero, checkMeanSamples = {no, {loq = 0, blqBeforeTmax = zero, blqAfterTmax = missing}}}
+
+CA:
+initialvalues = {}
+
+BIOEQUIVALENCE:
+computedParameters = {{value = Max_Rate, log = yes}, {value = AURC_last, log = yes}, {value = Cmax, log = yes}, {value = AUC_TAU, log = yes}}
+design = parallel
+

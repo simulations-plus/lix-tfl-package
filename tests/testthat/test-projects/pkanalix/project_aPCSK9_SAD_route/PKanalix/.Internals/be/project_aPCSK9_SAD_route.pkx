@@ -1,0 +1,112 @@
+<DATA_FORMATTING>
+
+[FILEINFO]
+file={path='../../../../aPCSK9_SAD_to_format.csv'}
+header={ID, TIME_d, DV_ug_mL, DOSE_mg}
+
+[CONTENT]
+ID = {use=identifier}
+TIME_d = {use=time}
+
+[SETTINGS]
+LINES:
+header={0, 1}
+excluded={}
+
+[OPERATIONS]
+OBSERVATIONS:
+type=id
+duplicateInfo=true
+censoringTags={'<LOQ=0.1>'}
+'DV_ug_mL'={{censoring=left, loq = {column='DV_ug_mL'}, tags={'<LOQ=0.1>'}}}
+
+TREATMENTS:
+occasionGeneration=false
+duplicateObservationsAtDoseTimes=false
+administrations={{times = {0}, amount = {column='DOSE_mg'}}}
+
+ADDITIONAL_COLUMNS:
+additionalColumns = {{file={path='../../../../aPCSK9_SAD_covroute.csv'}}}
+
+<DATAFILE>
+
+[FILEINFO]
+file={path='../../../../aPCSK9_SAD_to_format.csv'}
+delimiter = comma
+header={ID, TIME_d, DV_ug_mL, DOSE_mg, ROUTE, AMT, CENS}
+
+[CONTENT]
+ID = {use=identifier}
+TIME_d = {use=time}
+DV_ug_mL = {use=observation, type=continuous}
+DOSE_mg = {use=covariate, type=categorical}
+ROUTE = {use=covariate, type=categorical}
+AMT = {use=amount}
+CENS = {use=censored}
+
+[SETTINGS]
+enableUnits = true
+units = {time={factor=1, unit=d}, concentration={factor=1, unit=mg/L}, dose={factor=1}}
+
+<MODEL>
+
+[COVARIATE]
+input = {DOSE_mg, ROUTE}
+
+DOSE_mg = {type=categorical, categories={'150mg', '300mg', '800mg'}}
+ROUTE = {type=categorical, categories={'PO', 'SC'}}
+
+[LONGITUDINAL]
+file = 'lib:oral1_1cpt_MM_kaVVmKmCl_outputL.txt'
+
+<FIT>
+data = 'DV_ug_mL'
+model = L
+
+<PKANALIX>
+
+[TASKS]
+bioequivalence()
+
+[SETTINGS]
+GLOBAL:
+dataNextToProject = yes
+
+NCA:
+obsIdToUse = 'DV_ug_mL'
+administrationType = {1 = extravascular}
+startTimeNotBefore = {use=no, value=0}
+integralMethod = upDownTrapUpDownInterp
+partialAUCTime = {use=no, value={{0, 84}}}
+addSteadyState = {use=no, value=84}
+ajdR2AcceptanceCriteria = {use=yes, value=0.98}
+blqMethodAfterTMax = missing
+computedParameters = {{value = Rsq}, {value = Rsq_adjusted}, {value = No_points_lambda_z}, {value = Lambda_z}, {value = HL_Lambda_z}, {value = Lambda_z_intercept}, {value = Tmax_Rate}, {value = Max_Rate}, {value = Rate_last}, {value = AURC_last}, {value = AURC_INF_obs}, {value = AURC_PerCentExtrap_obs}, {value = Tmax}, {value = Cmax}, {value = Cmax_D}, {value = Tlast}, {value = Clast}, {value = AUClast}, {value = AUClast_D}, {value = AUCINF_obs}, {value = AUCINF_D_obs}, {value = AUC_PerCentExtrap_obs}, {value = Vz_F_obs}, {value = Cl_F_obs}, {value = Cl_obs}, {value = Ctau}, {value = AUC_TAU}, {value = Vz_obs}, {value = Vz_F}, {value = CLss_F}}
+sparseDataCensoring = {type = singlerule, rule = zero, checkMeanSamples = {no, {loq = 0.1, blqBeforeTmax = zero, blqAfterTmax = missing}}}
+
+CA:
+initialvalues = {Cl={value=0.00549, constraint=positive}, Km={value=2.758, constraint=positive}, V={value=10.52, constraint=positive}, Vm={value=0.481, constraint=positive}, ka={value=0.665, constraint=positive}}
+
+BIOEQUIVALENCE:
+computedParameters = {{value = Max_Rate, log = yes}, {value = AURC_last, log = yes}, {value = Cmax_D, log = yes}, {value = AUClast_D, log = yes}, {value = AUCINF_D_obs, log = yes}}
+design = parallel
+factors = {formulation={'DOSE_mg'}, reference={'300mg'}, additional={}}
+
+[COMMENTS]
+; This case study is based on phase I clinical data extracted from plots in [Gadkar et al., CPT Pharmacometrics Syst. Pharmacol. 3, (2014)], corresponding to the PK for RG7652, a fully human monoclonal antibody antagonizing PSCK9 activity.
+; 
+; ## Data formatting
+; The initial data counts several features that are not compatible with PKanalix, and that are modified with the Data formatting module to adapt the dataset for PKanalix:
+;   * The second line in the dataset is a line of units and not data. We set the two first lines of the dataset as a header lines in the Initialization of Data formatting. Data formatting merges this two lines into a single header line by concatenating the strings.
+;  * The dataset doesn't contain dosing times or amounts. Dose levels are indicated in the DOSE column. We use Data formatting to add dose lines in the dataset at time 0 for each individual. The dose amount is read from the DOSE column.
+;  * Censored concentrations (below the limit of quantification) are indicated with a tag <LOQ=0.1\> in the column of concentrations. We use Data formatting to define censoring and read the LLOQ from these tags in the concentration column.
+; 
+; ## Non Compartmental Analysis
+; NCA and BE shows non-linearity of the PK of the anti-PCSK9 antibody, with dose dependency for key PK metrics such as Cmax/Dose, AUCINF_obs/Dose and AUClast/Dose.
+; 
+; ## Compartmental Analysis
+; The individual PK data is well captured by a Michaelis-Menten TMDD model taken from the TMDD library.
+; 
+; ## Reporting
+; We use the reporting module to generate a custom report with the main NCA results.
+

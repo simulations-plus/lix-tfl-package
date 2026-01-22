@@ -1,0 +1,11 @@
+[PROPERTIES]
+outputplot%3ADV%3A0\grid=false
+outputplot%3ADV%3A0\obsLines=false
+outputplot%3ADV%3A0\xLabel=Time (h)
+outputplot%3ADV%3A0\yLabel=Steadyzol (µg/L)
+outputplot%3ADV%3A0\yLog=true
+
+[PREFERENCES]
+outputplot%3ADV%3A0\obsColor="rgb(0, 0, 0)"
+outputplot%3ADV%3A0\observationStatisticsColor="rgb(58, 95, 205)"
+outputplot%3ADV%3A0\observationStatisticsWidth=2
