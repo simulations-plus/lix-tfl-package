@@ -2,6 +2,42 @@
 #-------------------------------Table Styles-----------------------------------#
 ################################################################################
 
+# ---------------------------------------------------------------------------
+# Internal helper functions
+# ---------------------------------------------------------------------------
+
+# Convert header input to string (handles data.frame or character input)
+.as_header_string <- function(x) {
+  if (is.null(x)) {
+    return(NULL)
+  }
+  if (is.data.frame(x)) x <- x[[1]]
+  x <- as.character(x)
+  x <- x[!is.na(x)]
+  if (length(x) == 0) {
+    return(NULL)
+  }
+  x[1] # take first element if someone passes a vector
+}
+
+# Soften hex color by blending with white (for docx/pptx output)
+.soften_hex <- function(hex, amount = 0.8) {
+  rgb <- grDevices::col2rgb(hex) / 255
+  new <- rgb + (1 - rgb) * amount
+  grDevices::rgb(new[1], new[2], new[3])
+}
+
+# Convert hex color to rgba format (for HTML output)
+.hex_to_rgba <- function(hex, alpha = 0.2) {
+  rgb <- grDevices::col2rgb(hex)
+  sprintf("rgba(%d,%d,%d,%.2f)", rgb[1], rgb[2], rgb[3], alpha)
+}
+
+# Check if output format is HTML
+.is_html_output <- function() {
+  tryCatch(knitr::is_html_output(), error = function(e) FALSE)
+}
+
 
 print_table_flex <- function(data.flex,
                              grouping.columns = NULL,
@@ -37,6 +73,65 @@ print_table_flex <- function(data.flex,
     data.flex <- data.flex[, c(grouping.columns, other.cols), drop = FALSE]
   }
 
+  # Check if this is a pop table and add section header rows
+  table_type   <- attr(data.flex, "table_type")
+  is_pop_table <- !is.null(table_type) && table_type == "pop"
+  include_IOV  <- attr(data.flex, "include_IOV")
+
+  if (is_pop_table && "Section" %in% colnames(data.flex)) {
+    # Convert Section from factor to character to allow custom header labels
+    # (factor levels are maintained through row order from tableParameterEstimates)
+    data.flex$Section <- as.character(data.flex$Section)
+
+    # Define section labels
+    section_labels <- list(
+      FE       = "Fixed effects",
+      IIV      = if (!is.null(include_IOV) && include_IOV) "Random effects IIV" else "Random effects",
+      IOV      = "Random effects IOV",
+      CORR     = "Correlations",
+      CORR_IIV = "Correlations IIV",
+      CORR_IOV = "Correlations IOV",
+      RES_ERR  = "Residual error")
+
+    # Find first occurrence of each section
+    sections_present <- unique(data.flex$Section)
+    rows_to_add      <- list()
+    offset           <- 0
+
+    for (i in seq_len(nrow(data.flex))) {
+      section_val <- data.flex$Section[i]
+
+      # Check if this is the first occurrence of this section
+      if (i == 1 || data.flex$Section[i - 1] != section_val) {
+        if (section_val %in% names(section_labels)) {
+          # Create header row with section label in first column, rest NA
+          header_row <- data.flex[i, , drop = FALSE]
+          header_row[1, ] <- NA
+          header_row[1, 1] <- section_labels[[section_val]]
+
+          # Store row to add with adjusted position
+          rows_to_add[[length(rows_to_add) + 1]] <- list(pos = i + offset, row = header_row)
+          offset <- offset + 1
+        }
+      }
+    }
+
+    # Insert header rows from bottom to top to maintain correct positions
+    if (length(rows_to_add) > 0) {
+      for (item in rev(rows_to_add)) {
+        if (item$pos == 1) {
+          data.flex <- rbind(item$row, data.flex)
+        } else {
+          data.flex <- rbind(
+            data.flex[1:(item$pos - 1), , drop = FALSE],
+            item$row,
+            data.flex[item$pos:nrow(data.flex), , drop = FALSE]
+          )
+        }
+      }
+      rownames(data.flex) <- NULL
+    }
+  }
 
   ft <- flextable(data.flex)
   #-----------------------------------------------------------------------------
@@ -75,7 +170,7 @@ print_table_flex <- function(data.flex,
         # i/j coordinates for each cell. We can't pre-generate paragraphs and apply
         # them later - compose() must be called in the loop with the parsed chunks.
         pattern <- "\\[\\[sub:([^]]+)\\]\\]"
-        chunks <- list()
+        chunks  <- list()
         current <- cell_value
 
         repeat {
@@ -88,7 +183,7 @@ print_table_flex <- function(data.flex,
             break
           }
           start <- m[1]
-          end <- start + attr(m, "match.length") - 1
+          end   <- start + attr(m, "match.length") - 1
 
           # Text before the [[sub:...]] marker
           before <- substr(current, 1, start - 1)
@@ -97,8 +192,8 @@ print_table_flex <- function(data.flex,
           }
           # Extract subscript text
           match_str <- substr(current, start, end)
-          subtxt <- sub(pattern, "\\1", match_str, perl = TRUE)
-          chunks <- append(chunks, list(flextable::as_sub(subtxt)))
+          subtxt    <- sub(pattern, "\\1", match_str, perl = TRUE)
+          chunks    <- append(chunks, list(flextable::as_sub(subtxt)))
 
           # Continue with rest of string
           current <- substr(current, end + 1, nchar(current))
@@ -135,23 +230,35 @@ print_table_flex <- function(data.flex,
     }
   }
 
+  # Style section header rows for pop tables
+  if (is_pop_table && "Section" %in% colnames(data.flex)) {
+    section_header_labels <- c(
+      "Fixed effects",
+      "Random effects", "Random effects IIV", "Random effects IOV",
+      "Correlations", "Correlations IIV", "Correlations IOV",
+      "Residual error")
+
+    # Find which column index is Section (before we remove it)
+    section_col_idx <- which(colnames(data.flex) == "Section")
+    first_col_name <- colnames(data.flex)[1]
+
+    for (label in section_header_labels) {
+      matching_rows <- which(data.flex[[first_col_name]] == label)
+      if (length(matching_rows) > 0) {
+        ft <- ft %>%
+          flextable::bold(i = matching_rows, part = "body") %>%
+          flextable::align(i = matching_rows, align = "left", part = "body") %>%
+          flextable::merge_at(i = matching_rows, j = seq_len(ncol(data.flex)), part = "body")
+      }
+    }
+
+    # Remove the Section column from the flextable
+    ft <- flextable::delete_columns(ft, j = section_col_idx)
+  }
+
   # ---------------------------------------------------------------------------
   # Header levels (1 = topmost)
   # ---------------------------------------------------------------------------
-  # Allow passing either a string or a 1-column data.frame
-  .as_header_string <- function(x) {
-    if (is.null(x)) {
-      return(NULL)
-    }
-    if (is.data.frame(x)) x <- x[[1]]
-    x <- as.character(x)
-    x <- x[!is.na(x)]
-    if (length(x) == 0) {
-      return(NULL)
-    }
-    x[1] # take first element if someone passes a vector
-  }
-
   h1 <- .as_header_string(header_level1)
   h2 <- .as_header_string(header_level2)
   h3 <- .as_header_string(header_level3)
@@ -166,40 +273,25 @@ print_table_flex <- function(data.flex,
 
 
   # ---------------------------------------------------------------------------
-  # SOFT COLOR PALETTE (embedded)
+  # Color palette setup
   # ---------------------------------------------------------------------------
-  soften_hex <- function(hex, amount = 0.8) {
-    rgb <- grDevices::col2rgb(hex) / 255
-    new <- rgb + (1 - rgb) * amount
-    grDevices::rgb(new[1], new[2], new[3])
-  }
-
-  rgba <- function(hex, alpha = 0.2) {
-    rgb <- grDevices::col2rgb(hex)
-    sprintf("rgba(%d,%d,%d,%.2f)", rgb[1], rgb[2], rgb[3], alpha)
-  }
-
-  is_html <- function() {
-    tryCatch(knitr::is_html_output(), error = function(e) FALSE)
-  }
-
   base_yellow <- "#FFD700"
   base_orange <- "#EE7600"
-  base_red <- "#8B1A1A"
-  base_green <- "#458B00"
+  base_red    <- "#8B1A1A"
+  base_green  <- "#458B00"
 
   # Default: pastel hex (good for docx/pptx and generally safe)
-  col_yellow <- soften_hex(base_yellow, soften_amount)
-  col_orange <- soften_hex(base_orange, soften_amount)
-  col_red <- soften_hex(base_red, soften_amount)
-  col_green <- soften_hex(base_green, soften_amount)
+  col_yellow <- .soften_hex(base_yellow, soften_amount)
+  col_orange <- .soften_hex(base_orange, soften_amount)
+  col_red    <- .soften_hex(base_red, soften_amount)
+  col_green  <- .soften_hex(base_green, soften_amount)
 
   # If HTML output, optionally use rgba for transparency
-  if (is_html()) {
-    col_yellow <- rgba(base_yellow, html_alpha)
-    col_orange <- rgba(base_orange, html_alpha)
-    col_red <- rgba(base_red, html_alpha)
-    col_green <- rgba(base_green, html_alpha)
+  if (.is_html_output()) {
+    col_yellow <- .hex_to_rgba(base_yellow, html_alpha)
+    col_orange <- .hex_to_rgba(base_orange, html_alpha)
+    col_red    <- .hex_to_rgba(base_red, html_alpha)
+    col_green  <- .hex_to_rgba(base_green, html_alpha)
   }
 
   # Apply conditional background formatting for RSE columns
@@ -209,34 +301,34 @@ print_table_flex <- function(data.flex,
       col_expr <- paste0("`", rse_col, "`")
 
       # Build formulas as strings and convert to formulas
-      formula_yellow <- as.formula(paste("~", col_expr, ">= 50 &", col_expr, "< 100"))
+      formula_yellow <- as.formula(paste("~", col_expr, ">= 50 &",  col_expr, "< 100"))
       formula_orange <- as.formula(paste("~", col_expr, ">= 100 &", col_expr, "< 200"))
-      formula_red <- as.formula(paste("~", col_expr, "> 200"))
+      formula_red    <- as.formula(paste("~", col_expr, "> 200"))
 
       ft <- ft %>%
         flextable::bg(i = formula_yellow, j = rse_col, bg = col_yellow, part = "body") %>%
         flextable::bg(i = formula_orange, j = rse_col, bg = col_orange, part = "body") %>%
-        flextable::bg(i = formula_red, j = rse_col, bg = col_red, part = "body")
+        flextable::bg(i = formula_red,    j = rse_col, bg = col_red,    part = "body")
     }
   }
 
   if (pval.flag) {
     ft <- ft %>%
-      flextable::bg(i = ~ p.value <= 0.01, j = ~p.value, bg = col_red, part = "body") %>%
+      flextable::bg(i = ~ p.value <= 0.01,                  j = ~p.value, bg = col_red,    part = "body") %>%
       flextable::bg(i = ~ p.value > 0.01 & p.value <= 0.05, j = ~p.value, bg = col_orange, part = "body") %>%
       flextable::bg(i = ~ p.value > 0.05 & p.value <= 0.09, j = ~p.value, bg = col_yellow, part = "body")
   }
   # Apply conditional background formatting
   if (DP.flag) {
     ft <- ft %>%
-      flextable::bg(i = ~ Conclusion == "Proportional", j = ~Conclusion, bg = col_green, part = "body") %>%
-      flextable::bg(i = ~ Conclusion == "Inconclusive", j = ~Conclusion, bg = col_yellow, part = "body") %>%
-      flextable::bg(i = ~ Conclusion == "Not Proportional", j = ~Conclusion, bg = col_red, part = "body")
+      flextable::bg(i = ~ Conclusion == "Proportional",     j = ~Conclusion, bg = col_green,  part = "body") %>%
+      flextable::bg(i = ~ Conclusion == "Inconclusive",     j = ~Conclusion, bg = col_yellow, part = "body") %>%
+      flextable::bg(i = ~ Conclusion == "Not Proportional", j = ~Conclusion, bg = col_red,    part = "body")
   }
   if (BE.flag) {
     ft <- ft %>%
-      flextable::bg(i = ~ Conclusion == "Bioequivalent", j = ~Conclusion, bg = col_green, part = "body") %>%
-      flextable::bg(i = ~ Conclusion == "Not bioequivalent", j = ~Conclusion, bg = col_red, part = "body")
+      flextable::bg(i = ~ Conclusion == "Bioequivalent",     j = ~Conclusion, bg = col_green, part = "body") %>%
+      flextable::bg(i = ~ Conclusion == "Not bioequivalent", j = ~Conclusion, bg = col_red,   part = "body")
   }
   ft <- set_table_properties(ft, width = 1, layout = "autofit")
   return(ft)
