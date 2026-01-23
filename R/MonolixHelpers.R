@@ -168,10 +168,9 @@ tableRunHistory <- function(sycomoreProjectFile,
     return(dfall)
 }
 
-# TODO: consider adding shrinkage and SE
+
 
 #' Creates a table combining population parameter estimates with information on their uncertainties.
-#'
 #' The nameMapping data.frame provides the mapping between the Monolix parameter name (`Parameter`), the parameter
 #' display name (`Label`) and the parameter units (`Unit`).
 #'
@@ -179,29 +178,115 @@ tableRunHistory <- function(sycomoreProjectFile,
 #' by using the Unicode code (e.g., `\U03C9` for omega). The order of the rows also controls the order of the parameters
 #' in the table. The results will always be grouped into sections of fixed effects, random effects,
 #' and error parameters, in that order, with a column Section identifying the parameter type.
-#'
 #' See the function [createNameMapping()] to more easily create the `nameMapping` data.frame.
+#' @details
+#' **Table Format:**
+#' The function supports two output formats controlled by `use_wide_format`:
 #'
-#' @param project_file path to Monolix .mlxtran project file, or NULL to use currently loaded project
-#' @param nameMapping data.frame with columns Parameter, Label, and Unit
-#' to specify the display name and units for the Monolix parameter name
-#' @param include_RSE TRUE to include a column for RSE in the table, FALSE to omit
-#' @param include_CI TRUE to include columns for confidence interval in the table, FALSE to omit
-#' @param include_CV TRUE to include rows for the coefficient of variation in the table, FALSE to omit
-#' @param include_bootstrap TRUE to include bootstrap results for uncertainties (P2.5, Median, P97.5), FALSE to omit
-#' @param use_wide_format_omegas TRUE for variability (omegas) in wide format, FALSE for long format
-#' @param std_err_method "" to use whichever method the project uses (linear in the case both are present), or
-#' "linear" or "stochasticApproximation" to specify the method
-#' @param digits number of digits to display
-#' @param roundingMethod "monolix" to use Monolix rounding where digits specifies the number of places after the decimal, or "signif"
-#' for digits to specify the number of significant figures
+#' - **Long format** (`use_wide_format = FALSE`, default): Each parameter (fixed effects, IIV, IOV,
+#'   correlations, residual error) appears in its own row. All parameters have the same column structure.
 #'
-#' @returns a table of parameter estimates and uncertainties
+#' - **Wide format** (`use_wide_format = TRUE`): Random effects (IIV/IOV) appear as additional columns
+#'   next to their corresponding fixed effects. For example, a table might have columns:
+#'   Parameter, Fixed Effect Estimate, RSE (%), IIV SD, IIV RSE (%), IOV SD, IOV RSE (%).
+#'   Correlations and residual error parameters remain in separate rows.
+#'
+#' **Section Classification:**
+#'
+#' The `Section` column classifies parameters into categories:
+#' - `FE`: Fixed effects (population parameters)
+#' - `IIV`: Inter-individual variability (omega parameters)
+#' - `IOV`: Inter-occasion variability (gamma parameters)
+#' - `CORR_IIV`: Correlations between IIV parameters
+#' - `CORR_IOV`: Correlations between IOV parameters
+#' - `RES_ERR`: Residual error parameters
+#'
+#' When used with [print_table_flex()], these sections automatically generate visual section
+#' headers to improve table readability.
+#'
+#' @param project_file Character string specifying the path to a Monolix .mlxtran project file, or `NULL` (default) to use the currently loaded project.
+#' @param nameMapping Data frame with columns `Parameter`, `Label`, and optionally `Unit`
+#'   to specify the display name and units for each Monolix parameter name. If `NULL` (default),
+#'   parameter names are used as-is with "_pop" suffix removed. See [createNameMapping()] for
+#'   a helper function to create this mapping.
+#' @param include_RSE Logical; if `TRUE` (default), includes relative standard error (RSE) columns in the table. Applies to both fixed effects and random effects in wide format.
+#' @param include_IIV Logical; if `TRUE` (default), includes inter-individual variability (IIV)
+#'   omega estimates in wide format tables. When `FALSE`, only fixed effect estimates are shown
+#'   in wide format (CV% can still be shown if `include_CV = TRUE`).
+#' @param include_IOV Logical; if `TRUE` (default), includes inter-occasion variability (IOV) gamma parameters in the table. When `FALSE`, IOV parameters are excluded from the output.
+#' @param include_CI Logical; if `TRUE`, includes confidence interval columns (P2.5, P97.5) in the table. Default is `FALSE`. Applies to both fixed effects and random effects in wide format.
+#' @param include_CV Logical; if `TRUE`, includes coefficient of variation (CV%) for random effects.
+#'   Default is `FALSE`. In wide format, CV% is shown as an additional column alongside omega estimates
+#'   when `include_IIV = TRUE`.
+#' @param include_bootstrap Logical; if `TRUE`, includes bootstrap results for uncertainties (P2.5, Median, P97.5). Default is `FALSE`.
+#' @param use_wide_format Logical; if `TRUE`, presents random effects (IIV/IOV) in wide format
+#'   with omega estimates as columns next to their corresponding fixed effects. If `FALSE` (default),
+#'   uses long format where each parameter appears in its own row. Wide format creates sections:
+#'   Fixed effects | Random effects with split header, plus separate headers for Correlations and
+#'   Residual error.
+#' @param std_err_method Character string specifying the standard error method to use. Options: `""` (default, uses whichever method the project has, preferring linear if both), `"linear"`, or `"stochasticApproximation"`.
+#' @param digits Integer specifying the number of digits to display. Default is 3. Interpretation depends on `roundingMethod`.
+#' @param roundingMethod Character string specifying the rounding method. Options:
+#'   - `"monolix"` (default): Adaptive rounding where `digits` specifies decimal places,
+#'     with extra digits added for values < 1
+#'   - `"signif"`: Standard significant figures rounding where `digits` specifies
+#'     the number of significant figures
+#'   - `"none"`: No rounding applied
+#' @param prettyLabels Logical; if `TRUE` (default), applies pretty formatting to column names with newline characters for better table display (e.g., "Fixed Effect\\nEstimate", "IIV\\nSD").
+#'   If `FALSE`, uses simpler column names without newlines (e.g., "FE_Estimate", "IIV_SD").
+#'
+#' @return A data frame containing parameter estimates and uncertainties with the following structure:
+#'   \describe{
+#'     \item{Parameter}{Parameter name (or Label if provided in nameMapping)}
+#'     \item{Section}{Factor column identifying parameter type (FE, IIV, IOV, CORR_IIV, CORR_IOV, RES_ERR)}
+#'     \item{Estimate}{Parameter estimate (fixed effects) or variability estimate (random effects)}
+#'     \item{RSE}{Relative standard error (if `include_RSE = TRUE`)}
+#'     \item{P2.5, P97.5}{Confidence interval bounds (if `include_CI = TRUE`)}
+#'     \item{CV%}{Coefficient of variation for random effects (if `include_CV = TRUE`)}
+#'   }
+#'
+#'   The returned data frame includes attributes:
+#'   \describe{
+#'     \item{table_type}{"pop" - identifies this as a population parameter table}
+#'     \item{format}{"wide" or "long" - indicates the table format}
+#'     \item{include_IOV}{Logical - whether IOV parameters are included}
+#'   }
+#'
+#'   These attributes are used by [print_table_flex()] to automatically add
+#'   section headers when rendering the table.
+#'
 #' @export
-#' @seealso [createNameMapping()]
+#' @seealso [createNameMapping()], [print_table_flex()]
 #'
 #' @examples
-#' # TODO
+#' \dontrun{
+#' # Basic usage with default long format
+#' pop_table <- tableParameterEstimates()
+#' print_table_flex(pop_table, color = c("RSE"))
+#'
+#' # Wide format with IIV and CV%
+#' pop_table_wide <- tableParameterEstimates(
+#'   use_wide_format = TRUE,
+#'   include_IIV = TRUE,
+#'   include_CV = TRUE)
+#' print_table_flex(pop_table_wide, color = c("RSE"), theme_fn = theme_booktabs)
+#'
+#' # With custom name mapping and confidence intervals
+#' name_map <- createNameMapping(
+#'   c("Cl_pop", "V_pop", "ka_pop"),
+#'   labels = c("Clearance", "Volume", "Absorption rate"),
+#'   units = c("L/h", "L", "1/h"))
+#' pop_table <- tableParameterEstimates(
+#'   nameMapping = name_map,
+#'   include_CI = TRUE,
+#'   include_RSE = TRUE)
+#'
+#' # Exclude IOV parameters
+#' pop_table_no_iov <- tableParameterEstimates(include_IOV = FALSE)
+#'
+#' # Simple column names (no pretty formatting)
+#' pop_table_simple <- tableParameterEstimates(prettyLabels = FALSE)
+#' }
 tableParameterEstimates <- function(project_file    = NULL,
                                     nameMapping     = NULL,
                                     include_RSE     = TRUE,
