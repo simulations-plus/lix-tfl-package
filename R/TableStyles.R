@@ -6,7 +6,12 @@
 # Internal helper functions
 # ---------------------------------------------------------------------------
 
-# Convert header input to string (handles data.frame or character input)
+#' Convert header input to string
+#' Helper function that converts header input to a single string value.
+#' Handles data.frame or character input and extracts the first non-NA element.
+#' @param x Input value. Can be NULL, data.frame, or character vector.
+#' @return A single character string, or NULL if input is NULL or empty.
+#' @keywords internal
 .as_header_string <- function(x) {
   if (is.null(x)) {
     return(NULL)
@@ -20,25 +25,302 @@
   x[1] # take first element if someone passes a vector
 }
 
-# Soften hex color by blending with white (for docx/pptx output)
+#' Soften hex color by blending with white
+#' Blends a hex color with white to create a softer, pastel version.
+#' Primarily used for docx/pptx output where softer colors are preferred.
+#' @param hex Character string specifying a hex color code (e.g., "#FFD700").
+#' @param amount Numeric value between 0 and 1 specifying the blend amount. 0 = original color, 1 = white. Default is 0.8.
+#' @return A character string with the softened hex color code.
+#' @keywords internal
 .soften_hex <- function(hex, amount = 0.8) {
   rgb <- grDevices::col2rgb(hex) / 255
   new <- rgb + (1 - rgb) * amount
   grDevices::rgb(new[1], new[2], new[3])
 }
 
-# Convert hex color to rgba format (for HTML output)
+#' Convert hex color to rgba format
+#' Converts a hex color code to rgba format with transparency.
+#' Primarily used for HTML output where rgba colors with alpha transparency
+#' provide better visual results.
+#' @param hex Character string specifying a hex color code (e.g., "#FFD700").
+#' @param alpha Numeric value between 0 and 1 specifying the alpha transparency. 0 = fully transparent, 1 = fully opaque. Default is 0.2.
+#' @return A character string with the rgba color specification (e.g., "rgba(255,215,0,0.20)").
+#' @keywords internal
 .hex_to_rgba <- function(hex, alpha = 0.2) {
   rgb <- grDevices::col2rgb(hex)
   sprintf("rgba(%d,%d,%d,%.2f)", rgb[1], rgb[2], rgb[3], alpha)
 }
 
-# Check if output format is HTML
+#' Check if output format is HTML
+#' Detects whether the current knitr rendering context is HTML output.
+#' Used to determine whether to apply HTML-specific formatting (like rgba colors).
+#' @return Logical; `TRUE` if HTML output, `FALSE` otherwise.
+#' @keywords internal
 .is_html_output <- function() {
   tryCatch(knitr::is_html_output(), error = function(e) FALSE)
 }
 
+#' Add section headers to population parameter tables
+#' For population parameter tables (identified by `table_type = "pop"` attribute),
+#' inserts section header rows to visually separate different sections such as
+#' Fixed effects, Random effects (IIV/IOV), Correlations, and Residual error.
+#' @param data.flex Data frame with population parameter estimates. Must have:
+#'   - Attribute `table_type` set to "pop"
+#'   - Attribute `format` indicating "wide" or "long" format
+#'   - Column `Section` with section codes (FE, IIV, IOV, CORR, CORR_IIV, CORR_IOV, RES_ERR)
+#'
+#' @return A list with four elements:
+#'   \describe{
+#'     \item{data.flex}{Modified data frame with section header rows inserted}
+#'     \item{section_header_rows}{Integer vector of row indices where section headers were inserted}
+#'     \item{wide_split_col}{Integer; column index where "Random effects" section starts in wide format (NULL for long format)}
+#'     \item{is_wide}{Logical; `TRUE` if table is in wide format, `FALSE` otherwise}
+#'   }
+#'
+#' @details
+#' **Wide format:** Creates a split header at the top ("Fixed effects | Random effects")
+#' and adds separate section headers only for Correlations and Residual error sections.
+#' The split column is determined by finding the first column containing "IIV" or "IOV".
+#'
+#' **Long format:** Adds section headers for all sections (Fixed effects, Random effects,
+#' Correlations, Residual error). If IOV parameters are present, IIV and IOV get separate
+#' headers ("Random effects IIV" and "Random effects IOV").
+#' @keywords internal
+.add_pop_section_headers <- function(data.flex) {
+  # Check if this is a pop table with Section column
+  table_type   <- attr(data.flex, "table_type")
+  is_pop_table <- !is.null(table_type) && table_type == "pop"
+  table_format <- attr(data.flex, "format")
+  is_wide      <- !is.null(table_format) && table_format == "wide"
 
+  # Initialize return values
+  section_header_rows <- integer(0)
+  wide_split_col <- NULL
+
+  # If not a pop table or no Section column, return unchanged
+  if (!is_pop_table || !"Section" %in% colnames(data.flex)) {
+    return(list(
+      data.flex           = data.flex,
+      section_header_rows = section_header_rows,
+      wide_split_col      = wide_split_col,
+      is_wide             = is_wide))
+  }
+
+  # Save Section column before processing
+  section_col <- as.character(data.flex$Section)
+
+  if (is_wide) {
+    # Wide format: split header at top + section headers for CORR/RES_ERR
+    # Determine labels for non-FE/IIV/IOV sections
+    section_labels <- c(
+      CORR     = "Correlations",
+      CORR_IIV = "Correlations IIV",
+      CORR_IOV = "Correlations IOV",
+      RES_ERR  = "Residual error")
+
+    # Move Section column to the end
+    other_cols <- setdiff(names(data.flex), "Section")
+    data.flex  <- data.flex[, c(other_cols, "Section"), drop = FALSE]
+
+    # Find first column containing "IIV" or "IOV" (AFTER reordering)
+    iiv_iov_cols <- grep("IIV|IOV", colnames(data.flex), ignore.case = TRUE)
+    if (length(iiv_iov_cols) > 0) {
+      wide_split_col <- min(iiv_iov_cols)
+    }
+
+    # Map section codes to labels (use section_col which is already character)
+    data.flex$Section <- ifelse(section_col %in% names(section_labels),
+                                 section_labels[section_col],
+                                 section_col)
+
+    # Find where to insert section headers (for CORR and RES_ERR only)
+    insert_positions <- integer(0)
+    section_names    <- character(0)
+
+    for (i in seq_len(nrow(data.flex))) {
+      if (i == 1 || isTRUE(data.flex$Section[i] != data.flex$Section[i - 1])) {
+        # Only add headers for CORR and RES_ERR sections
+        if (!is.na(data.flex$Section[i]) && data.flex$Section[i] %in% section_labels) {
+          insert_positions <- c(insert_positions, i)
+          section_names    <- c(section_names, data.flex$Section[i])
+        }
+      }
+    }
+
+    # Insert header rows from bottom to top
+    if (length(insert_positions) > 0) {
+      for (idx in length(insert_positions):1) {
+        pos          <- insert_positions[idx]
+        section_name <- section_names[idx]
+
+        # Create header row
+        header_row       <- data.flex[pos, , drop = FALSE]
+        header_row[1, ]  <- ""
+        header_row[1, 1] <- section_name
+
+        # Insert before the position
+        if (pos == 1) {
+          data.flex <- rbind(header_row, data.flex)
+        } else {
+          data.flex <- rbind(
+            data.flex[1:(pos - 1), , drop = FALSE],
+            header_row,
+            data.flex[pos:nrow(data.flex), , drop = FALSE])
+        }
+
+        # Track position after all insertions
+        section_header_rows <- c(pos + (idx - 1), section_header_rows)
+      }
+      rownames(data.flex) <- NULL
+    }
+
+    # Remove the Section column
+    data.flex$Section <- NULL
+
+    # Add split header at the very top
+    if (!is.null(wide_split_col)) {
+      header_row      <- data.flex[1, , drop = FALSE]
+      header_row[1, ] <- ""
+
+      data.flex           <- rbind(header_row, data.flex)
+      section_header_rows <- c(1, section_header_rows + 1)
+      rownames(data.flex) <- NULL
+    }
+  } else {
+    # Long format: multiple section headers
+    # Determine labels based on actual data
+    has_IOV <- any(section_col == "IOV")
+    section_labels <- c(
+      FE       = "Fixed effects",
+      IIV      = if (has_IOV) "Random effects IIV" else "Random effects",
+      IOV      = "Random effects IOV",
+      CORR     = "Correlations",
+      CORR_IIV = "Correlations IIV",
+      CORR_IOV = "Correlations IOV",
+      RES_ERR  = "Residual error")
+
+    # Move Section column to the end
+    other_cols <- setdiff(names(data.flex), "Section")
+    data.flex  <- data.flex[, c(other_cols, "Section"), drop = FALSE]
+
+    # Map section codes to full labels in the data
+    data.flex$Section <- section_labels[section_col]
+
+    # Identify where to insert section headers
+    insert_positions <- integer(0)
+    section_names    <- character(0)
+
+    for (i in seq_len(nrow(data.flex))) {
+      if (i == 1 || data.flex$Section[i] != data.flex$Section[i - 1]) {
+        insert_positions <- c(insert_positions, i)
+        section_names    <- c(section_names, data.flex$Section[i])
+      }
+    }
+
+    # Insert header rows from bottom to top
+    for (idx in length(insert_positions):1) {
+      pos          <- insert_positions[idx]
+      section_name <- section_names[idx]
+
+      # Create header row
+      header_row <- data.flex[pos, , drop = FALSE]
+      header_row[1, ]  <- ""
+      header_row[1, 1] <- section_name
+
+      # Insert before the position
+      if (pos == 1) {
+        data.flex <- rbind(header_row, data.flex)
+      } else {
+        data.flex <- rbind(
+          data.flex[1:(pos - 1), , drop = FALSE],
+          header_row,
+          data.flex[pos:nrow(data.flex), , drop = FALSE])
+      }
+
+      # Track final position for styling
+      section_header_rows <- c(pos + (idx - 1), section_header_rows)
+    }
+    rownames(data.flex) <- NULL
+
+    # Remove the Section column
+    data.flex$Section <- NULL
+  }
+
+  return(list(
+    data.flex = data.flex,
+    section_header_rows = section_header_rows,
+    wide_split_col = wide_split_col,
+    is_wide = is_wide
+  ))
+}
+
+#' Format and style data frames as flextables
+#'
+#' Converts a data frame into a styled flextable with support for multiple features:
+#' conditional coloring, section headers for population tables, subscript formatting,
+#' custom headers, and various pre-defined themes.
+#'
+#' @param data.flex Data frame to be formatted as a flextable. Can include:
+#'   - Subscript markers: Use `[[sub:text]]` in cell values for subscripts
+#'   - Attributes for special handling:
+#'     - `table_type = "pop"`: Enables population table section headers
+#'     - `format = "wide"` or `"long"`: Controls section header layout for pop tables
+#'   - Column `Section` (for pop tables): Section codes (FE, IIV, IOV, CORR, RES_ERR)
+#'
+#' @param grouping.columns Character vector of column names to left-align. These columns are reordered to appear first in the table. If `NULL` (default), no special column ordering is applied.
+#' @param header_level1 Character string, data frame, or vector for the topmost header line. Added using `flextable::add_header_lines()`. If `NULL` (default), no level 1 header.
+#' @param header_level2 Character string, data frame, or vector for the middle header line. If `NULL` (default), no level 2 header.
+#' @param header_level3 Character string, data frame, or vector for the bottom header line. If `NULL` (default), no level 3 header.
+#' @param color Character vector specifying which columns to conditionally color.
+#'   Options include:
+#'   \describe{
+#'     \item{"RSE"}{Colors any column with "RSE" in its name based on thresholds:
+#'       50-100 (yellow), 100-200 (orange), >200 (red)}
+#'     \item{"PVAL"}{Colors `p.value` column: <=0.01 (red), 0.01-0.05 (orange), 0.05-0.09 (yellow)}
+#'     \item{"BE"}{Colors `Conclusion` column for bioequivalence: "Bioequivalent" (green), "Not bioequivalent" (red)}
+#'     \item{"DP"}{Colors `Conclusion` column for dose proportionality: "Proportional" (green),
+#'       "Inconclusive" (yellow), "Not Proportional" (red)}
+#'   }
+#'   If `NULL` (default), no conditional coloring is applied.
+#' @param theme_fn Function to apply a flextable theme. Default is `theme_box`. Other options include `theme_vanilla`, `theme_zebra`, `theme_booktabs`, `theme_tron`.
+#' @param soften_amount Numeric value between 0 and 1 controlling color softening for docx/pptx output. 0 = original colors, 1 = white. Default is 0.50.
+#' @param html_alpha Numeric value between 0 and 1 controlling transparency for HTML output (rgba colors). Default is 0.18.
+#'
+#' @return A flextable object with applied styling and formatting.
+#'
+#' @details
+#' **Population table section headers:**
+#' If `data.flex` has attribute `table_type = "pop"` and a `Section` column, section headers are automatically added:
+#' - **Wide format**: Split header "Fixed effects | Random effects" at top,
+#'   plus section headers for Correlations and Residual error
+#' - **Long format**: Section headers for all sections (Fixed effects,
+#'   Random effects IIV/IOV, Correlations, Residual error)
+#'
+#' **Subscript formatting:**
+#' Use `[[sub:text]]` markers in cell values to render subscripts. Example: `"C[[sub:max]]"` renders as C with subscript "max".
+#' **Color palettes:**
+#' Colors are automatically adapted based on output format:
+#' - HTML: rgba colors with transparency
+#' - docx/pptx: Softened hex colors blended with white
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Basic usage
+#' df <- data.frame(Parameter = c("Cl", "V"), Estimate = c(1.5, 20.3), RSE = c(45, 120))
+#' print_table_flex(df, color = c("RSE"))
+#'
+#' # Population table with section headers
+#' pop_table <- tableParameterEstimates(use_wide_format = TRUE)
+#' print_table_flex(pop_table, color = c("RSE"), theme_fn = theme_booktabs)
+#'
+#' # With grouping columns and custom headers
+#' print_table_flex(df,
+#'                  grouping.columns = c("Parameter"),
+#'                  header_level1 = "Population PK Parameters",
+#'                  color = c("RSE"))
+#' }
 print_table_flex <- function(data.flex,
                              grouping.columns = NULL,
                              header_level1    = NULL,
@@ -52,9 +334,9 @@ print_table_flex <- function(data.flex,
   color <- toupper(color) # optional but helpful
 
   # Check if columns exist
-  pval.flag <- ("PVAL" %in% color) && "p.value" %in% colnames(data.flex)
-  BE.flag <- ("BE" %in% color) && "Conclusion" %in% colnames(data.flex)
-  DP.flag <- ("DP" %in% color) && "Conclusion" %in% colnames(data.flex)
+  pval.flag <- ("PVAL" %in% color) && "p.value"    %in% colnames(data.flex)
+  BE.flag   <- ("BE" %in% color)   && "Conclusion" %in% colnames(data.flex)
+  DP.flag   <- ("DP" %in% color)   && "Conclusion" %in% colnames(data.flex)
 
   # RSE flag: detect any columns containing "RSE" in their name
   # This covers: "RSE", "%RSE", "RSE (%)", "FE_RSE", "IIV_RSE", "IOV_RSE", "IIV\nRSE (%)", etc.
@@ -70,68 +352,22 @@ print_table_flex <- function(data.flex,
   # Reorder columns so grouping columns come first
   if (!is.null(grouping.columns)) {
     other.cols <- setdiff(names(data.flex), grouping.columns)
-    data.flex <- data.flex[, c(grouping.columns, other.cols), drop = FALSE]
+    data.flex  <- data.flex[, c(grouping.columns, other.cols), drop = FALSE]
   }
 
-  # Check if this is a pop table and add section header rows
-  table_type   <- attr(data.flex, "table_type")
-  is_pop_table <- !is.null(table_type) && table_type == "pop"
-  include_IOV  <- attr(data.flex, "include_IOV")
-
-  if (is_pop_table && "Section" %in% colnames(data.flex)) {
-    # Convert Section from factor to character to allow custom header labels
-    # (factor levels are maintained through row order from tableParameterEstimates)
-    data.flex$Section <- as.character(data.flex$Section)
-
-    # Define section labels
-    section_labels <- list(
-      FE       = "Fixed effects",
-      IIV      = if (!is.null(include_IOV) && include_IOV) "Random effects IIV" else "Random effects",
-      IOV      = "Random effects IOV",
-      CORR     = "Correlations",
-      CORR_IIV = "Correlations IIV",
-      CORR_IOV = "Correlations IOV",
-      RES_ERR  = "Residual error")
-
-    # Find first occurrence of each section
-    sections_present <- unique(data.flex$Section)
-    rows_to_add      <- list()
-    offset           <- 0
-
-    for (i in seq_len(nrow(data.flex))) {
-      section_val <- data.flex$Section[i]
-
-      # Check if this is the first occurrence of this section
-      if (i == 1 || data.flex$Section[i - 1] != section_val) {
-        if (section_val %in% names(section_labels)) {
-          # Create header row with section label in first column, rest NA
-          header_row <- data.flex[i, , drop = FALSE]
-          header_row[1, ] <- NA
-          header_row[1, 1] <- section_labels[[section_val]]
-
-          # Store row to add with adjusted position
-          rows_to_add[[length(rows_to_add) + 1]] <- list(pos = i + offset, row = header_row)
-          offset <- offset + 1
-        }
-      }
-    }
-
-    # Insert header rows from bottom to top to maintain correct positions
-    if (length(rows_to_add) > 0) {
-      for (item in rev(rows_to_add)) {
-        if (item$pos == 1) {
-          data.flex <- rbind(item$row, data.flex)
-        } else {
-          data.flex <- rbind(
-            data.flex[1:(item$pos - 1), , drop = FALSE],
-            item$row,
-            data.flex[item$pos:nrow(data.flex), , drop = FALSE]
-          )
-        }
-      }
-      rownames(data.flex) <- NULL
-    }
-  }
+  #-----------------------------------------------------------------------------
+  # [Code Chunk of Pop Table Section Headers]
+  # For population parameter tables, add section header rows to visually
+  # separate different sections (Fixed effects, Random effects, Correlations,
+  # Residual error). Wide format uses a split header at top for FE/RE.
+  #-----------------------------------------------------------------------------
+  pop_result <- .add_pop_section_headers(data.flex)
+  data.flex <- pop_result$data.flex
+  section_header_rows <- pop_result$section_header_rows
+  wide_split_col <- pop_result$wide_split_col
+  is_wide <- pop_result$is_wide
+  is_pop_table <- length(section_header_rows) > 0 || !is.null(wide_split_col)
+  # --- END: Pop Table Section Headers ---
 
   ft <- flextable(data.flex)
   #-----------------------------------------------------------------------------
@@ -231,29 +467,74 @@ print_table_flex <- function(data.flex,
   }
 
   # Style section header rows for pop tables
-  if (is_pop_table && "Section" %in% colnames(data.flex)) {
-    section_header_labels <- c(
-      "Fixed effects",
-      "Random effects", "Random effects IIV", "Random effects IOV",
-      "Correlations", "Correlations IIV", "Correlations IOV",
-      "Residual error")
+  if (is_pop_table && length(section_header_rows) > 0) {
+    border_style <- officer::fp_border(color = "black", width = 1)
 
-    # Find which column index is Section (before we remove it)
-    section_col_idx <- which(colnames(data.flex) == "Section")
-    first_col_name <- colnames(data.flex)[1]
+    if (is_wide && !is.null(wide_split_col)) {
+      # Wide format: split header row at top + section headers below
+      split_row_idx <- section_header_rows[1]
 
-    for (label in section_header_labels) {
-      matching_rows <- which(data.flex[[first_col_name]] == label)
-      if (length(matching_rows) > 0) {
+      # Merge and label "Fixed effects" (columns 1 to split_col - 1)
+      ft <- ft %>%
+        flextable::merge_at(i = split_row_idx, j = 1:(wide_split_col - 1), part = "body") %>%
+        flextable::compose(i = split_row_idx, j = 1, value = flextable::as_paragraph("Fixed effects"), part = "body") %>%
+        flextable::align(i = split_row_idx, j = 1, align = "left", part = "body")
+
+      # Merge and label "Random effects" (columns split_col to end)
+      ft <- ft %>%
+        flextable::merge_at(i = split_row_idx, j = wide_split_col:ncol(data.flex), part = "body") %>%
+        flextable::compose(i = split_row_idx, j = wide_split_col, value = flextable::as_paragraph("Random effects"), part = "body") %>%
+        flextable::align(i = split_row_idx, j = wide_split_col:ncol(data.flex), align = "left", part = "body")
+
+      # Bold the split header row
+      ft <- ft %>%
+        flextable::bold(i = split_row_idx, part = "body")
+
+      # Add borders around split header
+      ft <- ft %>%
+        flextable::hline_top(border = border_style, part = "body") %>%
+        flextable::hline(i = split_row_idx, border = border_style, part = "body")
+
+      # Style remaining section headers (CORR, RES_ERR) if any
+      if (length(section_header_rows) > 1) {
+        for (row_idx in section_header_rows[-1]) {
+          ft <- ft %>%
+            flextable::bold(i = row_idx, part = "body") %>%
+            flextable::align(i = row_idx, align = "left", part = "body") %>%
+            flextable::merge_at(i = row_idx, j = seq_len(ncol(data.flex)), part = "body")
+
+          # Add line above
+          ft <- ft %>%
+            flextable::hline(i = row_idx - 1, border = border_style, part = "body")
+
+          # Add line below
+          ft <- ft %>%
+            flextable::hline(i = row_idx, border = border_style, part = "body")
+        }
+      }
+
+    } else {
+      # Long format: multiple section headers (existing logic)
+      for (row_idx in section_header_rows) {
         ft <- ft %>%
-          flextable::bold(i = matching_rows, part = "body") %>%
-          flextable::align(i = matching_rows, align = "left", part = "body") %>%
-          flextable::merge_at(i = matching_rows, j = seq_len(ncol(data.flex)), part = "body")
+        	flextable::bold(i = row_idx, part = "body") %>%
+          flextable::align(i = row_idx, align = "left", part = "body") %>%
+          flextable::merge_at(i = row_idx, j = seq_len(ncol(data.flex)), part = "body")
+
+        # Add line above
+        if (row_idx > 1) {
+          ft <- ft %>%
+            flextable::hline(i = row_idx - 1, border = border_style, part = "body")
+        } else {
+          ft <- ft %>%
+            flextable::hline_top(border = border_style, part = "body")
+        }
+
+        # Add line below
+        ft <- ft %>%
+          flextable::hline(i = row_idx, border = border_style, part = "body")
       }
     }
-
-    # Remove the Section column from the flextable
-    ft <- flextable::delete_columns(ft, j = section_col_idx)
   }
 
   # ---------------------------------------------------------------------------
