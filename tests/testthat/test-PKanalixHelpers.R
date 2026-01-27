@@ -3,11 +3,11 @@ pkx_project_2 = "test-projects/pkanalix/project_occasions2.pkx"
 pkx_project_3 = "test-projects/pkanalix/project_aPCSK9_SAD_route.pkx"
 pkx_project_4 = "test-projects/pkanalix/project_steadystate_infusion.pkx"
 
-test_that("NCAConcentrationSummary_Table basic (no stratification)", {
+test_that("tableNCAConcentration basic (no stratification)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test basic functionality with no covariates
-	table <- NCAConcentrationSummary_Table(projectFile = pkx_project_1)
+	table <- tableNCAConcentration(projectFile = pkx_project_1)
 
 	# Verify structure
 	expect_true(is.data.frame(table))
@@ -21,11 +21,11 @@ test_that("NCAConcentrationSummary_Table basic (no stratification)", {
 	expect_true(all(diff(suppressWarnings(as.numeric(table$Time))) >= 0, na.rm = TRUE))
 })
 
-test_that("NCAConcentrationSummary_Table with stratification (stratify_columns = FALSE)", {
+test_that("tableNCAConcentration with stratification (stratify_columns = FALSE)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with covariates but no column stratification
-	table <- NCAConcentrationSummary_Table(
+	table <- tableNCAConcentration(
 		projectFile      = pkx_project_1,
 		covariates       = "TINFCAT",
 		stratify_columns = FALSE)
@@ -39,11 +39,11 @@ test_that("NCAConcentrationSummary_Table with stratification (stratify_columns =
 	expect_gt(nrow(table), 0)
 })
 
-test_that("NCAConcentrationSummary_Table with column stratification (stratify_columns = TRUE)", {
+test_that("tableNCAConcentration with column stratification (stratify_columns = TRUE)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with covariates and column stratification
-	table <- NCAConcentrationSummary_Table(
+	table <- tableNCAConcentration(
 		projectFile      = pkx_project_1,
 		covariates       = "TINFCAT",
 		stratify_columns = TRUE)
@@ -63,11 +63,11 @@ test_that("NCAConcentrationSummary_Table with column stratification (stratify_co
 	expect_gt(length(stratified_cols), 1)
 })
 
-test_that("NCAConcentrationSummary_Table with specific metrics (single metric)", {
+test_that("tableNCAConcentration with specific metrics (single metric)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with single metric
-	table <- NCAConcentrationSummary_Table(
+	table <- tableNCAConcentration(
 		projectFile      = pkx_project_1,
 		covariates       = "TINFCAT",
 		stratify_columns = TRUE,
@@ -79,11 +79,11 @@ test_that("NCAConcentrationSummary_Table with specific metrics (single metric)",
 	expect_true(any(grepl("Overall", names(table), ignore.case = TRUE)))
 })
 
-test_that("NCAConcentrationSummary_Table with specific metrics (multiple metrics)", {
+test_that("tableNCAConcentration with specific metrics (multiple metrics)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with multiple metrics
-	table <- NCAConcentrationSummary_Table(
+	table <- tableNCAConcentration(
 		projectFile = pkx_project_1,
 		covariates = "TINFCAT",
 		stratify_columns = TRUE,
@@ -98,12 +98,12 @@ test_that("NCAConcentrationSummary_Table with specific metrics (multiple metrics
 									all(grepl("Mean.*SD|Geometric.*CV", table$Statistic))))
 })
 
-test_that("NCAConcentrationSummary_Table with useNominalTime", {
+test_that("tableNCAConcentration with useNominalTime", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with nominal time (project_occasions2 likely has nominal time)
 	# If no nominal time available, should fall back to actual time
-	table <- NCAConcentrationSummary_Table(
+	table <- tableNCAConcentration(
 		projectFile    = pkx_project_2,
 		useNominalTime = TRUE)
 
@@ -113,11 +113,11 @@ test_that("NCAConcentrationSummary_Table with useNominalTime", {
 	expect_gt(nrow(table), 0)
 })
 
-test_that("NCAConcentrationSummary_Table with covariate_labels", {
+test_that("tableNCAConcentration with covariate_labels", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with custom covariate labels
-	table <- NCAConcentrationSummary_Table(
+	table <- tableNCAConcentration(
 		projectFile      = pkx_project_1,
 		covariates       = "TINFCAT",
 		covariate_labels = "Infusion Category",
@@ -128,21 +128,21 @@ test_that("NCAConcentrationSummary_Table with covariate_labels", {
 	expect_true(any(grepl("Infusion Category", header_names)))
 })
 
-test_that("NCAConcentrationSummary_Table rounding methods", {
+test_that("tableNCAConcentration rounding methods", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test different rounding methods
-	table_monolix <- NCAConcentrationSummary_Table(
+	table_monolix <- tableNCAConcentration(
 		projectFile = pkx_project_1,
 		roundDigits = 2,
 		roundMethod = "monolix")
 
-	table_signif <- NCAConcentrationSummary_Table(
+	table_signif <- tableNCAConcentration(
 		projectFile = pkx_project_1,
 		roundDigits = 2,
 		roundMethod = "signif")
 
-	table_none <- NCAConcentrationSummary_Table(
+	table_none <- tableNCAConcentration(
 		projectFile = pkx_project_1,
 		roundMethod = "none")
 
@@ -156,17 +156,17 @@ test_that("NCAConcentrationSummary_Table rounding methods", {
 	expect_equal(nrow(table_monolix), nrow(table_none))
 })
 
-test_that("NCAConcentrationSummary_Table prettyLabels", {
+test_that("tableNCAConcentration prettyLabels", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with pretty labels enabled
-	table_pretty <- NCAConcentrationSummary_Table(
+	table_pretty <- tableNCAConcentration(
 		projectFile = pkx_project_1,
 		prettyLabels = TRUE
 	)
 
 	# Test with pretty labels disabled
-	table_raw <- NCAConcentrationSummary_Table(
+	table_raw <- tableNCAConcentration(
 		projectFile = pkx_project_1,
 		prettyLabels = FALSE
 	)
@@ -180,12 +180,12 @@ test_that("NCAConcentrationSummary_Table prettyLabels", {
 	expect_equal(nrow(table_pretty), nrow(table_raw))
 })
 
-test_that("NCAConcentrationSummary_Table errors", {
+test_that("tableNCAConcentration errors", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with invalid metrics
 	expect_error(
-		NCAConcentrationSummary_Table(
+		tableNCAConcentration(
 			projectFile = pkx_project_1,
 			metrics = c("InvalidMetric1", "InvalidMetric2")
 		),
@@ -194,7 +194,7 @@ test_that("NCAConcentrationSummary_Table errors", {
 
 	# Test with invalid covariates (this should error or warn)
 	expect_error(
-		NCAConcentrationSummary_Table(
+		tableNCAConcentration(
 			projectFile = pkx_project_1,
 			covariates = "NONEXISTENT_COVARIATE"
 		)
