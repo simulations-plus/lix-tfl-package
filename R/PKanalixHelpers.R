@@ -7,7 +7,7 @@
 # Public Helper Functions for PKanalix
 # Helpers for Tables
 
-#' NCAConcentrationSummary_Table
+#' tableNCAConcentration
 #'
 #' Generates a summary table of concentration data from NCA analysis, with optional
 #' stratification by covariates. Transforms concentration data from wide to long format
@@ -67,26 +67,26 @@
 #'
 #' @examples
 #' # Overall summary (no stratification)
-#' # NCAConcentrationSummary_Table()
+#' # tableNCAConcentration()
 #'
 #' # Stratified by treatment, all metrics
-#' # NCAConcentrationSummary_Table(covariates = "TREAT")
+#' # tableNCAConcentration(covariates = "TREAT")
 #'
 #' # Stratified by multiple covariates with column layout
-#' # NCAConcentrationSummary_Table(
+#' # tableNCAConcentration(
 #' #   covariates = c("DOSE", "FOOD"),
 #' #   stratify_columns = TRUE
 #' # )
 #'
 #' # Custom metrics and labels
-#' # NCAConcentrationSummary_Table(
+#' # tableNCAConcentration(
 #' #   covariates = c("SEX", "AGE_CAT"),
 #' #   metrics = c("GeomCV", "MeanSD"),
 #' #   covariate_labels = c("Sex", "Age Category"),
 #' #   stratify_columns = TRUE
 #' # )
 #'
-NCAConcentrationSummary_Table <- function(projectFile = NULL,
+tableNCAConcentration <- function(projectFile = NULL,
                                           covariates = NULL,
                                           useNominalTime = TRUE,
                                           metrics = NULL,
@@ -261,7 +261,7 @@ NCAConcentrationSummary_Table <- function(projectFile = NULL,
 
 
 #-------------------------------------------------------------------------------
-#' NCAParameterSummary_Table
+#' tableNCAParameters
 #'
 #' Generates a comprehensive summary table of NCA parameters including both standard
 #' statistics from PKanalix and additional descriptive statistics (quartiles, median, max).
@@ -290,17 +290,17 @@ NCAConcentrationSummary_Table <- function(projectFile = NULL,
 #'
 #' @examples
 #' # Overall (no stratification), all computed parameters, wide layout
-#' # NCAParameterSummary_Table()
+#' # tableNCAParameters()
 #'
 #' # Stratified by a categorical covariate, selected parameters, vertical layout
-#' # NCAParameterSummary_Table(
+#' # tableNCAParameters(
 #' #   covariates = "FORM",
 #' #   NCAparams  = c("AUCINF_obs", "AUClast", "Cmax"),
 #' #   digits     = 2,
 #' #   horizontal = FALSE
 #' # )
 #'
-NCAParameterSummary_Table <- function(projectFile = NULL,
+tableNCAParameters <- function(projectFile = NULL,
                                       covariates = NULL,
                                       NCAparams = NULL,
                                       metrics = NULL,
@@ -532,7 +532,7 @@ NCAParameterSummary_Table <- function(projectFile = NULL,
 
 
 #-------------------------------------------------------------------------------
-#' NCARatioSummary_Table
+#' tableNCARatios
 #'
 #' Create a summary table of individual NCA ratio results with optional
 #' stratification by covariates (e.g., DOSE, VISIT).
@@ -552,15 +552,15 @@ NCAParameterSummary_Table <- function(projectFile = NULL,
 #'
 #' @examples
 #' # Overall summary (all subjects, no stratification):
-#' NCARatioSummary_Table()
+#' tableNCARatios()
 #'
 #' # Stratified by DOSE, results in wide format:
-#' NCARatioSummary_Table(covariates = "DOSE", horizontal = TRUE)
+#' tableNCARatios(covariates = "DOSE", horizontal = TRUE)
 #'
 #' # Stratified by DOSE and VISIT, results in long format:
-#' NCARatioSummary_Table(covariates = c("DOSE", "VISIT"), horizontal = FALSE)
+#' tableNCARatios(covariates = c("DOSE", "VISIT"), horizontal = FALSE)
 #'
-NCARatioSummary_Table <- function(projectFile  = NULL,
+tableNCARatios <- function(projectFile  = NULL,
                                   covariates   = NULL,
                                   ratioParams  = NULL,
                                   metrics      = NULL,
@@ -710,7 +710,7 @@ NCARatioSummary_Table <- function(projectFile  = NULL,
 ################################################################################
 # Helpers for Listings
 
-#' Abbreviation_Listing
+#' listingAbbreviation
 #'
 #' Produces a two-column abbreviation listing initialized from an input table,
 #' returning unique abbreviations and an empty \code{Full Term} column for later
@@ -726,9 +726,9 @@ NCARatioSummary_Table <- function(projectFile  = NULL,
 #'   de-duplicated and sorted.
 #'
 #' @examples
-#' # Abbreviation_Listing(NCAParamSummary_info)
-#' # Abbreviation_Listing(df, abbrev_col = "abbr")
-# Abbreviation_Listing	 <- function(data, abbrev_col = "Abbreviation") {
+#' # listingAbbreviation(NCAParamSummary_info)
+#' # listingAbbreviation(df, abbrev_col = "abbr")
+# listingAbbreviation	 <- function(data, abbrev_col = "Abbreviation") {
 #' #  dt <- data.frame(Abbreviation = data$parameter, stringsAsFactors = FALSE)
 #' #  abbrev_listing <- dt %>%
 #' #    distinct(!!rlang::sym(abbrev_col)) %>%
@@ -737,7 +737,7 @@ NCARatioSummary_Table <- function(projectFile  = NULL,
 #' #    dplyr::arrange(Abbreviation)
 #' #  return(abbrev_listing)
 # }
-Abbreviation_Listing <- function(data,
+listingAbbreviation <- function(data,
                                  abbrev_col = "Abbreviation",
                                  fullterm_col = "Full Term") {
   # Validate: data must have a 'parameter' column
@@ -765,7 +765,7 @@ Abbreviation_Listing <- function(data,
 }
 
 #-------------------------------------------------------------------------------
-#' NCAConcentration_Listing
+#' listingNCAConcentration
 #'
 #' Creates a long-format listing of individual concentrations by time, with
 #' optional stratification columns (\code{covariates}). Summary metric rows are
@@ -814,15 +814,15 @@ Abbreviation_Listing <- function(data,
 #'
 #' @examples
 #' # Default: actual time only
-#' NCAConcentration_Listing()
+#' listingNCAConcentration()
 #'
 #' # With covariates
-#' NCAConcentration_Listing(covariates = c("TREAT", "FOOD"))
+#' listingNCAConcentration(covariates = c("TREAT", "FOOD"))
 #'
 #' # Include nominal time if available
-#' NCAConcentration_Listing(covariates = c("TREAT", "FOOD"), useNominalTime = TRUE)
+#' listingNCAConcentration(covariates = c("TREAT", "FOOD"), useNominalTime = TRUE)
 #'
-NCAConcentration_Listing <- function(projectFile = NULL,
+listingNCAConcentration <- function(projectFile = NULL,
                                      covariates = NULL,
                                      useNominalTime = FALSE) {
   # Ensure the correct project is loaded
