@@ -86,15 +86,15 @@
 #' #   stratify_columns = TRUE
 #' # )
 #'
-tableNCAConcentration <- function(projectFile = NULL,
-                                          covariates = NULL,
-                                          useNominalTime = TRUE,
-                                          metrics = NULL,
-                                          stratify_columns = FALSE,
-                                          covariate_labels = NULL,
-                                          roundDigits = 3,
-                                          roundMethod = c("monolix", "signif", "none"),
-                                          prettyLabels = TRUE) {
+tableNCAConcentration <- function(projectFile      = NULL,
+                                  covariates       = NULL,
+                                  useNominalTime   = TRUE,
+                                  metrics          = NULL,
+                                  stratify_columns = FALSE,
+                                  covariate_labels = NULL,
+                                  roundDigits      = 3,
+                                  roundMethod      = c("monolix", "signif", "none"),
+                                  prettyLabels     = TRUE) {
 
   roundMethod <- match.arg(roundMethod)
 
@@ -105,142 +105,99 @@ tableNCAConcentration <- function(projectFile = NULL,
   .checkProjectFile(projectFile, "pkanalix")
   .ensureProjectLoaded(projectFile)
 
-  # Validate Stratification Logic
   stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
-
-  # Validate Covariate Labels
   covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
 
   # ==========================================================================
+  # 2. FETCH DATA
+  # ==========================================================================
+
   # Fetch Stratified Data (if covariates exist)
   if (!is.null(covariates)) {
     raw_strat <- .prepareNCASummaryStats(
-      project = projectFile, NCAparams = NULL, covariates = covariates, roundDigits = roundDigits, roundMethod = roundMethod,
-      units = FALSE, aliases = FALSE, by_time = TRUE, useNominalTime = useNominalTime)
+      project = projectFile, NCAparams = NULL, covariates = covariates,
+      roundDigits = roundDigits, roundMethod = roundMethod,
+      units = FALSE, aliases = FALSE, by_time = TRUE, useNominalTime = useNominalTime
+    )
   } else {
     raw_strat <- NULL
   }
 
-  # Fetch Overall Data (Always needed if we want an Overall column or if no covariates exist)
+  # Fetch Overall Data
   raw_overall <- .prepareNCASummaryStats(
-    project = projectFile, NCAparams = NULL, covariates = NULL, roundDigits = roundDigits, roundMethod = roundMethod,
-    units = FALSE, aliases = FALSE, by_time = TRUE, useNominalTime = useNominalTime)
+    project = projectFile, NCAparams = NULL, covariates = NULL,
+    roundDigits = roundDigits, roundMethod = roundMethod,
+    units = FALSE, aliases = FALSE, by_time = TRUE, useNominalTime = useNominalTime
+  )
 
   if (is.null(raw_overall) && is.null(raw_strat)) stop("No NCA results available.")
 
-  # Define Time Column
   time_col <- "Time"
 
   # ==========================================================================
-  # TABLE FORMATTING
+  # 3. TABLE FORMATTING
+  # ==========================================================================
+
   if (stratify_columns && !is.null(covariates)) {
     # ----------------------------------------------------------------------
     # CASE: Stratification (Vertical columns for covariates + Overall)
     # ----------------------------------------------------------------------
 
-    # Validate Metrics existence
-    available_cols   <- names(raw_strat)
-    descriptor_cols  <- c(time_col, covariates, "Nobs")
+    available_cols <- names(raw_strat)
+    descriptor_cols <- c(time_col, covariates, "Nobs")
     selected_metrics <- .validateAndSelectMetrics(available_cols, metrics, descriptor_cols)
 
     # Prepare Labels
     if (is.null(covariate_labels)) labels <- covariates else labels <- covariate_labels
 
-    # Process Stratified Data (Create Header)
-    # IMPORTANT: strictly select only what we need to avoid dupes
+    # Create Header Column
     df_prepared <- raw_strat %>%
       dplyr::select(dplyr::all_of(time_col), dplyr::all_of(covariates), dplyr::all_of(selected_metrics)) %>%
       dplyr::rowwise() %>%
       dplyr::mutate(header = {
         values <- dplyr::c_across(dplyr::all_of(covariates))
-        # Logic: "Label=Value"
         pieces <- paste0(labels, "=", as.character(values))
         paste(pieces, collapse = "\n")
       }) %>%
       dplyr::ungroup()
 
-    # 4. Process Overall Data
+    # Prepare Overall Data with "Overall" label
     df_overall_clean <- raw_overall %>%
-      dplyr::select(dplyr::all_of(time_col), dplyr::all_of(selected_metrics))
+      dplyr::select(dplyr::all_of(time_col), dplyr::all_of(selected_metrics)) %>%
+      dplyr::mutate(header_N = "Overall")
 
-
-    # 5. PIVOT LOGIC
-    #    Distinguish between Single Metric vs. Multiple Metrics
-
-    if (length(selected_metrics) > 1) {
-      # MULTIPLE METRICS:
-      # Target Format: Time | Statistic | Stratum1 | Stratum2 | ... | Overall
-
-      # Pivot Stratified
-      df_strat_wide <- df_prepared %>%
-        dplyr::select(dplyr::all_of(time_col), header, dplyr::all_of(selected_metrics)) %>%
-        dplyr::mutate(dplyr::across(dplyr::all_of(selected_metrics), as.character)) %>%
-        tidyr::pivot_longer(cols = dplyr::all_of(selected_metrics), names_to = "Statistic", values_to = "Value") %>%
-        tidyr::pivot_wider(names_from = header, values_from = Value)
-
-      # Pivot Overall
-      df_overall_long <- df_overall_clean %>%
-        dplyr::mutate(dplyr::across(dplyr::all_of(selected_metrics), as.character)) %>%
-        tidyr::pivot_longer(cols = dplyr::all_of(selected_metrics), names_to = "Statistic", values_to = "Overall")
-
-      # Join
-      final_df <- df_strat_wide %>%
-        dplyr::left_join(df_overall_long, by = c(time_col, "Statistic"))
-    } else {
-      # SINGLE METRIC:
-      # Target Format: Time | Stratum1 | Stratum2 | ... | Overall
-      # (No "Statistic" column needed, or kept implicitly if desired, but typically removed for single metric tables)
-
-      metric_name <- selected_metrics[1]
-
-      # Pivot Stratified
-      df_strat_wide <- df_prepared %>%
-        dplyr::select(dplyr::all_of(time_col), header, dplyr::all_of(metric_name)) %>%
-        tidyr::pivot_wider(names_from = header, values_from = dplyr::all_of(metric_name))
-
-      # Prepare Overall
-      df_overall_renamed <- df_overall_clean %>%
-        dplyr::rename(Overall = dplyr::all_of(metric_name))
-
-      # Join
-      final_df <- df_strat_wide %>%
-        dplyr::left_join(df_overall_renamed, by = time_col)
-    }
+    # Use helper to pivot metrics with overall column
+    final_df <- .pivotMetricsWithOverall(
+      df_strat = df_prepared,
+      overall_df = df_overall_clean,
+      selected_metrics = selected_metrics,
+      param_col = time_col,
+      n_per_stratum = NULL  # No N counts in headers for concentration tables
+    )
   } else {
     # ----------------------------------------------------------------------
     # CASE: No Stratification (Just Overall / List by Time)
     # ----------------------------------------------------------------------
 
-    # Use raw_strat if covariates present (but stratify=FALSE), else raw_overall
     source_df <- if (!is.null(covariates)) raw_strat else raw_overall
 
-    descriptor_cols <- c(time_col, covariates) # Keep covariates as columns on the left
+    descriptor_cols <- c(time_col, covariates)
     selected_metrics <- .validateAndSelectMetrics(names(source_df), metrics, descriptor_cols)
 
-    # Filter columns
     cols_to_keep <- intersect(c(descriptor_cols, selected_metrics), names(source_df))
     final_df <- source_df[, cols_to_keep, drop = FALSE]
-
-    # Optional: If multiple metrics requested but stratify=FALSE,
-    # data is usually wide (Metric1, Metric2 columns).
-    # If you want "Statistic" column stacking, add pivot here.
-    # Assuming standard behavior is wide for simple lists:
-    if (length(selected_metrics) > 1) {
-      # Optional: Pivot to long format "Statistic" if preferred for non-stratified too
-      # final_df <- final_df %>%
-      #   tidyr::pivot_longer(cols=dplyr::all_of(selected_metrics), names_to="Statistic", values_to="Value")
-    }
   }
 
   # ==========================================================================
   # 4. PRETTY LABELS & SORTING
+  # ==========================================================================
+
   if (isTRUE(prettyLabels)) {
     final_df <- .prettyLabels(final_df)
 
-    # Apply pretty labels to "Statistic" content if it exists
+    # Apply pretty labels to Statistic column content if it exists
     if ("Statistic" %in% names(final_df)) {
       curr_metrics <- unique(final_df$Statistic)
-      # Create dummy to map labels
       dummy_df <- as.data.frame(matrix(NA, nrow = 1, ncol = length(curr_metrics)))
       names(dummy_df) <- curr_metrics
       dummy_df <- .prettyLabels(dummy_df)
@@ -300,19 +257,18 @@ tableNCAConcentration <- function(projectFile = NULL,
 #' #   horizontal = FALSE
 #' # )
 #'
-tableNCAParameters <- function(projectFile = NULL,
-                                      covariates = NULL,
-                                      NCAparams = NULL,
-                                      metrics = NULL,
-                                      horizontal = TRUE,
-                                      stratify_columns = FALSE,
-                                      covariate_labels = NULL,
-                                      roundDigits = 3,
-                                      roundMethod = c("monolix", "signif", "none"),
-                                      units = TRUE,
-                                      aliases = TRUE,
-                                      prettyLabels = TRUE) {
-
+tableNCAParameters <- function(projectFile  = NULL,
+                               covariates   = NULL,
+                               NCAparams    = NULL,
+                               metrics      = NULL,
+                               horizontal   = TRUE,
+                               stratify_columns = FALSE,
+                               covariate_labels = NULL,
+                               roundDigits  = 3,
+                               roundMethod  = c("monolix", "signif", "none"),
+                               units        = TRUE,
+                               aliases      = TRUE,
+                               prettyLabels = TRUE) {
   roundMethod <- match.arg(roundMethod)
 
   # ==========================================================================
@@ -322,10 +278,7 @@ tableNCAParameters <- function(projectFile = NULL,
   .checkProjectFile(projectFile, "pkanalix")
   .ensureProjectLoaded(projectFile)
 
-  # Validate Stratification Logic: if stratify=TRUE but covariates=NULL -> resets stratify to FALSE and warns.
   stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
-
-  # Validate Covariate Labels
   covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
 
   # ==========================================================================
@@ -337,9 +290,7 @@ tableNCAParameters <- function(projectFile = NULL,
       message("Note: stratify_columns=TRUE uses a different table format. The 'horizontal' argument is ignored.")
     }
 
-    # Determine Metrics:
-    # For Stratified NCA, we default to "GeomCV" if NULL, unlike Covariates which defaults to all.
-    # This prevents the table from exploding in size by default.
+    # Default to GeomCV for stratified tables to prevent explosion
     if (is.null(metrics)) {
       user_metrics <- "GeomCV"
       message("No metric specified for stratified table. Using default: 'GeomCV'")
@@ -348,9 +299,9 @@ tableNCAParameters <- function(projectFile = NULL,
     }
 
     # Get stratified data
-    # summary_stats <- .prepareNCASummaryStats(project, NCAparams, covariates, roundDigits, roundMethod, units, aliases)
-    summary_stats <- .prepareNCASummaryStats(projectFile, NCAparams, covariates, roundDigits, roundMethod, units, aliases, by_time = FALSE, useNominalTime = FALSE)
-
+    summary_stats <- .prepareNCASummaryStats(projectFile, NCAparams, covariates, roundDigits,
+      roundMethod, units, aliases,
+      by_time = FALSE, useNominalTime = FALSE)
     if (is.null(summary_stats)) stop("No NCA results available.")
 
     # Identify parameter column
@@ -359,114 +310,40 @@ tableNCAParameters <- function(projectFile = NULL,
       param_col <- intersect(names(summary_stats), c("parameter", "Parameter"))[1]
     }
 
-    # --- 3. Validate Selection using Helper ---
+    # Validate metrics
     descriptor_cols <- c(param_col, covariates, "Nobs")
-
     selected_metrics <- .validateAndSelectMetrics(
       available_cols = names(summary_stats),
       user_metrics   = user_metrics,
       descriptors    = descriptor_cols)
 
-    # --- Case 1: Stratified summary (requires Overall) ---
+    # Get overall stats if covariates provided
+    overall_stats <- NULL
     if (!is.null(covariates)) {
-      # overall_stats <- .prepareNCASummaryStats(project, NCAparams, NULL, roundDigits, roundMethod, units, aliases)
-      overall_stats <- .prepareNCASummaryStats(projectFile, NCAparams, NULL, roundDigits, roundMethod, units, aliases, by_time = FALSE, useNominalTime = FALSE)
+      overall_stats <- .prepareNCASummaryStats(projectFile, NCAparams, NULL, roundDigits,
+        roundMethod, units, aliases,
+        by_time = FALSE, useNominalTime = FALSE)
 
-      # Safety check
       if (!all(selected_metrics %in% names(overall_stats))) {
         stop("Mismatch in metrics between Stratified and Overall results.")
       }
-
-      # 'Overall' column(s)
-      overall <- overall_stats %>%
-        dplyr::select(!!rlang::sym(param_col), Nobs, dplyr::all_of(selected_metrics)) %>%
-        dplyr::mutate(header_N = paste0("Overall\n(N=", Nobs, ")"))
-
-      if (is.null(covariate_labels)) labels <- covariates else labels <- covariate_labels
-
-      df_prepared <- summary_stats %>%
-        dplyr::rowwise() %>%
-        dplyr::mutate(header = {
-          values <- dplyr::c_across(dplyr::all_of(covariates))
-          pieces <- paste0(labels, "=", as.character(values))
-          paste(pieces, collapse = "\n")
-        }) %>%
-        dplyr::ungroup()
-
-      n_per_stratum <- df_prepared %>%
-        distinct(header, Nobs) %>%
-        dplyr::mutate(header_N = paste0(header, "\n(N=", Nobs, ")"))
-
-      # --- PIVOT LOGIC ---
-
-      if (length(selected_metrics) > 1) {
-        # === MULTIPLE METRICS: Pivot to 'Statistic' column ===
-
-        # Pivot Overall
-        overall <- overall %>%
-          dplyr::mutate(dplyr::across(dplyr::all_of(selected_metrics), as.character)) %>%
-          tidyr::pivot_longer(cols = dplyr::all_of(selected_metrics), names_to = "Statistic", values_to = "Overall") %>%
-          dplyr::select(!!rlang::sym(param_col), Statistic, Overall, header_N)
-
-        # Pivot Stratified
-        df_strat <- df_prepared %>%
-          dplyr::select(!!rlang::sym(param_col), header, dplyr::all_of(selected_metrics)) %>%
-          dplyr::mutate(dplyr::across(dplyr::all_of(selected_metrics), as.character)) %>%
-          tidyr::pivot_longer(cols = dplyr::all_of(selected_metrics), names_to = "Statistic", values_to = "Value") %>%
-          tidyr::pivot_wider(names_from = header, values_from = Value)
-
-        df_strat <- df_strat %>%
-          dplyr::rename_with(~ ifelse(
-            .x %in% n_per_stratum$header,
-            n_per_stratum$header_N[match(.x, n_per_stratum$header)],
-            .x))
-
-        overall_label <- unique(overall$header_N)
-        summary_stats <- df_strat %>%
-          dplyr::left_join(overall %>% dplyr::select(-header_N), by = c(param_col, "Statistic")) %>%
-          dplyr::rename(!!overall_label := Overall)
-      } else {
-        # Single metric:
-        overall <- overall %>%
-          dplyr::rename(Overall = dplyr::all_of(selected_metrics)) %>%
-          dplyr::select(!!rlang::sym(param_col), Overall, header_N)
-
-        df_strat <- df_prepared %>%
-          dplyr::select(!!rlang::sym(param_col), header, dplyr::all_of(selected_metrics)) %>%
-          tidyr::pivot_wider(names_from = header, values_from = dplyr::all_of(selected_metrics))
-
-        df_strat <- df_strat %>%
-          dplyr::rename_with(~ ifelse(
-            .x %in% n_per_stratum$header,
-            n_per_stratum$header_N[match(.x, n_per_stratum$header)],
-            .x))
-
-        summary_stats <- df_strat %>%
-          dplyr::left_join(overall, by = param_col) %>%
-          dplyr::rename(!!unique(overall$header_N) := Overall) %>%
-          dplyr::select(-header_N)
-      }
-    } else {
-      # --- Case 2: No strata provided (just Overall) ---
-
-      if (length(selected_metrics) > 1) {
-        summary_stats <- summary_stats %>%
-          dplyr::select(!!rlang::sym(param_col), Nobs, dplyr::all_of(selected_metrics)) %>%
-          dplyr::mutate(header_N = paste0("Overall\n(N=", max(Nobs, na.rm = TRUE), ")")) %>%
-          dplyr::mutate(dplyr::across(dplyr::all_of(selected_metrics), as.character)) %>%
-          tidyr::pivot_longer(cols = dplyr::all_of(selected_metrics), names_to = "Statistic", values_to = "Value") %>%
-          tidyr::pivot_wider(names_from = header_N, values_from = Value) %>%
-          dplyr::select(-dplyr::any_of("Nobs"))
-      } else {
-        summary_stats <- summary_stats %>%
-          dplyr::select(!!rlang::sym(param_col), Nobs, dplyr::all_of(selected_metrics)) %>%
-          dplyr::rename(!!paste0("Overall\n(N=", max(Nobs, na.rm = TRUE), ")") := dplyr::all_of(selected_metrics)) %>%
-          dplyr::select(-dplyr::any_of("Nobs"))
-      }
     }
+
+    # Build stratified table using helper
+    summary_stats <- .buildStratifiedTable(
+      summary_stats = summary_stats,
+      overall_stats = overall_stats,
+      covariates = covariates,
+      selected_metrics = selected_metrics,
+      param_col = param_col,
+      covariate_labels = covariate_labels
+    )
   } else {
-    # summary_stats <- .prepareNCASummaryStats(project, NCAparams, covariates, roundDigits, roundMethod, units, aliases)
-    summary_stats <- .prepareNCASummaryStats(projectFile, NCAparams, covariates, roundDigits, roundMethod, units, aliases, by_time = FALSE, useNominalTime = FALSE)
+    # Non-stratified table
+    summary_stats <- .prepareNCASummaryStats(projectFile, NCAparams, covariates, roundDigits,
+      roundMethod, units, aliases,
+      by_time = FALSE, useNominalTime = FALSE
+    )
     if (is.null(summary_stats)) stop("No NCA results available.")
 
     # Identify parameter column
@@ -475,47 +352,32 @@ tableNCAParameters <- function(projectFile = NULL,
       param_col <- intersect(names(summary_stats), c("parameter", "Parameter"))[1]
     }
 
-    # Determine metrics using internal helper
-    # If metrics=NULL here, the helper returns ALL available (standard behavior)
+    # Validate metrics (NULL means all)
     descriptor_cols <- c(param_col, covariates, "Nobs")
-
     selected_metrics <- .validateAndSelectMetrics(
       available_cols = names(summary_stats),
       user_metrics   = metrics,
-      descriptors    = descriptor_cols)
+      descriptors    = descriptor_cols
+    )
 
-    # Filter dataframe
+    # Filter to selected columns
     cols_to_keep <- intersect(c(descriptor_cols, selected_metrics), names(summary_stats))
     summary_stats <- summary_stats[, cols_to_keep, drop = FALSE]
 
+    # Pivot to vertical if requested
     if (!horizontal) {
-      # --- MODE 2: VERTICAL ---
-      stat_cols <- setdiff(names(summary_stats), c(param_col, covariates))
-      param_order <- unique(summary_stats[[param_col]])
-      stat_order <- stat_cols
-
-      summary_stats <- summary_stats %>%
-        dplyr::mutate(dplyr::across(dplyr::all_of(stat_cols), as.character)) %>%
-        tidyr::pivot_longer(
-          cols = dplyr::all_of(stat_cols),
-          names_to = "Statistic",
-          values_to = "Value") %>%
-        dplyr::mutate(Statistic = factor(Statistic, levels = stat_order)) %>%
-        tidyr::pivot_wider(
-          id_cols = c(dplyr::any_of(covariates), Statistic),
-          names_from = dplyr::all_of(param_col),
-          values_from = Value) %>%
-        dplyr::arrange(dplyr::across(dplyr::any_of(covariates)), Statistic) %>%
-        dplyr::select(dplyr::any_of(covariates), Statistic, dplyr::all_of(as.character(param_order)))
+      summary_stats <- .pivotToVertical(summary_stats, param_col, covariates)
     }
-    # HORIZONTAL (DEFAULT)
-    # No additional pivoting needed
   }
+
+  # ==========================================================================
+  # 3. PRETTY LABELS
+  # ==========================================================================
 
   if (isTRUE(prettyLabels)) {
     summary_stats <- .prettyLabels(summary_stats)
 
-    # Apply pretty labels to the content of the 'Statistic' column if it exists
+    # Apply pretty labels to Statistic column content if it exists
     if ("Statistic" %in% names(summary_stats)) {
       curr_metrics <- unique(summary_stats$Statistic)
       dummy_df <- as.data.frame(matrix(NA, nrow = 1, ncol = length(curr_metrics)))
@@ -561,31 +423,30 @@ tableNCAParameters <- function(projectFile = NULL,
 #' tableNCARatios(covariates = c("DOSE", "VISIT"), horizontal = FALSE)
 #'
 tableNCARatios <- function(projectFile  = NULL,
-                                  covariates   = NULL,
-                                  ratioParams  = NULL,
-                                  metrics      = NULL,
-                                  horizontal   = TRUE,
-                                  roundDigits  = 3,
-                                  roundMethod  = c("monolix", "signif", "none"),
-                                  prettyLabels = TRUE) {
-
-	# projectFile  = prj3
-	# covariates   = NULL
-	# ratioParams  = NULL
-	# metrics      = NULL
-	# horizontal   = TRUE
-	# roundDigits  = 3
-	# roundMethod = "monolix"
-	# prettyLabels = TRUE
-
+                           covariates   = NULL,
+                           ratioParams  = NULL,
+                           metrics      = NULL,
+                           horizontal   = TRUE,
+                           roundDigits  = 3,
+                           roundMethod  = c("monolix", "signif", "none"),
+                           prettyLabels = TRUE) {
   roundMethod <- match.arg(roundMethod)
 
-  # Ensure the correct project is loaded
+  # ==========================================================================
+  # 1. VALIDATION & SETUP
+  # ==========================================================================
+
   .checkProjectFile(projectFile, "pkanalix")
   .ensureProjectLoaded(projectFile)
 
   indivratio <- lixoftConnectors::getNCAIndividualRatios()
   ratio_info <- lixoftConnectors::getNCARatios()
+
+  # Validate that ratio data is available
+  if (isFALSE(indivratio)) {
+    stop("No NCA ratio results available.")
+  }
+
   ratio_cols <- names(ratio_info)
 
   # Candidate group-by columns: in dataframe but not id and not ratio(s)
@@ -597,9 +458,12 @@ tableNCARatios <- function(projectFile  = NULL,
   if (length(bad)) {
     stop(
       "Unsupported grouping column(s): ", paste(bad, collapse = ", "),
-      "\nAllowed: ", paste(groupby_candidates, collapse = ", ")
-    )
+      "\nAllowed: ", paste(groupby_candidates, collapse = ", "))
   }
+
+  # ==========================================================================
+  # 2. DATA PREPARATION
+  # ==========================================================================
 
   # Long form over ALL ratio columns
   long_df <- tidyr::pivot_longer(
@@ -609,32 +473,30 @@ tableNCARatios <- function(projectFile  = NULL,
     values_to = "Ratio")
 
   # Filter to specific ratio parameters (if requested)
-  # ratioParams sanity check
   if (!is.null(ratioParams)) {
     available_params <- unique(long_df$Parameter)
-    missing_params <- setdiff(ratioParams, available_params)
-    valid_params <- intersect(ratioParams, available_params)
+    missing_params   <- setdiff(ratioParams, available_params)
+    valid_params     <- intersect(ratioParams, available_params)
 
     if (!length(valid_params)) {
       stop(
         paste0(
           "None of the requested ratio parameters were found.\n",
           "Requested: ", paste(ratioParams, collapse = ", "), "\n",
-          "Available: ", paste(available_params, collapse = ", ")
-        )
-      )
+          "Available: ", paste(available_params, collapse = ", ")))
     }
     if (length(missing_params)) {
-      warning(
-        paste0( "Ignoring unknown ratio parameters: ", paste(missing_params, collapse = ", "))
-      )
+      warning(paste0("Ignoring unknown ratio parameters: ", paste(missing_params, collapse = ", ")))
     }
     long_df <- dplyr::filter(long_df, Parameter %in% valid_params)
   }
 
+  # ==========================================================================
+  # 3. SUMMARIZE & FORMAT
+  # ==========================================================================
+
   # Create summary table & summarise across subjects
   if (length(covariates) > 0) {
-    # Grouped summary
     summary_tbl <- .summarizeStats(
       df         = long_df,
       group_vars = c(covariates, "Parameter"),
@@ -650,10 +512,9 @@ tableNCARatios <- function(projectFile  = NULL,
       dplyr::arrange(Parameter)
   }
 
-  # -------------------------------------------------
-  # Apply rounding settings
+  # Apply rounding
   summary_tbl <- .round_num(
-  	to_round        = summary_tbl,
+    to_round        = summary_tbl,
     digits          = roundDigits,
     rounding_method = roundMethod,
     exclude         = c("Parameter", covariates))
@@ -662,42 +523,27 @@ tableNCARatios <- function(projectFile  = NULL,
   summary_tbl <- .combinedStats(summary_tbl)
 
   # Filter to specific metrics (if requested)
-  # metrics sanity check: use internal helper for consistent validation
   descriptor_cols <- c("Parameter", covariates, "N")
-  # Note: standardizing count column name if necessary, though usually .summarizeStats is consistent
 
   selected_metrics <- .validateAndSelectMetrics(
     available_cols = names(summary_tbl),
     user_metrics   = metrics,
     descriptors    = descriptor_cols)
 
-  # keep descriptor columns (Parameter + grouping vars) and requested metrics
   summary_tbl <- summary_tbl[, c(descriptor_cols, selected_metrics), drop = FALSE]
+
+  # ==========================================================================
+  # 4. PRETTY LABELS & PIVOT
+  # ==========================================================================
 
   if (isTRUE(prettyLabels)) {
     summary_tbl <- .prettyLabels(summary_tbl)
   }
 
   if (horizontal == FALSE) {
-    param_col <- intersect(names(summary_tbl), c("parameter", "Parameter")) # Identify parameter column (handles both "parameter" and "Parameter")
-
-    stat_cols <- setdiff(names(summary_tbl), c(param_col, covariates)) # Identify which columns are stats (everything else)
-
-    # Define order for pivoting
-    stat_order <- stat_cols
-
-    summary_tbl <- summary_tbl %>%
-      dplyr::mutate(dplyr::across(dplyr::all_of(stat_cols), as.character)) %>% # <--- force character to pivot
-      tidyr::pivot_longer(
-        cols      = dplyr::all_of(stat_cols),
-        names_to  = "Statistic",
-        values_to = "Value") %>%
-      dplyr::mutate(Statistic = factor(Statistic, levels = stat_order)) %>%
-      tidyr::pivot_wider(
-        id_cols     = c(dplyr::any_of(covariates), Statistic),
-        names_from  = dplyr::all_of(param_col),
-        values_from = Value) %>%
-      dplyr::arrange(dplyr::across(dplyr::any_of(covariates)), Statistic)
+    # Use helper function for vertical pivot
+    param_col   <- intersect(names(summary_tbl), c("parameter", "Parameter"))
+    summary_tbl <- .pivotToVertical(summary_tbl, param_col, covariates)
   }
 
   return(as.data.frame(summary_tbl))
