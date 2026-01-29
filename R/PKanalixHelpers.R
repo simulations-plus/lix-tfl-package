@@ -220,41 +220,52 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #-------------------------------------------------------------------------------
 #' tableNCAParameters
 #'
+#' Modified version of tableNCAParameters with include_id feature.
 #' Generates a comprehensive summary table of NCA parameters including both standard
 #' statistics from PKanalix and additional descriptive statistics (quartiles, median, max).
-#' Combines individual parameter data with summary statistics for complete reporting.
+#' Can optionally include individual subject data when horizontal = FALSE.
 #'
+#' @param projectFile Character string specifying the path to a PKanalix project file (.pkx).
+#'   If `NULL` (default), uses the currently loaded project.
 #' @param covariates Character vector of covariate names to stratify by
 #'   (e.g., `"TREAT"`, `"FOOD"`, or `c("TREAT","FOOD")`). If `NULL`
 #'   (default), no stratification is applied and overall summaries are returned.
-#'
 #' @param NCAparams Character vector of NCA parameter names to include. If
-#'   `NULL` (default), all parameters currently enabled in the project are used
-#'   (i.e., `lixoftConnectors::getNCASettings()$computedncaparameters`).
+#'   `NULL` (default), all parameters currently enabled in the project are used.
+#' @param metrics Character vector of metrics to include (e.g., "mean", "SD", "GeomCV").
+#'   If `NULL`, all available metrics are included.
+#' @param horizontal Logical. If `TRUE` (default), returns a "wide" table with
+#'   one row per covariate level and one column per statistic for each parameter.
+#'   If `FALSE`, returns a "vertical" table where `Statistic` forms the first column
+#'   and the parameters form the subsequent columns (useful for reporting).
+#' @param stratify_columns Logical; if `TRUE`, creates a stratified table layout with
+#'   separate columns for each covariate combination. Only works when `horizontal = TRUE`.
+#' @param covariate_labels Character vector of custom labels for covariates.
+#' @param include_id Logical; if `TRUE`, appends individual subject data as additional
+#'   rows below summary statistics. Each subject's ID appears in the `Statistic` column,
+#'   with their parameter values in the respective parameter columns. Only works when
+#'   `horizontal = FALSE` and `stratify_columns = FALSE`. Default is `FALSE`.
+#' @param roundDigits Integer number of decimal places for rounding. Default is `3`.
+#' @param roundMethod Character string specifying the rounding method:
+#'   "monolix" (default), "signif", or "none".
+#' @param units Logical; if `TRUE` (default), includes units in parameter names.
+#' @param aliases Logical; if `TRUE` (default), includes parameter aliases.
+#' @param prettyLabels Logical; if `TRUE` (default), converts column names to
+#'   human-readable labels.
 #'
-#' @param digits Integer number of decimal places used when rounding numeric
-#'   statistics. Default is `3`. This rounding is applied to both the PKanalix
-#'   summary statistics and the additional descriptive statistics.
-#'
-#' @param horizontal Logical. If `TRUE` (default), returns a “wide” table with
-#'   one row per covariate level (or overall) and one column per statistic for
-#'   each parameter, i.e., PKanalix-like structure. If `FALSE`, returns a
-#'   “vertical” table where \code{Statistic} forms the first column and the
-#'   parameters form the subsequent columns (useful for reporting)
-#'
-#' @return A data frame combining standard NCA statistics with additional descriptive statistics
-#'         (Q1, Q3, median, max) for the specified parameters.
+#' @return A data frame combining standard NCA statistics with additional descriptive statistics,
+#'         and optionally individual subject data.
 #'
 #' @examples
-#' # Overall (no stratification), all computed parameters, wide layout
-#' # tableNCAParameters()
+#' # Overall (no stratification), all computed parameters, vertical layout with individuals
+#' # tableNCAParameters(horizontal = FALSE, include_id = TRUE)
 #'
-#' # Stratified by a categorical covariate, selected parameters, vertical layout
+#' # Stratified by covariate with individuals
 #' # tableNCAParameters(
 #' #   covariates = "FORM",
 #' #   NCAparams  = c("AUCINF_obs", "AUClast", "Cmax"),
-#' #   digits     = 2,
-#' #   horizontal = FALSE
+#' #   horizontal = FALSE,
+#' #   include_id = TRUE
 #' # )
 #'
 tableNCAParameters <- function(projectFile  = NULL,
@@ -264,6 +275,7 @@ tableNCAParameters <- function(projectFile  = NULL,
                                horizontal   = TRUE,
                                stratify_columns = FALSE,
                                covariate_labels = NULL,
+                               include_id   = FALSE,
                                roundDigits  = 3,
                                roundMethod  = c("monolix", "signif", "none"),
                                units        = TRUE,
@@ -271,12 +283,40 @@ tableNCAParameters <- function(projectFile  = NULL,
                                prettyLabels = TRUE) {
   roundMethod <- match.arg(roundMethod)
 
+  # projectFile  = NULL
+  # covariates   = "DAY"
+  # NCAparams    = c("AUCINF_obs", "AUClast", "Cmax")
+  # metrics      = c("min", "MeanSD", "median", "GeomCV", "max")
+  # horizontal   = FALSE
+  # stratify_columns = FALSE
+  # covariate_labels = NULL
+  # include_id   = TRUE
+  # roundDigits  = 3
+  # roundMethod  = "monolix"
+  # units        = FALSE
+  # aliases      = FALSE
+  # prettyLabels = TRUE
+
+
   # ==========================================================================
   # 1. VALIDATION & SETUP
   # ==========================================================================
 
   .checkProjectFile(projectFile, "pkanalix")
   .ensureProjectLoaded(projectFile)
+
+  # Validate include_id compatibility
+  if (include_id) {
+    if (horizontal) {
+      stop("include_id = TRUE requires horizontal = FALSE. ",
+           "Individual subjects cannot be displayed in horizontal format. ",
+           "Use horizontal = FALSE to show individuals in the Statistic column.")
+    }
+    if (stratify_columns) {
+      stop("include_id = TRUE is not compatible with stratify_columns = TRUE. ",
+           "Use stratify_columns = FALSE with horizontal = FALSE to display individual data.")
+    }
+  }
 
   stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
   covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
@@ -340,9 +380,7 @@ tableNCAParameters <- function(projectFile  = NULL,
   } else {
     # Non-stratified table
     summary_stats <- .prepareNCASummaryStats(projectFile, NCAparams, covariates, roundDigits,
-      roundMethod, units, aliases,
-      by_time = FALSE, useNominalTime = FALSE
-    )
+      roundMethod, units, aliases, by_time = FALSE, useNominalTime = FALSE)
     if (is.null(summary_stats)) stop("No NCA results available.")
 
     # Identify parameter column
@@ -356,8 +394,7 @@ tableNCAParameters <- function(projectFile  = NULL,
     selected_metrics <- .validateAndSelectMetrics(
       available_cols = names(summary_stats),
       user_metrics   = metrics,
-      descriptors    = descriptor_cols
-    )
+      descriptors    = descriptor_cols)
 
     # Filter to selected columns
     cols_to_keep <- intersect(c(descriptor_cols, selected_metrics), names(summary_stats))
@@ -366,18 +403,107 @@ tableNCAParameters <- function(projectFile  = NULL,
     # Pivot to vertical if requested
     if (!horizontal) {
       summary_stats <- .pivotToVertical(summary_stats, param_col, covariates)
+
+      # ==========================================================================
+      # 3. ADD INDIVIDUAL DATA (if include_id = TRUE)
+      # ==========================================================================
+
+      if (include_id) {
+        # Fetch individual parameter data
+        indiv_result <- lixoftConnectors::getNCAIndividualParameters()
+
+        if (!isFALSE(indiv_result) && !is.null(indiv_result$parameters)) {
+          indiv_data_raw <- as.data.frame(indiv_result$parameters, stringsAsFactors = FALSE)
+
+          # Get parameter columns from the pivoted summary table
+          # After pivoting, parameters are columns with raw names like "AUCINF_obs", "Cmax"
+          param_cols <- setdiff(names(summary_stats), c("Statistic", covariates))
+
+          # Get available parameter columns from individual data
+          indiv_param_cols <- intersect(param_cols, names(indiv_data_raw))
+
+          if (length(indiv_param_cols) > 0) {
+            # Select relevant columns: id, covariates, parameters
+            cols_to_select <- c("id", intersect(covariates, names(indiv_data_raw)), indiv_param_cols)
+            indiv_subset <- indiv_data_raw[, cols_to_select, drop = FALSE]
+
+            # Rename 'id' to 'Statistic' for binding
+            indiv_subset <- indiv_subset %>%
+              dplyr::rename(Statistic = id)
+
+            # Apply rounding to individual values (same as summary)
+            indiv_subset <- .round_num(
+              to_round        = indiv_subset,
+              digits          = roundDigits,
+              rounding_method = roundMethod,
+              exclude         = c("Statistic", covariates))
+
+            # Add missing parameter columns with NA (if some params in summary but not in individuals)
+            missing_params <- setdiff(param_cols, names(indiv_subset))
+            for (col in missing_params) {
+              indiv_subset[[col]] <- NA_character_
+            }
+
+            # Add missing covariate columns with NA (if some covariates missing from individual data)
+            missing_covs <- setdiff(covariates, names(indiv_subset))
+            for (cov in missing_covs) {
+              indiv_subset[[cov]] <- NA_character_
+            }
+
+            # Reorder columns to match summary_stats
+            col_order <- names(summary_stats)
+            indiv_subset <- indiv_subset[, col_order, drop = FALSE]
+
+            # Convert all parameter columns to character for binding (to match summary format after pivoting)
+            summary_stats <- summary_stats %>%
+              dplyr::mutate(dplyr::across(dplyr::all_of(param_cols), as.character))
+
+            indiv_subset <- indiv_subset %>%
+              dplyr::mutate(dplyr::across(dplyr::all_of(param_cols), as.character))
+
+            # Save original statistic rows (before binding individuals)
+            original_stats <- unique(summary_stats$Statistic)
+
+            # Bind rows: summary first, then individuals
+            summary_stats <- dplyr::bind_rows(summary_stats, indiv_subset)
+
+            # Sort by covariate groups, with stats first (in original order), then individuals (sorted numerically)
+            # Add row type for sorting: stats (0) come before individuals (1)
+            summary_stats <- summary_stats %>%
+              dplyr::mutate(
+                row_type = ifelse(Statistic %in% original_stats, 0, 1),  # 0 = stat, 1 = individual
+                stat_order = match(Statistic, original_stats),  # Order within stats
+                # For individuals, try to sort numerically if possible
+                id_numeric = suppressWarnings(as.numeric(Statistic))
+              ) %>%
+              dplyr::arrange(
+                dplyr::across(dplyr::any_of(covariates)),  # Sort by covariates first
+                row_type,                                   # Then stats (0) before individuals (1)
+                stat_order,                                 # Then stats in original order
+                id_numeric,                                 # Then individuals numerically
+                Statistic                                   # Then any remaining by character (fallback)
+              ) %>%
+              dplyr::select(-row_type, -stat_order, -id_numeric)
+          } else {
+            message("No matching individual parameter data available. Showing summary statistics only.")
+          }
+        } else {
+          message("No individual parameter data available. Showing summary statistics only.")
+        }
+      }
     }
   }
 
   # ==========================================================================
-  # 3. PRETTY LABELS
+  # 4. PRETTY LABELS
   # ==========================================================================
 
   if (isTRUE(prettyLabels)) {
     summary_stats <- .prettyLabels(summary_stats)
 
     # Apply pretty labels to Statistic column content if it exists
-    if ("Statistic" %in% names(summary_stats)) {
+    # BUT: Do NOT prettify individual IDs - keep them as-is
+    if ("Statistic" %in% names(summary_stats) && !include_id) {
       curr_metrics <- unique(summary_stats$Statistic)
       dummy_df <- as.data.frame(matrix(NA, nrow = 1, ncol = length(curr_metrics)))
       names(dummy_df) <- curr_metrics
