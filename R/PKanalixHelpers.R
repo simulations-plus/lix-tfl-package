@@ -293,7 +293,7 @@ tableNCAParameters <- function(projectFile  = NULL,
     # Default to GeomCV for stratified tables to prevent explosion
     if (is.null(metrics)) {
       user_metrics <- "GeomCV"
-      message("No metric specified for stratified table. Using default: 'GeomCV'")
+      message("No metric specified for stratified table. Defaulting to 'GeomCV'. To show multiple metrics specify metrics explicitly.")
     } else {
       user_metrics <- metrics
     }
@@ -331,13 +331,12 @@ tableNCAParameters <- function(projectFile  = NULL,
 
     # Build stratified table using helper
     summary_stats <- .buildStratifiedTable(
-      summary_stats = summary_stats,
-      overall_stats = overall_stats,
-      covariates = covariates,
+      summary_stats    = summary_stats,
+      overall_stats    = overall_stats,
+      covariates       = covariates,
       selected_metrics = selected_metrics,
-      param_col = param_col,
-      covariate_labels = covariate_labels
-    )
+      param_col        = param_col,
+      covariate_labels = covariate_labels)
   } else {
     # Non-stratified table
     summary_stats <- .prepareNCASummaryStats(projectFile, NCAparams, covariates, roundDigits,
@@ -422,14 +421,16 @@ tableNCAParameters <- function(projectFile  = NULL,
 #' # Stratified by DOSE and VISIT, results in long format:
 #' tableNCARatios(covariates = c("DOSE", "VISIT"), horizontal = FALSE)
 #'
-tableNCARatios <- function(projectFile  = NULL,
-                           covariates   = NULL,
-                           ratioParams  = NULL,
-                           metrics      = NULL,
-                           horizontal   = TRUE,
-                           roundDigits  = 3,
-                           roundMethod  = c("monolix", "signif", "none"),
-                           prettyLabels = TRUE) {
+tableNCARatios <- function(projectFile      = NULL,
+                           covariates       = NULL,
+                           stratify_columns = FALSE,
+                           covariate_labels = NULL,
+                           ratioParams      = NULL,
+                           metrics          = NULL,
+                           horizontal       = TRUE,
+                           roundDigits      = 3,
+                           roundMethod      = c("monolix", "signif", "none"),
+                           prettyLabels     = TRUE) {
   roundMethod <- match.arg(roundMethod)
 
   # ==========================================================================
@@ -438,6 +439,10 @@ tableNCARatios <- function(projectFile  = NULL,
 
   .checkProjectFile(projectFile, "pkanalix")
   .ensureProjectLoaded(projectFile)
+
+  # Validate stratification and covariate label arguments
+  stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
+  covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
 
   indivratio <- lixoftConnectors::getNCAIndividualRatios()
   ratio_info <- lixoftConnectors::getNCARatios()
@@ -495,55 +500,150 @@ tableNCARatios <- function(projectFile  = NULL,
   # 3. SUMMARIZE & FORMAT
   # ==========================================================================
 
-  # Create summary table & summarise across subjects
-  if (length(covariates) > 0) {
-    summary_tbl <- .summarizeStats(
+  if (stratify_columns && !is.null(covariates)) {
+    # -----------------------------------------------------------------------
+    # CASE: Stratified columns (covariates as column headers with Overall)
+    # -----------------------------------------------------------------------
+
+    if (!horizontal) {
+      message("Note: stratify_columns=TRUE uses a different table format. The 'horizontal' argument is ignored.")
+    }
+
+    # Default to GeomCV for stratified tables if no metrics specified
+    if (is.null(metrics)) {
+      metrics <- "GeomCV"
+      message("No metric specified for stratified table. Defaulting to 'GeomCV'. To show multiple metrics specify metrics explicitly.")
+    }
+
+    # Summarize stratified data
+    summary_stats <- .summarizeStats(
       df         = long_df,
       group_vars = c(covariates, "Parameter"),
       value_col  = "Ratio",
       id_col     = "id") %>%
       dplyr::arrange(dplyr::across(dplyr::all_of(c(covariates, "Parameter"))))
-  } else {
-    summary_tbl <- .summarizeStats(
+
+    # Apply rounding
+    summary_stats <- .round_num(
+      to_round        = summary_stats,
+      digits          = roundDigits,
+      rounding_method = roundMethod,
+      exclude         = c("Parameter", covariates))
+
+    # Add combined metrics
+    summary_stats <- .combinedStats(summary_stats)
+
+    # Rename N to Nobs for consistency with helper
+    if ("N" %in% names(summary_stats)) {
+      summary_stats <- summary_stats %>% dplyr::rename(Nobs = N)
+    }
+
+    # Validate metrics
+    descriptor_cols <- c("Parameter", covariates, "Nobs")
+    selected_metrics <- .validateAndSelectMetrics(
+      available_cols = names(summary_stats),
+      user_metrics   = metrics,
+      descriptors    = descriptor_cols)
+
+    # Get overall stats
+    overall_stats <- .summarizeStats(
       df         = long_df,
       group_vars = "Parameter",
       value_col  = "Ratio",
       id_col     = "id") %>%
       dplyr::arrange(Parameter)
+
+    # Apply rounding to overall
+    overall_stats <- .round_num(
+      to_round        = overall_stats,
+      digits          = roundDigits,
+      rounding_method = roundMethod,
+      exclude         = "Parameter")
+
+    # Add combined metrics to overall
+    overall_stats <- .combinedStats(overall_stats)
+
+    # Rename N to Nobs for consistency
+    if ("N" %in% names(overall_stats)) {
+      overall_stats <- overall_stats %>% dplyr::rename(Nobs = N)
+    }
+
+    # Build stratified table using helper
+    summary_tbl <- .buildStratifiedTable(
+      summary_stats    = summary_stats,
+      overall_stats    = overall_stats,
+      covariates       = covariates,
+      selected_metrics = selected_metrics,
+      param_col        = "Parameter",
+      covariate_labels = covariate_labels)
+
+  } else {
+    # -----------------------------------------------------------------------
+    # CASE: No stratification or regular row-based grouping
+    # -----------------------------------------------------------------------
+
+    # Create summary table & summarise across subjects
+    if (length(covariates) > 0) {
+      summary_tbl <- .summarizeStats(
+        df         = long_df,
+        group_vars = c(covariates, "Parameter"),
+        value_col  = "Ratio",
+        id_col     = "id") %>%
+        dplyr::arrange(dplyr::across(dplyr::all_of(c(covariates, "Parameter"))))
+    } else {
+      summary_tbl <- .summarizeStats(
+        df         = long_df,
+        group_vars = "Parameter",
+        value_col  = "Ratio",
+        id_col     = "id") %>%
+        dplyr::arrange(Parameter)
+    }
+
+    # Apply rounding
+    summary_tbl <- .round_num(
+      to_round        = summary_tbl,
+      digits          = roundDigits,
+      rounding_method = roundMethod,
+      exclude         = c("Parameter", covariates))
+
+    # Add combined metrics
+    summary_tbl <- .combinedStats(summary_tbl)
+
+    # Filter to specific metrics (if requested)
+    descriptor_cols <- c("Parameter", covariates, "N")
+
+    selected_metrics <- .validateAndSelectMetrics(
+      available_cols = names(summary_tbl),
+      user_metrics   = metrics,
+      descriptors    = descriptor_cols)
+
+    summary_tbl <- summary_tbl[, c(descriptor_cols, selected_metrics), drop = FALSE]
+
+    # Pivot to vertical if requested
+    if (horizontal == FALSE) {
+      # Use helper function for vertical pivot
+      param_col   <- intersect(names(summary_tbl), c("parameter", "Parameter"))
+      summary_tbl <- .pivotToVertical(summary_tbl, param_col, covariates)
+    }
   }
 
-  # Apply rounding
-  summary_tbl <- .round_num(
-    to_round        = summary_tbl,
-    digits          = roundDigits,
-    rounding_method = roundMethod,
-    exclude         = c("Parameter", covariates))
-
-  # Add combined metrics
-  summary_tbl <- .combinedStats(summary_tbl)
-
-  # Filter to specific metrics (if requested)
-  descriptor_cols <- c("Parameter", covariates, "N")
-
-  selected_metrics <- .validateAndSelectMetrics(
-    available_cols = names(summary_tbl),
-    user_metrics   = metrics,
-    descriptors    = descriptor_cols)
-
-  summary_tbl <- summary_tbl[, c(descriptor_cols, selected_metrics), drop = FALSE]
-
   # ==========================================================================
-  # 4. PRETTY LABELS & PIVOT
+  # 4. PRETTY LABELS
   # ==========================================================================
 
   if (isTRUE(prettyLabels)) {
     summary_tbl <- .prettyLabels(summary_tbl)
-  }
 
-  if (horizontal == FALSE) {
-    # Use helper function for vertical pivot
-    param_col   <- intersect(names(summary_tbl), c("parameter", "Parameter"))
-    summary_tbl <- .pivotToVertical(summary_tbl, param_col, covariates)
+    # Apply pretty labels to Statistic column content if it exists
+    if ("Statistic" %in% names(summary_tbl)) {
+      curr_metrics <- unique(summary_tbl$Statistic)
+      dummy_df <- as.data.frame(matrix(NA, nrow = 1, ncol = length(curr_metrics)))
+      names(dummy_df) <- curr_metrics
+      dummy_df <- .prettyLabels(dummy_df)
+      metric_map <- setNames(names(dummy_df), curr_metrics)
+
+      summary_tbl$Statistic <- metric_map[summary_tbl$Statistic]
+    }
   }
 
   return(as.data.frame(summary_tbl))
