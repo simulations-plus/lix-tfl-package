@@ -336,7 +336,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 		# Determine Metrics
 		if (is.null(metrics)) {
 			user_metrics <- "GeomCV"
-			message("No metric specified for stratified table. Using default: 'GeomCV'")
+			message("No metric specified for stratified table. Defaulting to 'GeomCV'. To show multiple metrics specify metrics explicitly.")
 		} else {
 			user_metrics <- metrics
 		}

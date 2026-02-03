@@ -659,9 +659,25 @@
 #' @return Boolean. Returns FALSE if covariates are missing, otherwise returns original stratify_columns.
 #'
 .validateStratificationArgs <- function(covariates, stratify_columns) {
+	# 1. Argument consistency check
 	if (isTRUE(stratify_columns) && is.null(covariates)) {
-		warning("stratify_columns = TRUE but no covariates were provided. The table will be generated without stratification.")
+		warning("stratify_columns=TRUE requires covariates. Resetting stratify_columns to FALSE.")
 		return(FALSE)
+	}
+	# 2. Covariate existence check (if covariates provided)
+	if (!is.null(covariates)) {
+		# Get available covariates from current PKanalix project
+		cov_info <- lixoftConnectors::getCovariateInformation()$covariate
+		available_covariates <- setdiff(names(cov_info), "id")
+
+		# Validate requested covariates exist
+		bad_covariates <- setdiff(covariates, available_covariates)
+		if (length(bad_covariates) > 0) {
+			stop(
+				"Invalid covariate(s): ", paste(bad_covariates, collapse = ", "), "\n",
+				"Available covariates: ", paste(available_covariates, collapse = ", ")
+			)
+		}
 	}
 	return(stratify_columns)
 }
@@ -1207,4 +1223,185 @@
 	df_mocked <- df_mocked[1:n_limit, , drop = FALSE]
 
 	return(df_mocked)
+}
+
+
+##################################################################################
+#' Helper: Build stratified table with covariate headers
+#'
+#' @param summary_stats Stratified summary statistics
+#' @param overall_stats Overall summary statistics (optional)
+#' @param covariates Covariate names
+#' @param selected_metrics Selected metrics to include
+#' @param param_col Parameter column name
+#' @param covariate_labels Custom labels for covariates (optional)
+#' @keywords internal
+#' @noRd
+.buildStratifiedTable <- function(summary_stats, overall_stats = NULL, covariates,
+																	selected_metrics, param_col, covariate_labels = NULL) {
+	if (!is.null(covariates)) {
+		# Prepare covariate labels
+		if (is.null(covariate_labels)) labels <- covariates else labels <- covariate_labels
+
+		# Create header column combining covariates
+		df_prepared <- summary_stats %>%
+			dplyr::rowwise() %>%
+			dplyr::mutate(header = {
+				values <- dplyr::c_across(dplyr::all_of(covariates))
+				pieces <- paste0(labels, "=", as.character(values))
+				paste(pieces, collapse = "\n")
+			}) %>%
+			dplyr::ungroup()
+
+		# Map headers to N counts
+		n_per_stratum <- df_prepared %>%
+			distinct(header, Nobs) %>%
+			dplyr::mutate(header_N = paste0(header, "\n(N=", Nobs, ")"))
+
+		# Prepare overall data if provided
+		overall_prepared <- NULL
+		if (!is.null(overall_stats)) {
+			overall_prepared <- overall_stats %>%
+				dplyr::select(!!rlang::sym(param_col), Nobs, dplyr::all_of(selected_metrics)) %>%
+				dplyr::mutate(header_N = paste0("Overall\n(N=", Nobs, ")"))
+		}
+
+		# Use pivot helper
+		result <- .pivotMetricsWithOverall(
+			df_strat         = df_prepared,
+			overall_df       = overall_prepared,
+			selected_metrics = selected_metrics,
+			param_col        = param_col,
+			n_per_stratum    = n_per_stratum
+		)
+	} else {
+		# No covariates - just Overall with N
+		max_n <- max(summary_stats$Nobs, na.rm = TRUE)
+
+		if (length(selected_metrics) > 1) {
+			result <- summary_stats %>%
+				dplyr::select(!!rlang::sym(param_col), Nobs, dplyr::all_of(selected_metrics)) %>%
+				dplyr::mutate(header_N = paste0("Overall\n(N=", max_n, ")")) %>%
+				dplyr::mutate(dplyr::across(dplyr::all_of(selected_metrics), as.character)) %>%
+				tidyr::pivot_longer(cols = dplyr::all_of(selected_metrics), names_to = "Statistic", values_to = "Value") %>%
+				tidyr::pivot_wider(names_from = header_N, values_from = Value) %>%
+				dplyr::select(-dplyr::any_of("Nobs"))
+		} else {
+			result <- summary_stats %>%
+				dplyr::select(!!rlang::sym(param_col), Nobs, dplyr::all_of(selected_metrics)) %>%
+				dplyr::rename(!!paste0("Overall\n(N=", max_n, ")") := dplyr::all_of(selected_metrics)) %>%
+				dplyr::select(-dplyr::any_of("Nobs"))
+		}
+	}
+
+	return(result)
+}
+
+#' Helper: Pivot table to vertical format (Statistic as first column)
+#'
+#' @param summary_stats Summary statistics data frame
+#' @param param_col Parameter column name
+#' @param covariates Covariate names to preserve
+#' @keywords internal
+#' @noRd
+.pivotToVertical <- function(summary_stats, param_col, covariates = NULL) {
+	stat_cols <- setdiff(names(summary_stats), c(param_col, covariates))
+	param_order <- unique(summary_stats[[param_col]])
+	stat_order <- stat_cols
+
+	result <- summary_stats %>%
+		dplyr::mutate(dplyr::across(dplyr::all_of(stat_cols), as.character)) %>%
+		tidyr::pivot_longer(
+			cols      = dplyr::all_of(stat_cols),
+			names_to  = "Statistic",
+			values_to = "Value"
+		) %>%
+		dplyr::mutate(Statistic = factor(Statistic, levels = stat_order)) %>%
+		tidyr::pivot_wider(
+			id_cols     = c(dplyr::any_of(covariates), Statistic),
+			names_from  = dplyr::all_of(param_col),
+			values_from = Value
+		) %>%
+		dplyr::arrange(dplyr::across(dplyr::any_of(covariates)), Statistic) %>%
+		dplyr::select(dplyr::any_of(covariates), Statistic, dplyr::all_of(as.character(param_order)))
+
+	return(result)
+}
+
+
+#' Helper: Pivot metrics with optional overall column
+#'
+#' @param df_strat Stratified data with header column
+#' @param overall_df Overall data (optional)
+#' @param selected_metrics Metrics to pivot
+#' @param param_col Parameter column name
+#' @param n_per_stratum Data frame with header and header_N mapping
+#' @keywords internal
+#' @noRd
+.pivotMetricsWithOverall <- function(df_strat, overall_df = NULL, selected_metrics,
+																		 param_col, n_per_stratum = NULL) {
+	if (length(selected_metrics) > 1) {
+		# === MULTIPLE METRICS: Pivot to 'Statistic' column ===
+
+		# Pivot Stratified
+		result <- df_strat %>%
+			dplyr::select(!!rlang::sym(param_col), header, dplyr::all_of(selected_metrics)) %>%
+			dplyr::mutate(dplyr::across(dplyr::all_of(selected_metrics), as.character)) %>%
+			tidyr::pivot_longer(cols = dplyr::all_of(selected_metrics), names_to = "Statistic", values_to = "Value") %>%
+			tidyr::pivot_wider(names_from = header, values_from = Value)
+
+		# Add N to column headers if available
+		if (!is.null(n_per_stratum)) {
+			result <- result %>%
+				dplyr::rename_with(~ ifelse(
+					.x %in% n_per_stratum$header,
+					n_per_stratum$header_N[match(.x, n_per_stratum$header)],
+					.x
+				))
+		}
+
+		# Join with Overall if provided
+		if (!is.null(overall_df)) {
+			overall_pivoted <- overall_df %>%
+				dplyr::mutate(dplyr::across(dplyr::all_of(selected_metrics), as.character)) %>%
+				tidyr::pivot_longer(cols = dplyr::all_of(selected_metrics), names_to = "Statistic", values_to = "Overall") %>%
+				dplyr::select(!!rlang::sym(param_col), Statistic, Overall, header_N)
+
+			overall_label <- unique(overall_pivoted$header_N)
+			result <- result %>%
+				dplyr::left_join(overall_pivoted %>% dplyr::select(-header_N), by = c(param_col, "Statistic")) %>%
+				dplyr::rename(!!overall_label := Overall)
+		}
+	} else {
+		# === SINGLE METRIC ===
+		metric_name <- selected_metrics[1]
+
+		result <- df_strat %>%
+			dplyr::select(!!rlang::sym(param_col), header, dplyr::all_of(metric_name)) %>%
+			tidyr::pivot_wider(names_from = header, values_from = dplyr::all_of(metric_name))
+
+		# Add N to column headers if available
+		if (!is.null(n_per_stratum)) {
+			result <- result %>%
+				dplyr::rename_with(~ ifelse(
+					.x %in% n_per_stratum$header,
+					n_per_stratum$header_N[match(.x, n_per_stratum$header)],
+					.x
+				))
+		}
+
+		# Join with Overall if provided
+		if (!is.null(overall_df)) {
+			overall_renamed <- overall_df %>%
+				dplyr::rename(Overall = dplyr::all_of(metric_name)) %>%
+				dplyr::select(!!rlang::sym(param_col), Overall, header_N)
+
+			result <- result %>%
+				dplyr::left_join(overall_renamed, by = param_col) %>%
+				dplyr::rename(!!unique(overall_renamed$header_N) := Overall) %>%
+				dplyr::select(-header_N)
+		}
+	}
+
+	return(result)
 }
