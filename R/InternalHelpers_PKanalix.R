@@ -723,6 +723,123 @@
 
 
 ##################################################################################
+#' Internal helper to add individual NCA parameters
+#'
+#' @description
+#' Retrieves individual NCA parameter values and appends them below summary statistics.
+#' Used by \code{tableNCAParameters} when \code{include_id = TRUE}.
+#'
+#' When covariates are specified, individual IDs are grouped by their covariate values
+#' and listed after the corresponding summary metrics (metrics of modality 1, IDs of
+#' modality 1, metrics of modality 2, IDs of modality 2, etc.).
+#'
+#' @param summary_stats Data frame containing summary statistics in vertical format
+#'   (with "Statistic" column and parameter columns).
+#' @param covariates Character vector of covariate names used for stratification.
+#' @param NCAparams Character vector of NCA parameter names to include.
+#' @param roundDigits Integer specifying the number of decimal places for rounding.
+#' @param roundMethod Character string specifying the rounding method ("monolix", "signif", "none").
+#' @param units Logical; if TRUE, units are appended to parameter names.
+#' @param aliases Logical; if TRUE, parameter aliases (friendly names) are used.
+#'
+#' @return A data frame combining summary statistics with individual parameter values.
+#'
+#' @keywords internal
+#'
+.addIndividualsNCAParameters <- function(summary_stats,
+                                         covariates,
+                                         NCAparams,
+                                         roundDigits,
+                                         roundMethod,
+                                         units,
+                                         aliases) {
+
+	# Get individual NCA parameters
+	indiv_data   <- lixoftConnectors::getNCAIndividualParameters()
+	indiv_params <- indiv_data$parameters
+	param_info   <- indiv_data$info
+
+	# Convert rownames to a column for easier manipulation
+	param_info <- param_info %>% tibble::rownames_to_column(var = "name")
+
+	# Filter to requested parameters if specified (preserving covariates)
+	if (!is.null(NCAparams)) {
+		# Keep only requested parameters plus id and covariates
+		available_params <- intersect(names(indiv_params), param_info$name)
+		params_to_keep   <- intersect(NCAparams, available_params)
+		# Include covariates in cols_to_keep (they're already in indiv_params for occasion-level covariates)
+		cov_cols_present <- intersect(covariates, names(indiv_params))
+		cols_to_keep     <- c("id", cov_cols_present, params_to_keep)
+		indiv_params     <- indiv_params[, cols_to_keep, drop = FALSE]
+	}
+
+	# Round individual parameter values
+	indiv_params <- .round_num(
+		to_round        = indiv_params,
+		digits          = roundDigits,
+		rounding_method = roundMethod,
+		exclude         = c("id", covariates))
+
+	# Apply units and aliases to parameter column names
+	# Get parameter columns (exclude id and covariates)
+	param_cols <- setdiff(names(indiv_params), c("id", covariates))
+
+	if (length(param_cols) > 0) {
+		# temp dataframe for transformation
+		temp_df <- data.frame(parameter = param_cols, stringsAsFactors = FALSE)
+		temp_df <- .addUnitsAliases(temp_df, add_units = units, add_aliases = aliases)
+
+		# Create mapping: old name -> new name
+		name_mapping <- setNames(temp_df$parameter, param_cols)
+
+		# Rename columns in indiv_params (vectorized approach)
+		new_names <- names(indiv_params)
+		rename_idx <- which(new_names %in% names(name_mapping))
+		new_names[rename_idx] <- name_mapping[new_names[rename_idx]]
+		names(indiv_params) <- new_names
+	}
+
+	# Get parameter columns from summary_stats (excluding Statistic and covariates)
+	summary_param_cols <- setdiff(names(summary_stats), c("Statistic", covariates))
+
+	# Select only columns that match summary_stats
+	cols_to_keep <- c("id", covariates, intersect(names(indiv_params), summary_param_cols))
+	indiv_params <- indiv_params[, cols_to_keep, drop = FALSE]
+
+	# Rename id to Statistic
+	indiv_params <- indiv_params %>% dplyr::rename(Statistic = id)
+
+	# Convert parameter columns to character to match summary_stats format
+	param_cols <- setdiff(names(indiv_params), c("Statistic", covariates))
+	if (length(param_cols) > 0) {
+		indiv_params <- indiv_params %>% dplyr::mutate(dplyr::across(dplyr::all_of(param_cols), as.character))
+	}
+
+	# Combine with summary_stats
+	if (!is.null(covariates) && length(covariates) > 0) {
+		# Split both dataframes by covariate combinations
+		summary_groups <- summary_stats %>%
+			dplyr::group_by(dplyr::across(dplyr::all_of(covariates))) %>%
+			dplyr::group_split()
+
+		indiv_groups <- indiv_params %>%
+			dplyr::group_by(dplyr::across(dplyr::all_of(covariates))) %>%
+			dplyr::group_split()
+
+		# Combine corresponding groups (metrics first, then individuals)
+		result_list <- purrr::map2(summary_groups, indiv_groups, rbind)
+
+		final_result <- do.call(rbind, result_list)
+	} else {
+		# No covariates: simple append
+		final_result <- rbind(summary_stats, indiv_params)
+	}
+
+	return(final_result)
+}
+
+
+##################################################################################
 #' Internal helper to fetch and prepare NCA & Conecntration summary stats
 #'
 #' @description

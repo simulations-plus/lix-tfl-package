@@ -267,6 +267,10 @@ tableNCAConcentration <- function(projectFile = NULL,
 #' statistics from PKanalix and additional descriptive statistics (quartiles, median, max).
 #' Combines individual parameter data with summary statistics for complete reporting.
 #'
+#' @param projectFile Character string specifying the path to a PKanalix project file (.pkx).
+#'   If `NULL` (default), uses the currently loaded project. The function will load the
+#'   specified project if it differs from the currently active one.
+#'
 #' @param covariates Character vector of covariate names to stratify by
 #'   (e.g., `"TREAT"`, `"FOOD"`, or `c("TREAT","FOOD")`). If `NULL`
 #'   (default), no stratification is applied and overall summaries are returned.
@@ -275,18 +279,52 @@ tableNCAConcentration <- function(projectFile = NULL,
 #'   `NULL` (default), all parameters currently enabled in the project are used
 #'   (i.e., `lixoftConnectors::getNCASettings()$computedncaparameters`).
 #'
-#' @param digits Integer number of decimal places used when rounding numeric
-#'   statistics. Default is `3`. This rounding is applied to both the PKanalix
-#'   summary statistics and the additional descriptive statistics.
+#' @param metrics Character vector specifying which summary statistics to include in the
+#'   output table. If `NULL` (default), all available metrics are included. Common options
+#'   include: `"mean"`, `"SD"`, `"CV"`, `"geoMean"`, `"geoCV"`, `"geoSD"`, `"MeanSD"`,
+#'   `"GeomCV"`, `"GeomSD"`, `"median"`, `"min"`, `"max"`, `"P05"`, `"P95"`, `"Nobs"`.
 #'
-#' @param horizontal Logical. If `TRUE` (default), returns a “wide” table with
+#' @param horizontal Logical. If `TRUE` (default), returns a "wide" table with
 #'   one row per covariate level (or overall) and one column per statistic for
 #'   each parameter, i.e., PKanalix-like structure. If `FALSE`, returns a
-#'   “vertical” table where \code{Statistic} forms the first column and the
-#'   parameters form the subsequent columns (useful for reporting)
+#'   "vertical" table where \code{Statistic} forms the first column and the
+#'   parameters form the subsequent columns (useful for reporting).
+#'
+#' @param stratify_columns Logical; if `TRUE`, creates a stratified table layout with
+#'   separate columns for each covariate combination plus an "Overall" column. If `FALSE`
+#'   (default), covariates appear as separate columns on the left side of the table.
+#'   Only applicable when `covariates` is specified.
+#'
+#' @param covariate_labels Character vector of custom labels for covariates, must be the
+#'   same length as `covariates`. If `NULL` (default), the original covariate names are
+#'   used. These labels appear in column headers when `stratify_columns = TRUE`.
+#'
+#' @param include_id Logical. If `TRUE` and `horizontal = FALSE`, adds individual
+#'   subject IDs and their parameter values below the summary statistics in the
+#'   "Statistic" column. When stratified by covariates, individual IDs are grouped
+#'   by their covariate values and listed after the corresponding summary metrics.
+#'   Default is `FALSE`. Only works when `horizontal = FALSE`.
+#'
+#' @param roundDigits Integer specifying the number of decimal places for rounding
+#'   numeric values. Default is `3`.
+#'
+#' @param roundMethod Character string specifying the rounding method. Options are:
+#'   - `"monolix"` (default): Adaptive rounding that adds extra digits for values < 1
+#'   - `"signif"`: Standard significant figures rounding
+#'   - `"none"`: No rounding performed
+#'
+#' @param units Logical. If `TRUE` (default), units are appended to parameter names.
+#'
+#' @param aliases Logical. If `TRUE` (default), parameter aliases (friendly names) are used
+#'   instead of internal parameter codes.
+#'
+#' @param prettyLabels Logical; if `TRUE` (default), converts column names to
+#'   human-readable labels (e.g., "CV" becomes "CV (%)", "geoMean" becomes "Geometric Mean").
+#'   If `FALSE`, uses raw column names.
 #'
 #' @return A data frame combining standard NCA statistics with additional descriptive statistics
-#'         (Q1, Q3, median, max) for the specified parameters.
+#'         (Q1, Q3, median, max) for the specified parameters. If `include_id = TRUE`,
+#'         also includes individual parameter values for each subject.
 #'
 #' @examples
 #' # Overall (no stratification), all computed parameters, wide layout
@@ -296,8 +334,22 @@ tableNCAConcentration <- function(projectFile = NULL,
 #' # tableNCAParameters(
 #' #   covariates = "FORM",
 #' #   NCAparams  = c("AUCINF_obs", "AUClast", "Cmax"),
-#' #   digits     = 2,
+#' #   roundDigits = 2,
 #' #   horizontal = FALSE
+#' # )
+#'
+#' # Vertical layout with individual IDs included
+#' # tableNCAParameters(
+#' #   horizontal = FALSE,
+#' #   include_id = TRUE,
+#' #   NCAparams  = c("Cmax", "AUClast", "Lambda_z")
+#' # )
+#'
+#' # Stratified with individual IDs
+#' # tableNCAParameters(
+#' #   covariates = "TREAT",
+#' #   horizontal = FALSE,
+#' #   include_id = TRUE
 #' # )
 #'
 tableNCAParameters <- function(projectFile      = NULL,
@@ -307,6 +359,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 															 horizontal       = TRUE,
 															 stratify_columns = FALSE,
 															 covariate_labels = NULL,
+															 include_id       = FALSE,
 															 roundDigits      = 3,
 															 roundMethod      = c("monolix", "signif", "none"),
 															 units            = TRUE,
@@ -324,6 +377,17 @@ tableNCAParameters <- function(projectFile      = NULL,
 	# Validate Stratification Logic & Covariate Labels
 	stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
 	covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
+
+	# Validate include_id parameter
+	if (include_id && horizontal) {
+		warning("include_id = TRUE only works with horizontal = FALSE. Setting include_id to FALSE.")
+		include_id <- FALSE
+	}
+
+	if (include_id && stratify_columns) {
+		warning("include_id = TRUE is not yet supported with stratify_columns = TRUE. Setting include_id to FALSE.")
+		include_id <- FALSE
+	}
 
 	# ==========================================================================
 	# TABLE FORMATTING
@@ -353,7 +417,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 		}
 
 		# Validate metrics
-		descriptor_cols <- c(param_col, covariates, "Nobs")
+		descriptor_cols  <- c(param_col, covariates, "Nobs")
 		selected_metrics <- .validateAndSelectMetrics(
 			available_cols = names(summary_stats),
 			user_metrics   = user_metrics,
@@ -378,8 +442,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 			covariates       = covariates,
 			selected_metrics = selected_metrics,
 			param_col        = param_col,
-			covariate_labels = covariate_labels
-		)
+			covariate_labels = covariate_labels)
 	} else {
 		# Non-stratified or horizontal mode
 		summary_stats <- .prepareNCASummaryStats(projectFile, NCAparams, covariates, roundDigits, roundMethod, units, aliases, by_time = FALSE, useNominalTime = FALSE)
@@ -392,14 +455,14 @@ tableNCAParameters <- function(projectFile      = NULL,
 		}
 
 		# Determine metrics
-		descriptor_cols <- c(param_col, covariates, "Nobs")
+		descriptor_cols  <- c(param_col, covariates, "Nobs")
 		selected_metrics <- .validateAndSelectMetrics(
 			available_cols = names(summary_stats),
 			user_metrics   = metrics,
 			descriptors    = descriptor_cols)
 
 		# Filter dataframe
-		cols_to_keep <- intersect(c(descriptor_cols, selected_metrics), names(summary_stats))
+		cols_to_keep  <- intersect(c(descriptor_cols, selected_metrics), names(summary_stats))
 		summary_stats <- summary_stats[, cols_to_keep, drop = FALSE]
 
 		if (!horizontal) {
@@ -407,9 +470,36 @@ tableNCAParameters <- function(projectFile      = NULL,
 			summary_stats <- .pivotToVertical(
 				summary_stats = summary_stats,
 				param_col     = param_col,
-				covariates    = covariates
-			)
+				covariates    = covariates)
 		}
+	}
+
+	# ==========================================================================
+	# ADD INDIVIDUAL IDs (if requested and horizontal = FALSE)
+
+	if (!horizontal && include_id) {
+		summary_stats <- .addIndividualsNCAParameters(
+			summary_stats = summary_stats,
+			covariates    = covariates,
+			NCAparams     = NCAparams,
+			roundDigits   = roundDigits,
+			roundMethod   = roundMethod,
+			units         = units,
+			aliases       = aliases)
+	}
+
+	# ==========================================================================
+	# SORT BY COVARIATES (for vertical tables with numeric-valued categorical covariates)
+
+	if (!horizontal && !stratify_columns && !is.null(covariates) && length(covariates) > 0) {
+		summary_stats <- summary_stats %>%
+			dplyr::arrange(dplyr::across(
+				dplyr::all_of(covariates),
+				~{
+					num <- suppressWarnings(as.numeric(.x))
+					if(all(is.na(num))) .x else num
+				}
+			))
 	}
 
 	# ==========================================================================
@@ -420,11 +510,11 @@ tableNCAParameters <- function(projectFile      = NULL,
 
 		# Apply pretty labels to the content of the 'Statistic' column if it exists
 		if ("Statistic" %in% names(summary_stats)) {
-			curr_metrics <- unique(summary_stats$Statistic)
-			dummy_df <- as.data.frame(matrix(NA, nrow = 1, ncol = length(curr_metrics)))
+			curr_metrics    <- unique(summary_stats$Statistic)
+			dummy_df        <- as.data.frame(matrix(NA, nrow = 1, ncol = length(curr_metrics)))
 			names(dummy_df) <- curr_metrics
-			dummy_df <- .prettyLabels(dummy_df)
-			metric_map <- setNames(names(dummy_df), curr_metrics)
+			dummy_df        <- .prettyLabels(dummy_df)
+			metric_map      <- setNames(names(dummy_df), curr_metrics)
 
 			summary_stats$Statistic <- metric_map[summary_stats$Statistic]
 		}
