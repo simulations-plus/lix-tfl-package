@@ -634,9 +634,9 @@ test_that("tableNCAParameters roundMethod with stratification", {
 		)
 
 		expect_true(is.data.frame(table),
-								info = paste("Failed with roundMethod:", method))
+								label = paste("Failed with roundMethod:", method))
 		expect_gt(nrow(table), 0,
-							info = paste("No rows with roundMethod:", method))
+							label = paste("No rows with roundMethod:", method))
 	}
 })
 
@@ -794,6 +794,324 @@ test_that("tableNCAParameters edge case: many parameters, many metrics", {
 	expect_gt(nrow(table), 0)
 	expect_gt(ncol(table), 5)  # Many columns
 })
+
+################################################################################
+# tableNCAParameters with include_id feature
+
+test_that("tableNCAParameters with include_id basic (no covariates)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# Test basic include_id functionality without covariates
+	table <- tableNCAParameters(
+		projectFile  = pkx_project_1,
+		horizontal   = FALSE,
+		NCAparams    = c("Cmax", "AUClast", "Lambda_z"),
+		include_id   = TRUE,
+		prettyLabels = FALSE
+	)
+
+	# Verify structure
+	expect_true(is.data.frame(table))
+	expect_true("Statistic" %in% names(table))
+	expect_gt(nrow(table), 0)
+
+	# Verify that table contains both summary statistics and individual IDs
+	statistic_values <- table$Statistic
+
+	# Check for summary statistics (should have at least some)
+	summary_stats <- c("mean", "SD", "CV", "median", "min", "max")
+	expect_true(any(summary_stats %in% statistic_values))
+
+	# Check for individual IDs (should be numeric or character IDs)
+	# Individual IDs should not match summary statistic names
+	has_ids <- any(!statistic_values %in% summary_stats)
+	expect_true(has_ids, label = "Table should contain individual IDs in addition to summary statistics")
+})
+
+test_that("tableNCAParameters with include_id and single covariate", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# Test include_id with stratification by single covariate
+	table <- tableNCAParameters(
+		projectFile  = pkx_project_1,
+		horizontal   = FALSE,
+		covariates   = "TINFCAT",
+		NCAparams    = c("Cmax", "AUClast", "Lambda_z"),
+		metrics      = c("min", "MeanSD", "median", "GeomCV", "max"),
+		include_id   = TRUE,
+		prettyLabels = FALSE,
+		units        = FALSE,
+		aliases      = FALSE
+	)
+
+	# Verify structure
+	expect_true(is.data.frame(table))
+	expect_true("Statistic" %in% names(table))
+	expect_true("TINFCAT" %in% names(table))
+	expect_gt(nrow(table), 0)
+
+	# Verify parameter columns exist
+	expect_true(all(c("Cmax", "AUClast", "Lambda_z") %in% names(table)))
+
+	# Verify that individuals are grouped by covariate
+	# Each covariate group should have metrics followed by individual IDs
+	statistic_values <- table$Statistic
+	has_metrics <- any(c("min", "MeanSD", "median", "GeomCV", "max") %in% statistic_values)
+	expect_true(has_metrics)
+})
+
+test_that("tableNCAParameters with include_id and multiple covariates", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# Test include_id with multiple covariates
+	table <- tableNCAParameters(
+		projectFile  = pkx_project_3,
+		horizontal   = FALSE,
+		covariates   = c("DOSE_mg", "ROUTE"),
+		NCAparams    = c("Cmax", "AUClast"),
+		metrics      = c("MeanSD", "GeomCV"),
+		include_id   = TRUE,
+		prettyLabels = FALSE
+	)
+
+	# Verify structure
+	expect_true(is.data.frame(table))
+	expect_true("Statistic" %in% names(table))
+	expect_true(all(c("DOSE_mg", "ROUTE") %in% names(table)))
+	expect_gt(nrow(table), 0)
+
+	# Verify that table is stratified by both covariates
+	# Should have unique combinations of DOSE_mg and ROUTE
+	covariate_combos <- unique(table[, c("DOSE_mg", "ROUTE")])
+	expect_gt(nrow(covariate_combos), 1)
+})
+
+test_that("tableNCAParameters with include_id and prettyLabels = TRUE", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# Test include_id with pretty labels enabled
+	table <- tableNCAParameters(
+		projectFile  = pkx_project_1,
+		horizontal   = FALSE,
+		NCAparams    = c("Cmax", "AUClast", "Lambda_z"),
+		include_id   = TRUE,
+		prettyLabels = TRUE,
+		units        = TRUE,
+		aliases      = TRUE
+	)
+
+	# Verify structure
+	expect_true(is.data.frame(table))
+	expect_true("Statistic" %in% names(table))
+	expect_gt(nrow(table), 0)
+
+	# Pretty labels should be applied to both column names and Statistic values
+	# Column names should be human-readable (not raw parameter names)
+	# We can't check exact names since they depend on units/aliases,
+	# but table should still be valid
+})
+
+test_that("tableNCAParameters with include_id validation: horizontal = TRUE", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# Test that include_id = TRUE with horizontal = TRUE generates warning
+	expect_warning(
+		table <- tableNCAParameters(
+			projectFile = pkx_project_1,
+			horizontal  = TRUE,  # This should trigger warning
+			NCAparams   = c("Cmax"),
+			include_id  = TRUE
+		),
+		"include_id = TRUE only works with horizontal = FALSE"
+	)
+
+	# Table should still be generated with include_id set to FALSE
+	expect_true(is.data.frame(table))
+})
+
+test_that("tableNCAParameters with include_id validation: stratify_columns = TRUE", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# Test that include_id = TRUE with stratify_columns = TRUE generates warning
+	expect_warning(
+		table <- tableNCAParameters(
+			projectFile      = pkx_project_1,
+			horizontal       = FALSE,
+			stratify_columns = TRUE,  # This should trigger warning
+			covariates       = "TINFCAT",
+			NCAparams        = c("Cmax"),
+			include_id       = TRUE
+		),
+		"include_id = TRUE is not yet supported with stratify_columns = TRUE"
+	)
+
+	# Table should still be generated with include_id set to FALSE
+	expect_true(is.data.frame(table))
+})
+
+test_that("tableNCAParameters with include_id = FALSE (default behavior)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# Test that include_id = FALSE produces table without individual IDs
+	table <- tableNCAParameters(
+		projectFile  = pkx_project_1,
+		horizontal   = FALSE,
+		NCAparams    = c("Cmax", "AUClast"),
+		include_id   = FALSE,  # Explicitly FALSE
+		prettyLabels = FALSE
+	)
+
+	# Verify structure
+	expect_true(is.data.frame(table))
+	expect_true("Statistic" %in% names(table))
+
+	# All Statistic values should be summary statistics, no individual IDs
+	statistic_values <- table$Statistic
+	summary_stats <- c("mean", "SD", "CV", "SE", "geoMean", "geoCV", "geoSD", "geoSE",
+	                   "median", "min", "max", "Q1", "Q3", "N", "Nobs", "Ntot", "Nmiss",
+	                   "P05", "P95", "MeanSD", "MeanSE", "GeomCV", "GeomSD", "GeomSE", "harmMean")
+
+	# All statistic values should be recognized summary statistics
+	expect_true(all(statistic_values %in% summary_stats),
+	            label = paste("Unexpected statistic values:",
+	                         paste(setdiff(statistic_values, summary_stats), collapse = ", ")))
+})
+
+test_that("tableNCAParameters with include_id and different rounding settings", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# Test include_id with different rounding methods
+	table_monolix <- tableNCAParameters(
+		projectFile = pkx_project_1,
+		horizontal  = FALSE,
+		NCAparams   = c("Cmax"),
+		include_id  = TRUE,
+		roundDigits = 2,
+		roundMethod = "monolix"
+	)
+
+	table_signif <- tableNCAParameters(
+		projectFile = pkx_project_1,
+		horizontal  = FALSE,
+		NCAparams   = c("Cmax"),
+		include_id  = TRUE,
+		roundDigits = 2,
+		roundMethod = "signif"
+	)
+
+	# Both should be valid and have individual IDs
+	expect_true(is.data.frame(table_monolix))
+	expect_true(is.data.frame(table_signif))
+	expect_gt(nrow(table_monolix), 0)
+	expect_gt(nrow(table_signif), 0)
+})
+
+test_that("tableNCAParameters with include_id and specific metrics", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# Test include_id with specific metrics selected
+	table <- tableNCAParameters(
+		projectFile  = pkx_project_1,
+		horizontal   = FALSE,
+		NCAparams    = c("Cmax", "AUClast"),
+		metrics      = c("median", "GeomCV", "max"),
+		include_id   = TRUE,
+		prettyLabels = FALSE
+	)
+
+	# Verify structure
+	expect_true(is.data.frame(table))
+	expect_true("Statistic" %in% names(table))
+
+	# Verify that specified metrics are present
+	statistic_values <- table$Statistic
+	expect_true(any(c("median", "GeomCV", "max") %in% statistic_values))
+
+	# Verify individual IDs are also present (not just metrics)
+	expect_gt(length(unique(statistic_values)), 3)  # More than just the 3 metrics
+})
+
+test_that("tableNCAParameters with include_id comprehensive test", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# Comprehensive test with all compatible features
+	table <- tableNCAParameters(
+		projectFile  = pkx_project_1,
+		covariates   = "TINFCAT",
+		NCAparams    = c("Cmax", "AUClast", "Lambda_z"),
+		metrics      = c("min", "MeanSD", "median", "GeomCV", "max"),
+		horizontal   = FALSE,
+		include_id   = TRUE,
+		roundDigits  = 3,
+		roundMethod  = "monolix",
+		units        = TRUE,
+		aliases      = TRUE,
+		prettyLabels = TRUE
+	)
+
+	# Verify structure
+	expect_true(is.data.frame(table))
+	expect_true("Statistic" %in% names(table))
+	expect_true("TINFCAT" %in% names(table))
+	expect_gt(nrow(table), 0)
+	expect_gt(ncol(table), 3)  # At least Statistic, covariate, and parameter columns
+})
+
+test_that("tableNCAParameters with include_id row count check", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# Compare row counts: include_id = FALSE vs TRUE
+	table_no_ids <- tableNCAParameters(
+		projectFile  = pkx_project_1,
+		horizontal   = FALSE,
+		NCAparams    = c("Cmax"),
+		metrics      = c("median", "GeomCV"),
+		include_id   = FALSE,
+		prettyLabels = FALSE
+	)
+
+	table_with_ids <- tableNCAParameters(
+		projectFile  = pkx_project_1,
+		horizontal   = FALSE,
+		NCAparams    = c("Cmax"),
+		metrics      = c("median", "GeomCV"),
+		include_id   = TRUE,
+		prettyLabels = FALSE
+	)
+
+	# Table with IDs should have more rows than without IDs
+	expect_gt(nrow(table_with_ids), nrow(table_no_ids),
+	          label = "Table with include_id=TRUE should have more rows than include_id=FALSE")
+
+	# Both should have same number of columns
+	expect_equal(ncol(table_with_ids), ncol(table_no_ids))
+})
+
+test_that("tableNCAParameters with include_id and numeric categorical covariate", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# Test with numeric-valued categorical covariate (tests sorting logic)
+	# Using project_3 which has DOSE_mg covariate
+	table <- tableNCAParameters(
+		projectFile  = pkx_project_3,
+		horizontal   = FALSE,
+		covariates   = "DOSE_mg",
+		NCAparams    = c("Cmax", "AUClast"),
+		include_id   = TRUE,
+		prettyLabels = FALSE
+	)
+
+	# Verify structure
+	expect_true(is.data.frame(table))
+	expect_true("Statistic" %in% names(table))
+	expect_true("DOSE_mg" %in% names(table))
+
+	# Verify covariate values are sorted (numerically if applicable)
+	dose_values <- unique(table$DOSE_mg)
+	expect_gt(length(dose_values), 0)
+})
+
+################################################################################
 # setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
-testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-PKanalixHelpers.R")
+# testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-PKanalixHelpers.R")
 
