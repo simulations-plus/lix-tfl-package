@@ -519,7 +519,12 @@ tableNCAParameters <- function(projectFile      = NULL,
 			summary_stats$Statistic <- metric_map[summary_stats$Statistic]
 		}
 	}
-
+	# ==========================================================================
+	# SET ATTRIBUTES for print_table_flex to recognize this as NCA table with sections
+	if (include_id && "Section" %in% names(summary_stats)) {
+		attr(summary_stats, "table_type") <- "nca"
+		attr(summary_stats, "format")     <- "long"  # Always long when include_id=TRUE
+	}
 	return(as.data.frame(summary_stats))
 }
 

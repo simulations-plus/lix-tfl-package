@@ -60,14 +60,22 @@
   tryCatch(knitr::is_html_output(), error = function(e) FALSE)
 }
 
-#' Add section headers to population parameter tables
-#' For population parameter tables (identified by `table_type = "pop"` attribute),
-#' inserts section header rows to visually separate different sections such as
-#' Fixed effects, Random effects (IIV/IOV), Correlations, and Residual error.
-#' @param data.flex Data frame with population parameter estimates. Must have:
-#'   - Attribute `table_type` set to "pop"
+#' .add_section_headers: Add section headers to parameter tables (population or NCA)
+#' For parameter tables (identified by `table_type` attribute = "pop" or "nca"),
+#' inserts section header rows to visually separate different sections.
+#'
+#' **Population tables:** Fixed effects, Random effects (IIV/IOV), Correlations, Residual error
+#' **NCA tables:** Summary statistics, Individual parameter values
+#'
+#' @param data.flex Data frame with parameter estimates. Must have:
+#'   - Attribute `table_type` set to "pop" or "nca"
 #'   - Attribute `format` indicating "wide" or "long" format
-#'   - Column `Section` with section codes (FE, IIV, IOV, CORR, CORR_IIV, CORR_IOV, RES_ERR)
+#'   - Column `Section` with section codes:
+#'     - Pop: FE, IIV, IOV, CORR, CORR_IIV, CORR_IOV, RES_ERR
+#'     - NCA: SUMMARY, INDIVIDUAL
+#' @param grouping.columns Character vector of column names that are used for vertical
+#'   merging. When provided, section header rows will preserve values in these columns
+#'   (for vertical merging) and only span across non-grouping columns. Only applies to NCA tables.
 #'
 #' @return A list with four elements:
 #'   \describe{
@@ -78,18 +86,26 @@
 #'   }
 #'
 #' @details
-#' **Wide format:** Creates a split header at the top ("Fixed effects | Random effects")
+#' **Population - Wide format:** Creates a split header at the top ("Fixed effects | Random effects")
 #' and adds separate section headers only for Correlations and Residual error sections.
 #' The split column is determined by finding the first column containing "IIV" or "IOV".
 #'
-#' **Long format:** Adds section headers for all sections (Fixed effects, Random effects,
+#' **Population - Long format:** Adds section headers for all sections (Fixed effects, Random effects,
 #' Correlations, Residual error). If IOV parameters are present, IIV and IOV get separate
 #' headers ("Random effects IIV" and "Random effects IOV").
+#'
+#' **NCA tables:** Adds section headers for "Summary Statistics" and "Individual Parameters"
+#' in long format only.
+#'
+#' **Grouping columns (NCA only):** When grouping.columns is provided for NCA tables, section header
+#' rows preserve values in grouping columns (for vertical merging) and only span non-grouping columns.
 #' @keywords internal
-.add_pop_section_headers <- function(data.flex) {
-  # Check if this is a pop table with Section column
+.add_section_headers <- function(data.flex, grouping.columns = NULL) {
+  # Check table type
+
   table_type   <- attr(data.flex, "table_type")
   is_pop_table <- !is.null(table_type) && table_type == "pop"
+  is_nca_table <- !is.null(table_type) && table_type == "nca"
   table_format <- attr(data.flex, "format")
   is_wide      <- !is.null(table_format) && table_format == "wide"
 
@@ -97,8 +113,8 @@
   section_header_rows <- integer(0)
   wide_split_col <- NULL
 
-  # If not a pop table or no Section column, return unchanged
-  if (!is_pop_table || !"Section" %in% colnames(data.flex)) {
+  # If not a pop or nca table, or no Section column, return unchanged
+  if ((!is_pop_table && !is_nca_table) || !"Section" %in% colnames(data.flex)) {
     return(list(
       data.flex           = data.flex,
       section_header_rows = section_header_rows,
@@ -109,6 +125,101 @@
   # Save Section column before processing
   section_col <- as.character(data.flex$Section)
 
+  # ============================================================================
+  # NCA TABLE HANDLING (simpler than population tables)
+  # ============================================================================
+  if (is_nca_table) {
+    # NCA tables only have long format with SUMMARY and INDIVIDUAL sections
+    section_labels <- c(
+      SUMMARY    = "Summary Statistics",
+      INDIVIDUAL = "Individual Parameters")
+
+    # Convert factor columns to character to avoid issues when inserting header rows
+    for (col in names(data.flex)) {
+      if (is.factor(data.flex[[col]])) {
+        data.flex[[col]] <- as.character(data.flex[[col]])
+      }
+    }
+
+    # Move Section column to the end
+    other_cols <- setdiff(names(data.flex), "Section")
+    data.flex  <- data.flex[, c(other_cols, "Section"), drop = FALSE]
+
+    # Map section codes to full labels in the data
+    data.flex$Section <- section_labels[section_col]
+
+    # Identify where to insert section headers
+    insert_positions <- integer(0)
+    section_names    <- character(0)
+
+    for (i in seq_len(nrow(data.flex))) {
+      if (i == 1 || data.flex$Section[i] != data.flex$Section[i - 1]) {
+        insert_positions <- c(insert_positions, i)
+        section_names    <- c(section_names, data.flex$Section[i])
+      }
+    }
+
+    # Insert header rows from bottom to top
+    for (idx in length(insert_positions):1) {
+      pos          <- insert_positions[idx]
+      section_name <- section_names[idx]
+
+      # Create header row
+      header_row <- data.flex[pos, , drop = FALSE]
+
+      # Handle grouping columns if provided
+      if (!is.null(grouping.columns) && length(grouping.columns) > 0) {
+        # Keep grouping column values from data row for vertical merging
+        for (grp_col in grouping.columns) {
+          if (grp_col %in% names(header_row)) {
+            header_row[1, grp_col] <- data.flex[pos, grp_col]
+          }
+        }
+
+        # Empty all non-grouping columns
+        non_grouping_cols <- setdiff(names(header_row), grouping.columns)
+        for (col in non_grouping_cols) {
+          header_row[1, col] <- ""
+        }
+
+        # Put section header text in first non-grouping column
+        if (length(non_grouping_cols) > 0) {
+          header_row[1, non_grouping_cols[1]] <- section_name
+        }
+      } else {
+        # No grouping columns: use existing logic (clear all, put text in first column)
+        header_row[1, ]  <- ""
+        header_row[1, 1] <- section_name
+      }
+
+      # Insert before the position
+      if (pos == 1) {
+        data.flex <- rbind(header_row, data.flex)
+      } else {
+        data.flex <- rbind(
+          data.flex[1:(pos - 1), , drop = FALSE],
+          header_row,
+          data.flex[pos:nrow(data.flex), , drop = FALSE])
+      }
+
+      # Track final position for styling
+      section_header_rows <- c(pos + (idx - 1), section_header_rows)
+    }
+    rownames(data.flex) <- NULL
+
+    # Remove the Section column
+    data.flex$Section <- NULL
+
+    return(list(
+      data.flex           = data.flex,
+      section_header_rows = section_header_rows,
+      wide_split_col      = wide_split_col,
+      is_wide             = FALSE))
+  }
+
+  # ============================================================================
+  # POPULATION TABLE HANDLING
+  # ============================================================================
   if (is_wide) {
     # Wide format: split header at top + section headers for CORR/RES_ERR
     # Determine labels for non-FE/IIV/IOV sections
@@ -247,10 +358,10 @@
   }
 
   return(list(
-    data.flex = data.flex,
+    data.flex           = data.flex,
     section_header_rows = section_header_rows,
-    wide_split_col = wide_split_col,
-    is_wide = is_wide
+    wide_split_col      = wide_split_col,
+    is_wide             = is_wide
   ))
 }
 
@@ -331,288 +442,318 @@ print_table_flex <- function(data.flex,
                              soften_amount    = 0.50, # 0 = original, 1 = white
                              html_alpha       = 0.18) # only used for html rgba)
 {
-  color <- toupper(color) # optional but helpful
+	color <- toupper(color) # optional but helpful
 
-  # Check if columns exist
-  pval.flag <- ("PVAL" %in% color) && "p.value"    %in% colnames(data.flex)
-  BE.flag   <- ("BE" %in% color)   && "Conclusion" %in% colnames(data.flex)
-  DP.flag   <- ("DP" %in% color)   && "Conclusion" %in% colnames(data.flex)
+	# Check if columns exist
+	pval.flag <- ("PVAL" %in% color) && "p.value"    %in% colnames(data.flex)
+	BE.flag   <- ("BE" %in% color)   && "Conclusion" %in% colnames(data.flex)
+	DP.flag   <- ("DP" %in% color)   && "Conclusion" %in% colnames(data.flex)
 
-  # RSE flag: detect any columns containing "RSE" in their name
-  # This covers: "RSE", "%RSE", "RSE (%)", "FE_RSE", "IIV_RSE", "IOV_RSE", "IIV\nRSE (%)", etc.
-  RSE.flag <- "RSE" %in% color
-  RSE.cols <- character(0)
-  if (RSE.flag) {
-    RSE.cols <- grep("RSE", colnames(data.flex), value = TRUE, ignore.case = TRUE)
-    RSE.flag <- length(RSE.cols) > 0
-  }
+	# RSE flag: detect any columns containing "RSE" in their name
+	# This covers: "RSE", "%RSE", "RSE (%)", "FE_RSE", "IIV_RSE", "IOV_RSE", "IIV\nRSE (%)", etc.
+	RSE.flag <- "RSE" %in% color
+	RSE.cols <- character(0)
+	if (RSE.flag) {
+		RSE.cols <- grep("RSE", colnames(data.flex), value = TRUE, ignore.case = TRUE)
+		RSE.flag <- length(RSE.cols) > 0
+	}
 
-  flextable::set_flextable_defaults(na_str = "NA")
+	flextable::set_flextable_defaults(na_str = "NA")
 
-  # Reorder columns so grouping columns come first
-  if (!is.null(grouping.columns)) {
-    other.cols <- setdiff(names(data.flex), grouping.columns)
-    data.flex  <- data.flex[, c(grouping.columns, other.cols), drop = FALSE]
-  }
+	# Save attributes before reordering (bc subsetting can lose attributes)
+	saved_attrs <- attributes(data.flex)
 
-  #-----------------------------------------------------------------------------
-  # [Code Chunk of Pop Table Section Headers]
-  # For population parameter tables, add section header rows to visually
-  # separate different sections (Fixed effects, Random effects, Correlations,
-  # Residual error). Wide format uses a split header at top for FE/RE.
-  #-----------------------------------------------------------------------------
-  pop_result <- .add_pop_section_headers(data.flex)
-  data.flex <- pop_result$data.flex
-  section_header_rows <- pop_result$section_header_rows
-  wide_split_col <- pop_result$wide_split_col
-  is_wide <- pop_result$is_wide
-  is_pop_table <- length(section_header_rows) > 0 || !is.null(wide_split_col)
-  # --- END: Pop Table Section Headers ---
+	# Reorder columns so grouping columns come first
+	if (!is.null(grouping.columns)) {
+		other.cols <- setdiff(names(data.flex), grouping.columns)
+		data.flex  <- data.flex[, c(grouping.columns, other.cols), drop = FALSE]
 
-  ft <- flextable(data.flex)
-  #-----------------------------------------------------------------------------
-  # [Code Chunk of Alias Conversion]
-  # Detect columns containing [[sub:...]] markers
-  # Only these columns need processing
-  alias_cols <- names(data.flex)[sapply(data.flex, function(col) {
-    any(grepl("\\[\\[sub:", col, fixed = FALSE))
-  })]
+		# Restore custom attributes (table_type, format, etc.)
+		# Keep only non-standard attributes (not names, row.names, class)
+		custom_attrs <- saved_attrs[!names(saved_attrs) %in% c("names", "row.names", "class")]
+		for (attr_name in names(custom_attrs)) {
+			attr(data.flex, attr_name) <- custom_attrs[[attr_name]]
+		}
+	}
 
-  # Apply decoder to alias columns
-  # Identified columns
-  if (length(alias_cols) > 0) {
-    for (col in alias_cols) {
-      # Process each row
-      for (i in seq_len(nrow(data.flex))) {
-        # CRITICAL: Must process cell-by-cell because flextable::compose() requires
-        # specific row (i) and column (j) indices to target individual cells.
-        # Cannot apply vectorized transformation to entire column at once.
-        cell_value <- data.flex[[col]][i]
+	#-----------------------------------------------------------------------------
+	# [Code Chunk of Section Headers]
+	# For parameter tables (population or NCA), add section header rows to
+	# visually separate different sections:
+	# - Population: Fixed effects, Random effects, Correlations, Residual error
+	# - NCA: Summary Statistics, Individual Parameters
+	# Wide format (pop only) uses a split header at top for FE/RE.
+	#-----------------------------------------------------------------------------
+	# Save table_type before calling .add_section_headers (it may be lost during processing)
+	table_type_for_styling <- attr(data.flex, "table_type")
 
-        # Handle NA or empty strings
-        if (is.na(cell_value) || !nzchar(as.character(cell_value))) {
-          next # Skip, leave as is
-        }
+	section_result      <- .add_section_headers(data.flex, grouping.columns)
+	data.flex           <- section_result$data.flex
+	section_header_rows <- section_result$section_header_rows
+	wide_split_col      <- section_result$wide_split_col
+	is_wide             <- section_result$is_wide
+	has_section_headers <- length(section_header_rows) > 0 || !is.null(wide_split_col)
+	# --- END: Section Headers ---
 
-        cell_value <- as.character(cell_value)
+	ft <- flextable(data.flex)
+	#-----------------------------------------------------------------------------
+	# [Code Chunk of Alias Conversion]
+	# Detect columns containing [[sub:...]] markers
+	# Only these columns need processing
+	alias_cols <- names(data.flex)[sapply(data.flex, function(col) {
+		any(grepl("\\[\\[sub:", col, fixed = FALSE))
+	})]
 
-        # Only process if it contains [[sub:...]]
-        if (!grepl("\\[\\[sub:", cell_value)) {
-          next
-        }
+	# Apply decoder to alias columns
+	# Identified columns
+	if (length(alias_cols) > 0) {
+		for (col in alias_cols) {
+			# Process each row
+			for (i in seq_len(nrow(data.flex))) {
+				# CRITICAL: Must process cell-by-cell because flextable::compose() requires
+				# specific row (i) and column (j) indices to target individual cells.
+				# Cannot apply vectorized transformation to entire column at once.
+				cell_value <- data.flex[[col]][i]
 
-        # --- BEGIN: Inline parsing logic (duplicate of .decode_flex_alias) ---
-        # WHY INLINE? Because flextable::compose() needs to be called with specific
-        # i/j coordinates for each cell. We can't pre-generate paragraphs and apply
-        # them later - compose() must be called in the loop with the parsed chunks.
-        pattern <- "\\[\\[sub:([^]]+)\\]\\]"
-        chunks  <- list()
-        current <- cell_value
+				# Handle NA or empty strings
+				if (is.na(cell_value) || !nzchar(as.character(cell_value))) {
+					next # Skip, leave as is
+				}
 
-        repeat {
-          m <- regexpr(pattern, current, perl = TRUE)
-          if (m[1] == -1) {
-            # No more subscript markers - add remaining text
-            if (nzchar(current)) {
-              chunks <- append(chunks, list(flextable::as_chunk(current)))
-            }
-            break
-          }
-          start <- m[1]
-          end   <- start + attr(m, "match.length") - 1
+				cell_value <- as.character(cell_value)
 
-          # Text before the [[sub:...]] marker
-          before <- substr(current, 1, start - 1)
-          if (nzchar(before)) {
-            chunks <- append(chunks, list(flextable::as_chunk(before)))
-          }
-          # Extract subscript text
-          match_str <- substr(current, start, end)
-          subtxt    <- sub(pattern, "\\1", match_str, perl = TRUE)
-          chunks    <- append(chunks, list(flextable::as_sub(subtxt)))
+				# Only process if it contains [[sub:...]]
+				if (!grepl("\\[\\[sub:", cell_value)) {
+					next
+				}
 
-          # Continue with rest of string
-          current <- substr(current, end + 1, nchar(current))
-        }
+				# --- BEGIN: Inline parsing logic (duplicate of .decode_flex_alias) ---
+				# WHY INLINE? Because flextable::compose() needs to be called with specific
+				# i/j coordinates for each cell. We can't pre-generate paragraphs and apply
+				# them later - compose() must be called in the loop with the parsed chunks.
+				pattern <- "\\[\\[sub:([^]]+)\\]\\]"
+				chunks  <- list()
+				current <- cell_value
 
-        # Apply to this specific cell
-        ft <- flextable::compose(ft, i = i, j = col, value = do.call(flextable::as_paragraph, chunks)) # i... row index, j... column name,
-      }
-    }
-  }
+				repeat {
+					m <- regexpr(pattern, current, perl = TRUE)
+					if (m[1] == -1) {
+						# No more subscript markers - add remaining text
+						if (nzchar(current)) {
+							chunks <- append(chunks, list(flextable::as_chunk(current)))
+						}
+						break
+					}
+					start <- m[1]
+					end   <- start + attr(m, "match.length") - 1
 
-  #-----------------------------------------------------------------------------
-  # [End of Alias conversion]
-  #-----------------------------------------------------------------------------
+					# Text before the [[sub:...]] marker
+					before <- substr(current, 1, start - 1)
+					if (nzchar(before)) {
+						chunks <- append(chunks, list(flextable::as_chunk(before)))
+					}
+					# Extract subscript text
+					match_str <- substr(current, start, end)
+					subtxt    <- sub(pattern, "\\1", match_str, perl = TRUE)
+					chunks    <- append(chunks, list(flextable::as_sub(subtxt)))
 
+					# Continue with rest of string
+					current <- substr(current, end + 1, nchar(current))
+				}
 
-  #-----------------------------------------------------------------------------
-  # Initialize flextable with theme
-  ft <- theme_fn(ft)
-  ft <- fontsize(ft, size = 8, part = "all")
+				# Apply to this specific cell
+				ft <- flextable::compose(ft, i = i, j = col, value = do.call(flextable::as_paragraph, chunks)) # i... row index, j... column name,
+			}
+		}
+	}
 
-  # Merge vertical grouping columns
-  if (!is.null(grouping.columns)) {
-    ft <- merge_v(ft, j = grouping.columns)
-  }
-
-  # Center all table content
-  ft <- align(ft, align = "center", part = "all")
-
-  # left-align each grouping column by name
-  if (!is.null(grouping.columns)) {
-    for (col in grouping.columns) {
-      ft <- align(ft, j = col, align = "left", part = "all")
-    }
-  }
-
-  # Style section header rows for pop tables
-  if (is_pop_table && length(section_header_rows) > 0) {
-    border_style <- officer::fp_border(color = "black", width = 1)
-
-    if (is_wide && !is.null(wide_split_col)) {
-      # Wide format: split header row at top + section headers below
-      split_row_idx <- section_header_rows[1]
-
-      # Merge and label "Fixed effects" (columns 1 to split_col - 1)
-      ft <- ft %>%
-        flextable::merge_at(i = split_row_idx, j = 1:(wide_split_col - 1), part = "body") %>%
-        flextable::compose(i = split_row_idx, j = 1, value = flextable::as_paragraph("Fixed effects"), part = "body") %>%
-        flextable::align(i = split_row_idx, j = 1, align = "left", part = "body")
-
-      # Merge and label "Random effects" (columns split_col to end)
-      ft <- ft %>%
-        flextable::merge_at(i = split_row_idx, j = wide_split_col:ncol(data.flex), part = "body") %>%
-        flextable::compose(i = split_row_idx, j = wide_split_col, value = flextable::as_paragraph("Random effects"), part = "body") %>%
-        flextable::align(i = split_row_idx, j = wide_split_col:ncol(data.flex), align = "left", part = "body")
-
-      # Bold the split header row
-      ft <- ft %>%
-        flextable::bold(i = split_row_idx, part = "body")
-
-      # Add borders around split header
-      ft <- ft %>%
-        flextable::hline_top(border = border_style, part = "body") %>%
-        flextable::hline(i = split_row_idx, border = border_style, part = "body")
-
-      # Style remaining section headers (CORR, RES_ERR) if any
-      if (length(section_header_rows) > 1) {
-        for (row_idx in section_header_rows[-1]) {
-          ft <- ft %>%
-            flextable::bold(i = row_idx, part = "body") %>%
-            flextable::align(i = row_idx, align = "left", part = "body") %>%
-            flextable::merge_at(i = row_idx, j = seq_len(ncol(data.flex)), part = "body")
-
-          # Add line above
-          ft <- ft %>%
-            flextable::hline(i = row_idx - 1, border = border_style, part = "body")
-
-          # Add line below
-          ft <- ft %>%
-            flextable::hline(i = row_idx, border = border_style, part = "body")
-        }
-      }
-
-    } else {
-      # Long format: multiple section headers (existing logic)
-      for (row_idx in section_header_rows) {
-        ft <- ft %>%
-        	flextable::bold(i = row_idx, part = "body") %>%
-          flextable::align(i = row_idx, align = "left", part = "body") %>%
-          flextable::merge_at(i = row_idx, j = seq_len(ncol(data.flex)), part = "body")
-
-        # Add line above
-        if (row_idx > 1) {
-          ft <- ft %>%
-            flextable::hline(i = row_idx - 1, border = border_style, part = "body")
-        } else {
-          ft <- ft %>%
-            flextable::hline_top(border = border_style, part = "body")
-        }
-
-        # Add line below
-        ft <- ft %>%
-          flextable::hline(i = row_idx, border = border_style, part = "body")
-      }
-    }
-  }
-
-  # ---------------------------------------------------------------------------
-  # Header levels (1 = topmost)
-  # ---------------------------------------------------------------------------
-  h1 <- .as_header_string(header_level1)
-  h2 <- .as_header_string(header_level2)
-  h3 <- .as_header_string(header_level3)
-
-  # Add from lowest to highest so level 1 ends up on top
-  # add_header_lines() inserts ABOVE the existing header each time
-  for (line in na.omit(c(h3, h2, h1))) {
-    ft <- flextable::add_header_lines(ft, values = line)
-  }
-
-  ft <- flextable::align(ft, align = "center", part = "header")
+	#-----------------------------------------------------------------------------
+	# [End of Alias conversion]
+	#-----------------------------------------------------------------------------
 
 
-  # ---------------------------------------------------------------------------
-  # Color palette setup
-  # ---------------------------------------------------------------------------
-  base_yellow <- "#FFD700"
-  base_orange <- "#EE7600"
-  base_red    <- "#8B1A1A"
-  base_green  <- "#458B00"
+	#-----------------------------------------------------------------------------
+	# Initialize flextable with theme
+	ft <- theme_fn(ft)
+	ft <- fontsize(ft, size = 8, part = "all")
 
-  # Default: pastel hex (good for docx/pptx and generally safe)
-  col_yellow <- .soften_hex(base_yellow, soften_amount)
-  col_orange <- .soften_hex(base_orange, soften_amount)
-  col_red    <- .soften_hex(base_red, soften_amount)
-  col_green  <- .soften_hex(base_green, soften_amount)
+	# Merge vertical grouping columns
+	if (!is.null(grouping.columns)) {
+		ft <- merge_v(ft, j = grouping.columns)
+	}
 
-  # If HTML output, optionally use rgba for transparency
-  if (.is_html_output()) {
-    col_yellow <- .hex_to_rgba(base_yellow, html_alpha)
-    col_orange <- .hex_to_rgba(base_orange, html_alpha)
-    col_red    <- .hex_to_rgba(base_red, html_alpha)
-    col_green  <- .hex_to_rgba(base_green, html_alpha)
-  }
+	# Center all table content
+	ft <- align(ft, align = "center", part = "all")
 
-  # Apply conditional background formatting for RSE columns
-  if (RSE.flag && length(RSE.cols) > 0) {
-    for (rse_col in RSE.cols) {
-      # Use backtick notation to handle column names with special characters
-      col_expr <- paste0("`", rse_col, "`")
+	# left-align each grouping column by name
+	if (!is.null(grouping.columns)) {
+		for (col in grouping.columns) {
+			ft <- align(ft, j = col, align = "left", part = "all")
+		}
+	}
 
-      # Build formulas as strings and convert to formulas
-      formula_yellow <- as.formula(paste("~", col_expr, ">= 50 &",  col_expr, "< 100"))
-      formula_orange <- as.formula(paste("~", col_expr, ">= 100 &", col_expr, "< 200"))
-      formula_red    <- as.formula(paste("~", col_expr, "> 200"))
+	# Style section header rows for tables with sections (pop or NCA)
+	if (has_section_headers && length(section_header_rows) > 0) {
+		border_style <- officer::fp_border(color = "black", width = 1)
 
-      ft <- ft %>%
-        flextable::bg(i = formula_yellow, j = rse_col, bg = col_yellow, part = "body") %>%
-        flextable::bg(i = formula_orange, j = rse_col, bg = col_orange, part = "body") %>%
-        flextable::bg(i = formula_red,    j = rse_col, bg = col_red,    part = "body")
-    }
-  }
+		if (is_wide && !is.null(wide_split_col)) {
+			# Wide format: split header row at top + section headers below
+			split_row_idx <- section_header_rows[1]
 
-  if (pval.flag) {
-    ft <- ft %>%
-      flextable::bg(i = ~ p.value <= 0.01,                  j = ~p.value, bg = col_red,    part = "body") %>%
-      flextable::bg(i = ~ p.value > 0.01 & p.value <= 0.05, j = ~p.value, bg = col_orange, part = "body") %>%
-      flextable::bg(i = ~ p.value > 0.05 & p.value <= 0.09, j = ~p.value, bg = col_yellow, part = "body")
-  }
-  # Apply conditional background formatting
-  if (DP.flag) {
-    ft <- ft %>%
-      flextable::bg(i = ~ Conclusion == "Proportional",     j = ~Conclusion, bg = col_green,  part = "body") %>%
-      flextable::bg(i = ~ Conclusion == "Inconclusive",     j = ~Conclusion, bg = col_yellow, part = "body") %>%
-      flextable::bg(i = ~ Conclusion == "Not Proportional", j = ~Conclusion, bg = col_red,    part = "body")
-  }
-  if (BE.flag) {
-    ft <- ft %>%
-      flextable::bg(i = ~ Conclusion == "Bioequivalent",     j = ~Conclusion, bg = col_green, part = "body") %>%
-      flextable::bg(i = ~ Conclusion == "Not bioequivalent", j = ~Conclusion, bg = col_red,   part = "body")
-  }
-  ft <- set_table_properties(ft, width = 1, layout = "autofit")
-  return(ft)
+			# Merge and label "Fixed effects" (columns 1 to split_col - 1)
+			ft <- ft %>%
+				flextable::merge_at(i = split_row_idx, j = 1:(wide_split_col - 1), part = "body") %>%
+				flextable::compose(i = split_row_idx, j = 1, value = flextable::as_paragraph("Fixed effects"), part = "body") %>%
+				flextable::align(i = split_row_idx, j = 1, align = "left", part = "body")
+
+			# Merge and label "Random effects" (columns split_col to end)
+			ft <- ft %>%
+				flextable::merge_at(i = split_row_idx, j = wide_split_col:ncol(data.flex), part = "body") %>%
+				flextable::compose(i = split_row_idx, j = wide_split_col, value = flextable::as_paragraph("Random effects"), part = "body") %>%
+				flextable::align(i = split_row_idx, j = wide_split_col:ncol(data.flex), align = "left", part = "body")
+
+			# Bold the split header row
+			ft <- ft %>%
+				flextable::bold(i = split_row_idx, part = "body")
+
+			# Add borders around split header
+			ft <- ft %>%
+				flextable::hline_top(border = border_style, part = "body") %>%
+				flextable::hline(i = split_row_idx, border = border_style, part = "body")
+
+			# Style remaining section headers (CORR, RES_ERR) if any
+			if (length(section_header_rows) > 1) {
+				for (row_idx in section_header_rows[-1]) {
+					ft <- ft %>%
+						flextable::bold(i = row_idx, part = "body") %>%
+						flextable::align(i = row_idx, align = "left", part = "body") %>%
+						flextable::merge_at(i = row_idx, j = seq_len(ncol(data.flex)), part = "body")
+
+					# Add line above
+					ft <- ft %>%
+						flextable::hline(i = row_idx - 1, border = border_style, part = "body")
+
+					# Add line below
+					ft <- ft %>%
+						flextable::hline(i = row_idx, border = border_style, part = "body")
+				}
+			}
+
+		} else {
+			# Long format: multiple section headers
+			# Check if this is an NCA table with grouping columns
+			is_nca_with_grouping <- !is.null(table_type_for_styling) && table_type_for_styling == "nca" &&
+				!is.null(grouping.columns) && length(grouping.columns) > 0
+
+			for (row_idx in section_header_rows) {
+				if (is_nca_with_grouping) {
+					# For NCA with grouping: only merge non-grouping columns
+					non_grouping_indices <- which(!(names(data.flex) %in% grouping.columns))
+
+					ft <- ft %>%
+						flextable::bold(i = row_idx, part = "body") %>%
+						flextable::align(i = row_idx, align = "left", part = "body") %>%
+						flextable::merge_at(i = row_idx, j = non_grouping_indices, part = "body")
+				} else {
+					# For all other cases: merge all columns (existing logic)
+					ft <- ft %>%
+						flextable::bold(i = row_idx, part = "body") %>%
+						flextable::align(i = row_idx, align = "left", part = "body") %>%
+						flextable::merge_at(i = row_idx, j = seq_len(ncol(data.flex)), part = "body")
+				}
+
+				# Add line above
+				if (row_idx > 1) {
+					ft <- ft %>%
+						flextable::hline(i = row_idx - 1, border = border_style, part = "body")
+				} else {
+					ft <- ft %>%
+						flextable::hline_top(border = border_style, part = "body")
+				}
+
+				# Add line below
+				ft <- ft %>%
+					flextable::hline(i = row_idx, border = border_style, part = "body")
+			}
+		}
+	}
+
+	# ---------------------------------------------------------------------------
+	# Header levels (1 = topmost)
+	# ---------------------------------------------------------------------------
+	h1 <- .as_header_string(header_level1)
+	h2 <- .as_header_string(header_level2)
+	h3 <- .as_header_string(header_level3)
+
+	# Add from lowest to highest so level 1 ends up on top
+	# add_header_lines() inserts ABOVE the existing header each time
+	for (line in na.omit(c(h3, h2, h1))) {
+		ft <- flextable::add_header_lines(ft, values = line)
+	}
+
+	ft <- flextable::align(ft, align = "center", part = "header")
+
+
+	# ---------------------------------------------------------------------------
+	# Color palette setup
+	# ---------------------------------------------------------------------------
+	base_yellow <- "#FFD700"
+	base_orange <- "#EE7600"
+	base_red    <- "#8B1A1A"
+	base_green  <- "#458B00"
+
+	# Default: pastel hex (good for docx/pptx and generally safe)
+	col_yellow <- .soften_hex(base_yellow, soften_amount)
+	col_orange <- .soften_hex(base_orange, soften_amount)
+	col_red    <- .soften_hex(base_red, soften_amount)
+	col_green  <- .soften_hex(base_green, soften_amount)
+
+	# If HTML output, optionally use rgba for transparency
+	if (.is_html_output()) {
+		col_yellow <- .hex_to_rgba(base_yellow, html_alpha)
+		col_orange <- .hex_to_rgba(base_orange, html_alpha)
+		col_red    <- .hex_to_rgba(base_red, html_alpha)
+		col_green  <- .hex_to_rgba(base_green, html_alpha)
+	}
+
+	# Apply conditional background formatting for RSE columns
+	if (RSE.flag && length(RSE.cols) > 0) {
+		for (rse_col in RSE.cols) {
+			# Use backtick notation to handle column names with special characters
+			col_expr <- paste0("`", rse_col, "`")
+
+			# Build formulas as strings and convert to formulas
+			formula_yellow <- as.formula(paste("~", col_expr, ">= 50 &",  col_expr, "< 100"))
+			formula_orange <- as.formula(paste("~", col_expr, ">= 100 &", col_expr, "< 200"))
+			formula_red    <- as.formula(paste("~", col_expr, "> 200"))
+
+			ft <- ft %>%
+				flextable::bg(i = formula_yellow, j = rse_col, bg = col_yellow, part = "body") %>%
+				flextable::bg(i = formula_orange, j = rse_col, bg = col_orange, part = "body") %>%
+				flextable::bg(i = formula_red,    j = rse_col, bg = col_red,    part = "body")
+		}
+	}
+
+	if (pval.flag) {
+		ft <- ft %>%
+			flextable::bg(i = ~ p.value <= 0.01,                  j = ~p.value, bg = col_red,    part = "body") %>%
+			flextable::bg(i = ~ p.value > 0.01 & p.value <= 0.05, j = ~p.value, bg = col_orange, part = "body") %>%
+			flextable::bg(i = ~ p.value > 0.05 & p.value <= 0.09, j = ~p.value, bg = col_yellow, part = "body")
+	}
+	# Apply conditional background formatting
+	if (DP.flag) {
+		ft <- ft %>%
+			flextable::bg(i = ~ Conclusion == "Proportional",     j = ~Conclusion, bg = col_green,  part = "body") %>%
+			flextable::bg(i = ~ Conclusion == "Inconclusive",     j = ~Conclusion, bg = col_yellow, part = "body") %>%
+			flextable::bg(i = ~ Conclusion == "Not Proportional", j = ~Conclusion, bg = col_red,    part = "body")
+	}
+	if (BE.flag) {
+		ft <- ft %>%
+			flextable::bg(i = ~ Conclusion == "Bioequivalent",     j = ~Conclusion, bg = col_green, part = "body") %>%
+			flextable::bg(i = ~ Conclusion == "Not bioequivalent", j = ~Conclusion, bg = col_red,   part = "body")
+	}
+	ft <- set_table_properties(ft, width = 1, layout = "autofit")
+	return(ft)
 }
 
 ################################################################################
