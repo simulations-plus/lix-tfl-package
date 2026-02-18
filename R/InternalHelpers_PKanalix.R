@@ -793,10 +793,10 @@
 		name_mapping <- setNames(temp_df$parameter, param_cols)
 
 		# Rename columns in indiv_params (vectorized approach)
-		new_names <- names(indiv_params)
+		new_names  <- names(indiv_params)
 		rename_idx <- which(new_names %in% names(name_mapping))
 		new_names[rename_idx] <- name_mapping[new_names[rename_idx]]
-		names(indiv_params) <- new_names
+		names(indiv_params)   <- new_names
 	}
 
 	# Get parameter columns from summary_stats (excluding Statistic and covariates)
@@ -826,13 +826,26 @@
 			dplyr::group_by(dplyr::across(dplyr::all_of(covariates))) %>%
 			dplyr::group_split()
 
+		# Add Section column to each group
+		summary_groups <- lapply(summary_groups, function(x) {
+			x$Section <- "SUMMARY"
+			x
+		})
+
+		indiv_groups <- lapply(indiv_groups, function(x) {
+			x$Section <- "INDIVIDUAL"
+			x
+		})
+
 		# Combine corresponding groups (metrics first, then individuals)
 		result_list <- purrr::map2(summary_groups, indiv_groups, rbind)
 
 		final_result <- do.call(rbind, result_list)
 	} else {
 		# No covariates: simple append
-		final_result <- rbind(summary_stats, indiv_params)
+		summary_stats$Section <- "SUMMARY"
+		indiv_params$Section  <- "INDIVIDUAL"
+		final_result          <- rbind(summary_stats, indiv_params)
 	}
 
 	return(final_result)
