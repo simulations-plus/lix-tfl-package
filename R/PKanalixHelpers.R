@@ -520,7 +520,8 @@ tableNCAParameters <- function(projectFile      = NULL,
 		}
 	}
 	# ==========================================================================
-	# SET ATTRIBUTES for print_table_flex to recognize this as NCA table with sections
+	# SET ATTRIBUTES for print_table_flex
+	# To recognize this as NCA table with sections
 	if (include_id && "Section" %in% names(summary_stats)) {
 		attr(summary_stats, "table_type") <- "nca"
 		attr(summary_stats, "format")     <- "long"  # Always long when include_id=TRUE

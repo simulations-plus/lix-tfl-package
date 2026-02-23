@@ -60,6 +60,152 @@
   tryCatch(knitr::is_html_output(), error = function(e) FALSE)
 }
 
+#' .apply_alias_subscripts: Apply subscript formatting to flextables
+#'
+#' Processes [[sub:...]] markers in both body cells and column headers, converting
+#' them to properly formatted subscripts using flextable::compose().
+#'
+#' @param ft Flextable object to apply subscript formatting to
+#' @param data.flex Data frame containing the table data (used to detect markers)
+#'
+#' @return Modified flextable object with subscripts applied
+#'
+#' @details
+#' This function handles two cases:
+#' - **Body cells**: Processes [[sub:...]] markers in data values (horizontal = TRUE format)
+#' - **Column headers**: Processes [[sub:...]] markers in column names (horizontal = FALSE format)
+#'
+#' The parsing logic extracts subscript text from markers and uses flextable::as_sub()
+#' to render them correctly in the final output.
+#'
+#' @keywords internal
+.apply_alias_subscripts <- function(ft, data.flex) {
+	#-----------------------------------------------------------------------------
+	# [Process Body Cells]
+	# Detect columns containing [[sub:...]] markers
+	#-----------------------------------------------------------------------------
+	alias_cols <- names(data.flex)[sapply(data.flex, function(col) {
+		any(grepl("\\[\\[sub:", col, fixed = FALSE))
+	})]
+
+	if (length(alias_cols) > 0) {
+		for (col in alias_cols) {
+			# Process each row
+			for (i in seq_len(nrow(data.flex))) {
+				# CRITICAL: Must process cell-by-cell because flextable::compose() requires
+				# specific row (i) and column (j) indices to target individual cells.
+				# Cannot apply vectorized transformation to entire column at once.
+				cell_value <- data.flex[[col]][i]
+
+				# Handle NA or empty strings
+				if (is.na(cell_value) || !nzchar(as.character(cell_value))) {
+					next # Skip, leave as is
+				}
+
+				cell_value <- as.character(cell_value)
+
+				# Only process if it contains [[sub:...]]
+				if (!grepl("\\[\\[sub:", cell_value)) {
+					next
+				}
+
+				# --- BEGIN: Inline parsing logic ---
+				# WHY INLINE? Because flextable::compose() needs to be called with specific
+				# i/j coordinates for each cell. We can't pre-generate paragraphs and apply
+				# them later - compose() must be called in the loop with the parsed chunks.
+				pattern <- "\\[\\[sub:([^]]+)\\]\\]"
+				chunks <- list()
+				current <- cell_value
+
+				repeat {
+					m <- regexpr(pattern, current, perl = TRUE)
+					if (m[1] == -1) {
+						# No more subscript markers - add remaining text
+						if (nzchar(current)) {
+							chunks <- append(chunks, list(flextable::as_chunk(current)))
+						}
+						break
+					}
+					start <- m[1]
+					end <- start + attr(m, "match.length") - 1
+
+					# Text before the [[sub:...]] marker
+					before <- substr(current, 1, start - 1)
+					if (nzchar(before)) {
+						chunks <- append(chunks, list(flextable::as_chunk(before)))
+					}
+					# Extract subscript text
+					match_str <- substr(current, start, end)
+					subtxt <- sub(pattern, "\\1", match_str, perl = TRUE)
+					chunks <- append(chunks, list(flextable::as_sub(subtxt)))
+
+					# Continue with rest of string
+					current <- substr(current, end + 1, nchar(current))
+				}
+
+				# Apply to this specific cell
+				ft <- flextable::compose(ft, i = i, j = col, value = do.call(flextable::as_paragraph, chunks))
+			}
+		}
+	}
+
+	#-----------------------------------------------------------------------------
+	# [Process Column Headers]
+	# Process column names that contain [[sub:...]] markers
+	# This handles the case when horizontal = FALSE (parameters in headers)
+	#-----------------------------------------------------------------------------
+	header_names <- colnames(data.flex)
+	header_alias_cols <- which(grepl("\\[\\[sub:", header_names))
+
+	if (length(header_alias_cols) > 0) {
+		for (col_idx in header_alias_cols) {
+			header_value <- header_names[col_idx]
+
+			# Only process if it contains [[sub:...]]
+			if (!grepl("\\[\\[sub:", header_value)) {
+				next
+			}
+
+			# --- BEGIN: Inline parsing logic (same as body processing) ---
+			pattern <- "\\[\\[sub:([^]]+)\\]\\]"
+			chunks <- list()
+			current <- header_value
+
+			repeat {
+				m <- regexpr(pattern, current, perl = TRUE)
+				if (m[1] == -1) {
+					# No more subscript markers - add remaining text
+					if (nzchar(current)) {
+						chunks <- append(chunks, list(flextable::as_chunk(current)))
+					}
+					break
+				}
+				start <- m[1]
+				end <- start + attr(m, "match.length") - 1
+
+				# Text before the [[sub:...]] marker
+				before <- substr(current, 1, start - 1)
+				if (nzchar(before)) {
+					chunks <- append(chunks, list(flextable::as_chunk(before)))
+				}
+				# Extract subscript text
+				match_str <- substr(current, start, end)
+				subtxt <- sub(pattern, "\\1", match_str, perl = TRUE)
+				chunks <- append(chunks, list(flextable::as_sub(subtxt)))
+
+				# Continue with rest of string
+				current <- substr(current, end + 1, nchar(current))
+			}
+
+			# Apply to this header cell (i = 1 for first header row, j = col_idx)
+			ft <- flextable::compose(ft, i = 1, j = col_idx, value = do.call(flextable::as_paragraph, chunks), part = "header")
+		}
+	}
+
+	return(ft)
+}
+
+
 #' .add_section_headers: Add section headers to parameter tables (population or NCA)
 #' For parameter tables (identified by `table_type` attribute = "pop" or "nca"),
 #' inserts section header rows to visually separate different sections.
@@ -101,268 +247,277 @@
 #' rows preserve values in grouping columns (for vertical merging) and only span non-grouping columns.
 #' @keywords internal
 .add_section_headers <- function(data.flex, grouping.columns = NULL) {
-  # Check table type
+	# Check table type
 
-  table_type   <- attr(data.flex, "table_type")
-  is_pop_table <- !is.null(table_type) && table_type == "pop"
-  is_nca_table <- !is.null(table_type) && table_type == "nca"
-  table_format <- attr(data.flex, "format")
-  is_wide      <- !is.null(table_format) && table_format == "wide"
+	table_type <- attr(data.flex, "table_type")
+	is_pop_table <- !is.null(table_type) && table_type == "pop"
+	is_nca_table <- !is.null(table_type) && table_type == "nca"
+	table_format <- attr(data.flex, "format")
+	is_wide <- !is.null(table_format) && table_format == "wide"
 
-  # Initialize return values
-  section_header_rows <- integer(0)
-  wide_split_col <- NULL
+	# Initialize return values
+	section_header_rows <- integer(0)
+	wide_split_col <- NULL
 
-  # If not a pop or nca table, or no Section column, return unchanged
-  if ((!is_pop_table && !is_nca_table) || !"Section" %in% colnames(data.flex)) {
-    return(list(
-      data.flex           = data.flex,
-      section_header_rows = section_header_rows,
-      wide_split_col      = wide_split_col,
-      is_wide             = is_wide))
-  }
+	# If not a pop or nca table, or no Section column, return unchanged
+	if ((!is_pop_table && !is_nca_table) || !"Section" %in% colnames(data.flex)) {
+		return(list(
+			data.flex           = data.flex,
+			section_header_rows = section_header_rows,
+			wide_split_col      = wide_split_col,
+			is_wide             = is_wide
+		))
+	}
 
-  # Save Section column before processing
-  section_col <- as.character(data.flex$Section)
+	# Save Section column before processing
+	section_col <- as.character(data.flex$Section)
 
-  # ============================================================================
-  # NCA TABLE HANDLING (simpler than population tables)
-  # ============================================================================
-  if (is_nca_table) {
-    # NCA tables only have long format with SUMMARY and INDIVIDUAL sections
-    section_labels <- c(
-      SUMMARY    = "Summary Statistics",
-      INDIVIDUAL = "Individual Parameters")
+	# ============================================================================
+	# NCA TABLE HANDLING (simpler than population tables)
+	# ============================================================================
+	if (is_nca_table) {
+		# NCA tables only have long format with SUMMARY and INDIVIDUAL sections
+		section_labels <- c(
+			SUMMARY    = "Summary Statistics",
+			INDIVIDUAL = "Individual Parameters"
+		)
 
-    # Convert factor columns to character to avoid issues when inserting header rows
-    for (col in names(data.flex)) {
-      if (is.factor(data.flex[[col]])) {
-        data.flex[[col]] <- as.character(data.flex[[col]])
-      }
-    }
+		# Convert factor columns to character to avoid issues when inserting header rows
+		for (col in names(data.flex)) {
+			if (is.factor(data.flex[[col]])) {
+				data.flex[[col]] <- as.character(data.flex[[col]])
+			}
+		}
 
-    # Move Section column to the end
-    other_cols <- setdiff(names(data.flex), "Section")
-    data.flex  <- data.flex[, c(other_cols, "Section"), drop = FALSE]
+		# Move Section column to the end
+		other_cols <- setdiff(names(data.flex), "Section")
+		data.flex <- data.flex[, c(other_cols, "Section"), drop = FALSE]
 
-    # Map section codes to full labels in the data
-    data.flex$Section <- section_labels[section_col]
+		# Map section codes to full labels in the data
+		data.flex$Section <- section_labels[section_col]
 
-    # Identify where to insert section headers
-    insert_positions <- integer(0)
-    section_names    <- character(0)
+		# Identify where to insert section headers
+		insert_positions <- integer(0)
+		section_names <- character(0)
 
-    for (i in seq_len(nrow(data.flex))) {
-      if (i == 1 || data.flex$Section[i] != data.flex$Section[i - 1]) {
-        insert_positions <- c(insert_positions, i)
-        section_names    <- c(section_names, data.flex$Section[i])
-      }
-    }
+		for (i in seq_len(nrow(data.flex))) {
+			if (i == 1 || data.flex$Section[i] != data.flex$Section[i - 1]) {
+				insert_positions <- c(insert_positions, i)
+				section_names <- c(section_names, data.flex$Section[i])
+			}
+		}
 
-    # Insert header rows from bottom to top
-    for (idx in length(insert_positions):1) {
-      pos          <- insert_positions[idx]
-      section_name <- section_names[idx]
+		# Insert header rows from bottom to top
+		for (idx in length(insert_positions):1) {
+			pos <- insert_positions[idx]
+			section_name <- section_names[idx]
 
-      # Create header row
-      header_row <- data.flex[pos, , drop = FALSE]
+			# Create header row
+			header_row <- data.flex[pos, , drop = FALSE]
 
-      # Handle grouping columns if provided
-      if (!is.null(grouping.columns) && length(grouping.columns) > 0) {
-        # Keep grouping column values from data row for vertical merging
-        for (grp_col in grouping.columns) {
-          if (grp_col %in% names(header_row)) {
-            header_row[1, grp_col] <- data.flex[pos, grp_col]
-          }
-        }
+			# Handle grouping columns if provided
+			if (!is.null(grouping.columns) && length(grouping.columns) > 0) {
+				# Keep grouping column values from data row for vertical merging
+				for (grp_col in grouping.columns) {
+					if (grp_col %in% names(header_row)) {
+						header_row[1, grp_col] <- data.flex[pos, grp_col]
+					}
+				}
 
-        # Empty all non-grouping columns
-        non_grouping_cols <- setdiff(names(header_row), grouping.columns)
-        for (col in non_grouping_cols) {
-          header_row[1, col] <- ""
-        }
+				# Empty all non-grouping columns
+				non_grouping_cols <- setdiff(names(header_row), grouping.columns)
+				for (col in non_grouping_cols) {
+					header_row[1, col] <- ""
+				}
 
-        # Put section header text in first non-grouping column
-        if (length(non_grouping_cols) > 0) {
-          header_row[1, non_grouping_cols[1]] <- section_name
-        }
-      } else {
-        # No grouping columns: use existing logic (clear all, put text in first column)
-        header_row[1, ]  <- ""
-        header_row[1, 1] <- section_name
-      }
+				# Put section header text in first non-grouping column
+				if (length(non_grouping_cols) > 0) {
+					header_row[1, non_grouping_cols[1]] <- section_name
+				}
+			} else {
+				# No grouping columns: use existing logic (clear all, put text in first column)
+				header_row[1, ] <- ""
+				header_row[1, 1] <- section_name
+			}
 
-      # Insert before the position
-      if (pos == 1) {
-        data.flex <- rbind(header_row, data.flex)
-      } else {
-        data.flex <- rbind(
-          data.flex[1:(pos - 1), , drop = FALSE],
-          header_row,
-          data.flex[pos:nrow(data.flex), , drop = FALSE])
-      }
+			# Insert before the position
+			if (pos == 1) {
+				data.flex <- rbind(header_row, data.flex)
+			} else {
+				data.flex <- rbind(
+					data.flex[1:(pos - 1), , drop = FALSE],
+					header_row,
+					data.flex[pos:nrow(data.flex), , drop = FALSE]
+				)
+			}
 
-      # Track final position for styling
-      section_header_rows <- c(pos + (idx - 1), section_header_rows)
-    }
-    rownames(data.flex) <- NULL
+			# Track final position for styling
+			section_header_rows <- c(pos + (idx - 1), section_header_rows)
+		}
+		rownames(data.flex) <- NULL
 
-    # Remove the Section column
-    data.flex$Section <- NULL
+		# Remove the Section column
+		data.flex$Section <- NULL
 
-    return(list(
-      data.flex           = data.flex,
-      section_header_rows = section_header_rows,
-      wide_split_col      = wide_split_col,
-      is_wide             = FALSE))
-  }
+		return(list(
+			data.flex           = data.flex,
+			section_header_rows = section_header_rows,
+			wide_split_col      = wide_split_col,
+			is_wide             = FALSE
+		))
+	}
 
-  # ============================================================================
-  # POPULATION TABLE HANDLING
-  # ============================================================================
-  if (is_wide) {
-    # Wide format: split header at top + section headers for CORR/RES_ERR
-    # Determine labels for non-FE/IIV/IOV sections
-    section_labels <- c(
-      CORR     = "Correlations",
-      CORR_IIV = "Correlations IIV",
-      CORR_IOV = "Correlations IOV",
-      RES_ERR  = "Residual error")
+	# ============================================================================
+	# POPULATION TABLE HANDLING
+	# ============================================================================
+	if (is_wide) {
+		# Wide format: split header at top + section headers for CORR/RES_ERR
+		# Determine labels for non-FE/IIV/IOV sections
+		section_labels <- c(
+			CORR     = "Correlations",
+			CORR_IIV = "Correlations IIV",
+			CORR_IOV = "Correlations IOV",
+			RES_ERR  = "Residual error"
+		)
 
-    # Move Section column to the end
-    other_cols <- setdiff(names(data.flex), "Section")
-    data.flex  <- data.flex[, c(other_cols, "Section"), drop = FALSE]
+		# Move Section column to the end
+		other_cols <- setdiff(names(data.flex), "Section")
+		data.flex <- data.flex[, c(other_cols, "Section"), drop = FALSE]
 
-    # Find first column containing "IIV" or "IOV" (AFTER reordering)
-    iiv_iov_cols <- grep("IIV|IOV", colnames(data.flex), ignore.case = TRUE)
-    if (length(iiv_iov_cols) > 0) {
-      wide_split_col <- min(iiv_iov_cols)
-    }
+		# Find first column containing "IIV" or "IOV" (AFTER reordering)
+		iiv_iov_cols <- grep("IIV|IOV", colnames(data.flex), ignore.case = TRUE)
+		if (length(iiv_iov_cols) > 0) {
+			wide_split_col <- min(iiv_iov_cols)
+		}
 
-    # Map section codes to labels (use section_col which is already character)
-    data.flex$Section <- ifelse(section_col %in% names(section_labels),
-                                 section_labels[section_col],
-                                 section_col)
+		# Map section codes to labels (use section_col which is already character)
+		data.flex$Section <- ifelse(section_col %in% names(section_labels),
+																section_labels[section_col],
+																section_col
+		)
 
-    # Find where to insert section headers (for CORR and RES_ERR only)
-    insert_positions <- integer(0)
-    section_names    <- character(0)
+		# Find where to insert section headers (for CORR and RES_ERR only)
+		insert_positions <- integer(0)
+		section_names <- character(0)
 
-    for (i in seq_len(nrow(data.flex))) {
-      if (i == 1 || isTRUE(data.flex$Section[i] != data.flex$Section[i - 1])) {
-        # Only add headers for CORR and RES_ERR sections
-        if (!is.na(data.flex$Section[i]) && data.flex$Section[i] %in% section_labels) {
-          insert_positions <- c(insert_positions, i)
-          section_names    <- c(section_names, data.flex$Section[i])
-        }
-      }
-    }
+		for (i in seq_len(nrow(data.flex))) {
+			if (i == 1 || isTRUE(data.flex$Section[i] != data.flex$Section[i - 1])) {
+				# Only add headers for CORR and RES_ERR sections
+				if (!is.na(data.flex$Section[i]) && data.flex$Section[i] %in% section_labels) {
+					insert_positions <- c(insert_positions, i)
+					section_names <- c(section_names, data.flex$Section[i])
+				}
+			}
+		}
 
-    # Insert header rows from bottom to top
-    if (length(insert_positions) > 0) {
-      for (idx in length(insert_positions):1) {
-        pos          <- insert_positions[idx]
-        section_name <- section_names[idx]
+		# Insert header rows from bottom to top
+		if (length(insert_positions) > 0) {
+			for (idx in length(insert_positions):1) {
+				pos <- insert_positions[idx]
+				section_name <- section_names[idx]
 
-        # Create header row
-        header_row       <- data.flex[pos, , drop = FALSE]
-        header_row[1, ]  <- ""
-        header_row[1, 1] <- section_name
+				# Create header row
+				header_row <- data.flex[pos, , drop = FALSE]
+				header_row[1, ] <- ""
+				header_row[1, 1] <- section_name
 
-        # Insert before the position
-        if (pos == 1) {
-          data.flex <- rbind(header_row, data.flex)
-        } else {
-          data.flex <- rbind(
-            data.flex[1:(pos - 1), , drop = FALSE],
-            header_row,
-            data.flex[pos:nrow(data.flex), , drop = FALSE])
-        }
+				# Insert before the position
+				if (pos == 1) {
+					data.flex <- rbind(header_row, data.flex)
+				} else {
+					data.flex <- rbind(
+						data.flex[1:(pos - 1), , drop = FALSE],
+						header_row,
+						data.flex[pos:nrow(data.flex), , drop = FALSE]
+					)
+				}
 
-        # Track position after all insertions
-        section_header_rows <- c(pos + (idx - 1), section_header_rows)
-      }
-      rownames(data.flex) <- NULL
-    }
+				# Track position after all insertions
+				section_header_rows <- c(pos + (idx - 1), section_header_rows)
+			}
+			rownames(data.flex) <- NULL
+		}
 
-    # Remove the Section column
-    data.flex$Section <- NULL
+		# Remove the Section column
+		data.flex$Section <- NULL
 
-    # Add split header at the very top
-    if (!is.null(wide_split_col)) {
-      header_row      <- data.flex[1, , drop = FALSE]
-      header_row[1, ] <- ""
+		# Add split header at the very top
+		if (!is.null(wide_split_col)) {
+			header_row <- data.flex[1, , drop = FALSE]
+			header_row[1, ] <- ""
 
-      data.flex           <- rbind(header_row, data.flex)
-      section_header_rows <- c(1, section_header_rows + 1)
-      rownames(data.flex) <- NULL
-    }
-  } else {
-    # Long format: multiple section headers
-    # Determine labels based on actual data
-    has_IOV <- any(section_col == "IOV")
-    section_labels <- c(
-      FE       = "Fixed effects",
-      IIV      = if (has_IOV) "Random effects IIV" else "Random effects",
-      IOV      = "Random effects IOV",
-      CORR     = "Correlations",
-      CORR_IIV = "Correlations IIV",
-      CORR_IOV = "Correlations IOV",
-      RES_ERR  = "Residual error")
+			data.flex <- rbind(header_row, data.flex)
+			section_header_rows <- c(1, section_header_rows + 1)
+			rownames(data.flex) <- NULL
+		}
+	} else {
+		# Long format: multiple section headers
+		# Determine labels based on actual data
+		has_IOV <- any(section_col == "IOV")
+		section_labels <- c(
+			FE       = "Fixed effects",
+			IIV      = if (has_IOV) "Random effects IIV" else "Random effects",
+			IOV      = "Random effects IOV",
+			CORR     = "Correlations",
+			CORR_IIV = "Correlations IIV",
+			CORR_IOV = "Correlations IOV",
+			RES_ERR  = "Residual error"
+		)
 
-    # Move Section column to the end
-    other_cols <- setdiff(names(data.flex), "Section")
-    data.flex  <- data.flex[, c(other_cols, "Section"), drop = FALSE]
+		# Move Section column to the end
+		other_cols <- setdiff(names(data.flex), "Section")
+		data.flex <- data.flex[, c(other_cols, "Section"), drop = FALSE]
 
-    # Map section codes to full labels in the data
-    data.flex$Section <- section_labels[section_col]
+		# Map section codes to full labels in the data
+		data.flex$Section <- section_labels[section_col]
 
-    # Identify where to insert section headers
-    insert_positions <- integer(0)
-    section_names    <- character(0)
+		# Identify where to insert section headers
+		insert_positions <- integer(0)
+		section_names <- character(0)
 
-    for (i in seq_len(nrow(data.flex))) {
-      if (i == 1 || data.flex$Section[i] != data.flex$Section[i - 1]) {
-        insert_positions <- c(insert_positions, i)
-        section_names    <- c(section_names, data.flex$Section[i])
-      }
-    }
+		for (i in seq_len(nrow(data.flex))) {
+			if (i == 1 || data.flex$Section[i] != data.flex$Section[i - 1]) {
+				insert_positions <- c(insert_positions, i)
+				section_names <- c(section_names, data.flex$Section[i])
+			}
+		}
 
-    # Insert header rows from bottom to top
-    for (idx in length(insert_positions):1) {
-      pos          <- insert_positions[idx]
-      section_name <- section_names[idx]
+		# Insert header rows from bottom to top
+		for (idx in length(insert_positions):1) {
+			pos <- insert_positions[idx]
+			section_name <- section_names[idx]
 
-      # Create header row
-      header_row <- data.flex[pos, , drop = FALSE]
-      header_row[1, ]  <- ""
-      header_row[1, 1] <- section_name
+			# Create header row
+			header_row <- data.flex[pos, , drop = FALSE]
+			header_row[1, ] <- ""
+			header_row[1, 1] <- section_name
 
-      # Insert before the position
-      if (pos == 1) {
-        data.flex <- rbind(header_row, data.flex)
-      } else {
-        data.flex <- rbind(
-          data.flex[1:(pos - 1), , drop = FALSE],
-          header_row,
-          data.flex[pos:nrow(data.flex), , drop = FALSE])
-      }
+			# Insert before the position
+			if (pos == 1) {
+				data.flex <- rbind(header_row, data.flex)
+			} else {
+				data.flex <- rbind(
+					data.flex[1:(pos - 1), , drop = FALSE],
+					header_row,
+					data.flex[pos:nrow(data.flex), , drop = FALSE]
+				)
+			}
 
-      # Track final position for styling
-      section_header_rows <- c(pos + (idx - 1), section_header_rows)
-    }
-    rownames(data.flex) <- NULL
+			# Track final position for styling
+			section_header_rows <- c(pos + (idx - 1), section_header_rows)
+		}
+		rownames(data.flex) <- NULL
 
-    # Remove the Section column
-    data.flex$Section <- NULL
-  }
+		# Remove the Section column
+		data.flex$Section <- NULL
+	}
 
-  return(list(
-    data.flex           = data.flex,
-    section_header_rows = section_header_rows,
-    wide_split_col      = wide_split_col,
-    is_wide             = is_wide
-  ))
+	return(list(
+		data.flex           = data.flex,
+		section_header_rows = section_header_rows,
+		wide_split_col      = wide_split_col,
+		is_wide             = is_wide
+	))
 }
 
 #' Format and style data frames as flextables
@@ -396,6 +551,9 @@
 #' @param theme_fn Function to apply a flextable theme. Default is `theme_box`. Other options include `theme_vanilla`, `theme_zebra`, `theme_booktabs`, `theme_tron`.
 #' @param soften_amount Numeric value between 0 and 1 controlling color softening for docx/pptx output. 0 = original colors, 1 = white. Default is 0.50.
 #' @param html_alpha Numeric value between 0 and 1 controlling transparency for HTML output (rgba colors). Default is 0.18.
+#' @param align_default Character string for global alignment: "left", "center" (default), "right", or "justify".
+#' @param align_grouping Character string for grouping column alignment. If `NULL` (default), uses `align_default`.
+#' @param align_cols Named character vector for column-specific alignment (e.g., `c("Parameter" = "left", "Estimate" = "right")`). Overrides other alignment settings. If `NULL` (default), no column-specific alignment.
 #'
 #' @return A flextable object with applied styling and formatting.
 #'
@@ -437,17 +595,20 @@ print_table_flex <- function(data.flex,
                              header_level1    = NULL,
                              header_level2    = NULL,
                              header_level3    = NULL,
-                             color            = NULL, # e.g. c("BE","DP","PVAL","RSE")
+                             color            = NULL,     # e.g. c("BE","DP","PVAL","RSE")
                              theme_fn         = theme_box,
-                             soften_amount    = 0.50, # 0 = original, 1 = white
-                             html_alpha       = 0.18) # only used for html rgba)
+                             soften_amount    = 0.50,     # 0 = original, 1 = white
+                             html_alpha       = 0.18,     # only used for html rgba)
+														 align_default    = "center", # global default alignment
+														 align_grouping   = NULL,     # alignment for grouping columns (NULL = use default)
+														 align_cols       = NULL)     # named vector for column-specific alignments
 {
 	color <- toupper(color) # optional but helpful
 
 	# Check if columns exist
-	pval.flag <- ("PVAL" %in% color) && "p.value"    %in% colnames(data.flex)
-	BE.flag   <- ("BE" %in% color)   && "Conclusion" %in% colnames(data.flex)
-	DP.flag   <- ("DP" %in% color)   && "Conclusion" %in% colnames(data.flex)
+	pval.flag <- ("PVAL" %in% color) && "p.value" %in% colnames(data.flex)
+	BE.flag <- ("BE" %in% color) && "Conclusion" %in% colnames(data.flex)
+	DP.flag <- ("DP" %in% color) && "Conclusion" %in% colnames(data.flex)
 
 	# RSE flag: detect any columns containing "RSE" in their name
 	# This covers: "RSE", "%RSE", "RSE (%)", "FE_RSE", "IIV_RSE", "IOV_RSE", "IIV\nRSE (%)", etc.
@@ -465,8 +626,19 @@ print_table_flex <- function(data.flex,
 
 	# Reorder columns so grouping columns come first
 	if (!is.null(grouping.columns)) {
+		# Validate that all grouping columns exist in the data
+		missing_cols <- setdiff(grouping.columns, names(data.flex))
+		if (length(missing_cols) > 0) {
+			stop(sprintf(
+				"Grouping column%s not found in data: %s\nAvailable columns: %s",
+				if (length(missing_cols) > 1) "s" else "",
+				paste(missing_cols, collapse = ", "),
+				paste(names(data.flex), collapse = ", ")
+			))
+		}
+
 		other.cols <- setdiff(names(data.flex), grouping.columns)
-		data.flex  <- data.flex[, c(grouping.columns, other.cols), drop = FALSE]
+		data.flex <- data.flex[, c(grouping.columns, other.cols), drop = FALSE]
 
 		# Restore custom attributes (table_type, format, etc.)
 		# Keep only non-standard attributes (not names, row.names, class)
@@ -487,89 +659,21 @@ print_table_flex <- function(data.flex,
 	# Save table_type before calling .add_section_headers (it may be lost during processing)
 	table_type_for_styling <- attr(data.flex, "table_type")
 
-	section_result      <- .add_section_headers(data.flex, grouping.columns)
-	data.flex           <- section_result$data.flex
+	section_result <- .add_section_headers(data.flex, grouping.columns)
+	data.flex <- section_result$data.flex
 	section_header_rows <- section_result$section_header_rows
-	wide_split_col      <- section_result$wide_split_col
-	is_wide             <- section_result$is_wide
+	wide_split_col <- section_result$wide_split_col
+	is_wide <- section_result$is_wide
 	has_section_headers <- length(section_header_rows) > 0 || !is.null(wide_split_col)
 	# --- END: Section Headers ---
 
 	ft <- flextable(data.flex)
-	#-----------------------------------------------------------------------------
-	# [Code Chunk of Alias Conversion]
-	# Detect columns containing [[sub:...]] markers
-	# Only these columns need processing
-	alias_cols <- names(data.flex)[sapply(data.flex, function(col) {
-		any(grepl("\\[\\[sub:", col, fixed = FALSE))
-	})]
-
-	# Apply decoder to alias columns
-	# Identified columns
-	if (length(alias_cols) > 0) {
-		for (col in alias_cols) {
-			# Process each row
-			for (i in seq_len(nrow(data.flex))) {
-				# CRITICAL: Must process cell-by-cell because flextable::compose() requires
-				# specific row (i) and column (j) indices to target individual cells.
-				# Cannot apply vectorized transformation to entire column at once.
-				cell_value <- data.flex[[col]][i]
-
-				# Handle NA or empty strings
-				if (is.na(cell_value) || !nzchar(as.character(cell_value))) {
-					next # Skip, leave as is
-				}
-
-				cell_value <- as.character(cell_value)
-
-				# Only process if it contains [[sub:...]]
-				if (!grepl("\\[\\[sub:", cell_value)) {
-					next
-				}
-
-				# --- BEGIN: Inline parsing logic (duplicate of .decode_flex_alias) ---
-				# WHY INLINE? Because flextable::compose() needs to be called with specific
-				# i/j coordinates for each cell. We can't pre-generate paragraphs and apply
-				# them later - compose() must be called in the loop with the parsed chunks.
-				pattern <- "\\[\\[sub:([^]]+)\\]\\]"
-				chunks  <- list()
-				current <- cell_value
-
-				repeat {
-					m <- regexpr(pattern, current, perl = TRUE)
-					if (m[1] == -1) {
-						# No more subscript markers - add remaining text
-						if (nzchar(current)) {
-							chunks <- append(chunks, list(flextable::as_chunk(current)))
-						}
-						break
-					}
-					start <- m[1]
-					end   <- start + attr(m, "match.length") - 1
-
-					# Text before the [[sub:...]] marker
-					before <- substr(current, 1, start - 1)
-					if (nzchar(before)) {
-						chunks <- append(chunks, list(flextable::as_chunk(before)))
-					}
-					# Extract subscript text
-					match_str <- substr(current, start, end)
-					subtxt    <- sub(pattern, "\\1", match_str, perl = TRUE)
-					chunks    <- append(chunks, list(flextable::as_sub(subtxt)))
-
-					# Continue with rest of string
-					current <- substr(current, end + 1, nchar(current))
-				}
-
-				# Apply to this specific cell
-				ft <- flextable::compose(ft, i = i, j = col, value = do.call(flextable::as_paragraph, chunks)) # i... row index, j... column name,
-			}
-		}
-	}
 
 	#-----------------------------------------------------------------------------
-	# [End of Alias conversion]
+	# [Alias Conversion]
+	# Apply subscript formatting to both body cells and column headers
 	#-----------------------------------------------------------------------------
+	ft <- .apply_alias_subscripts(ft, data.flex)
 
 
 	#-----------------------------------------------------------------------------
@@ -582,13 +686,22 @@ print_table_flex <- function(data.flex,
 		ft <- merge_v(ft, j = grouping.columns)
 	}
 
-	# Center all table content
-	ft <- align(ft, align = "center", part = "all")
+	# Apply default alignment to all table content
+	ft <- flextable::align(ft, align = align_default, part = "all")
 
-	# left-align each grouping column by name
-	if (!is.null(grouping.columns)) {
+	# Apply grouping column alignment if specified
+	if (!is.null(grouping.columns) && !is.null(align_grouping)) {
 		for (col in grouping.columns) {
-			ft <- align(ft, j = col, align = "left", part = "all")
+			ft <- flextable::align(ft, j = col, align = align_grouping, part = "all")
+		}
+	}
+
+	# Apply column-specific alignments (highest priority)
+	if (!is.null(align_cols)) {
+		for (col_name in names(align_cols)) {
+			if (col_name %in% colnames(data.flex)) {
+				ft <- flextable::align(ft, j = col_name, align = align_cols[[col_name]], part = "all")
+			}
 		}
 	}
 
@@ -638,7 +751,6 @@ print_table_flex <- function(data.flex,
 						flextable::hline(i = row_idx, border = border_style, part = "body")
 				}
 			}
-
 		} else {
 			# Long format: multiple section headers
 			# Check if this is an NCA table with grouping columns
@@ -652,7 +764,7 @@ print_table_flex <- function(data.flex,
 
 					ft <- ft %>%
 						flextable::bold(i = row_idx, part = "body") %>%
-						flextable::align(i = row_idx, align = "left", part = "body") %>%
+						flextable::align(i = row_idx, j = non_grouping_indices, align = "left", part = "body") %>%
 						flextable::merge_at(i = row_idx, j = non_grouping_indices, part = "body")
 				} else {
 					# For all other cases: merge all columns (existing logic)
@@ -699,21 +811,21 @@ print_table_flex <- function(data.flex,
 	# ---------------------------------------------------------------------------
 	base_yellow <- "#FFD700"
 	base_orange <- "#EE7600"
-	base_red    <- "#8B1A1A"
-	base_green  <- "#458B00"
+	base_red <- "#8B1A1A"
+	base_green <- "#458B00"
 
 	# Default: pastel hex (good for docx/pptx and generally safe)
 	col_yellow <- .soften_hex(base_yellow, soften_amount)
 	col_orange <- .soften_hex(base_orange, soften_amount)
-	col_red    <- .soften_hex(base_red, soften_amount)
-	col_green  <- .soften_hex(base_green, soften_amount)
+	col_red <- .soften_hex(base_red, soften_amount)
+	col_green <- .soften_hex(base_green, soften_amount)
 
 	# If HTML output, optionally use rgba for transparency
 	if (.is_html_output()) {
 		col_yellow <- .hex_to_rgba(base_yellow, html_alpha)
 		col_orange <- .hex_to_rgba(base_orange, html_alpha)
-		col_red    <- .hex_to_rgba(base_red, html_alpha)
-		col_green  <- .hex_to_rgba(base_green, html_alpha)
+		col_red <- .hex_to_rgba(base_red, html_alpha)
+		col_green <- .hex_to_rgba(base_green, html_alpha)
 	}
 
 	# Apply conditional background formatting for RSE columns
@@ -723,34 +835,34 @@ print_table_flex <- function(data.flex,
 			col_expr <- paste0("`", rse_col, "`")
 
 			# Build formulas as strings and convert to formulas
-			formula_yellow <- as.formula(paste("~", col_expr, ">= 50 &",  col_expr, "< 100"))
+			formula_yellow <- as.formula(paste("~", col_expr, ">= 50 &", col_expr, "< 100"))
 			formula_orange <- as.formula(paste("~", col_expr, ">= 100 &", col_expr, "< 200"))
-			formula_red    <- as.formula(paste("~", col_expr, "> 200"))
+			formula_red <- as.formula(paste("~", col_expr, "> 200"))
 
 			ft <- ft %>%
 				flextable::bg(i = formula_yellow, j = rse_col, bg = col_yellow, part = "body") %>%
 				flextable::bg(i = formula_orange, j = rse_col, bg = col_orange, part = "body") %>%
-				flextable::bg(i = formula_red,    j = rse_col, bg = col_red,    part = "body")
+				flextable::bg(i = formula_red, j = rse_col, bg = col_red, part = "body")
 		}
 	}
 
 	if (pval.flag) {
 		ft <- ft %>%
-			flextable::bg(i = ~ p.value <= 0.01,                  j = ~p.value, bg = col_red,    part = "body") %>%
+			flextable::bg(i = ~ p.value <= 0.01, j = ~p.value, bg = col_red, part = "body") %>%
 			flextable::bg(i = ~ p.value > 0.01 & p.value <= 0.05, j = ~p.value, bg = col_orange, part = "body") %>%
 			flextable::bg(i = ~ p.value > 0.05 & p.value <= 0.09, j = ~p.value, bg = col_yellow, part = "body")
 	}
 	# Apply conditional background formatting
 	if (DP.flag) {
 		ft <- ft %>%
-			flextable::bg(i = ~ Conclusion == "Proportional",     j = ~Conclusion, bg = col_green,  part = "body") %>%
-			flextable::bg(i = ~ Conclusion == "Inconclusive",     j = ~Conclusion, bg = col_yellow, part = "body") %>%
-			flextable::bg(i = ~ Conclusion == "Not Proportional", j = ~Conclusion, bg = col_red,    part = "body")
+			flextable::bg(i = ~ Conclusion == "Proportional", j = ~Conclusion, bg = col_green, part = "body") %>%
+			flextable::bg(i = ~ Conclusion == "Inconclusive", j = ~Conclusion, bg = col_yellow, part = "body") %>%
+			flextable::bg(i = ~ Conclusion == "Not Proportional", j = ~Conclusion, bg = col_red, part = "body")
 	}
 	if (BE.flag) {
 		ft <- ft %>%
-			flextable::bg(i = ~ Conclusion == "Bioequivalent",     j = ~Conclusion, bg = col_green, part = "body") %>%
-			flextable::bg(i = ~ Conclusion == "Not bioequivalent", j = ~Conclusion, bg = col_red,   part = "body")
+			flextable::bg(i = ~ Conclusion == "Bioequivalent", j = ~Conclusion, bg = col_green, part = "body") %>%
+			flextable::bg(i = ~ Conclusion == "Not bioequivalent", j = ~Conclusion, bg = col_red, part = "body")
 	}
 	ft <- set_table_properties(ft, width = 1, layout = "autofit")
 	return(ft)
