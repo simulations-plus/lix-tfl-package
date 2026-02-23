@@ -898,7 +898,10 @@ listingAbbreviation <- function(data,
 #'
 listingNCAConcentration <- function(projectFile = NULL,
 																		covariates = NULL,
-																		useNominalTime = FALSE) {
+																		useNominalTime = FALSE,
+																		roundDigits      = 3,
+																		roundMethod      = c("monolix", "signif", "none")) {
+	roundMethod <- match.arg(roundMethod)
 	# Ensure the correct project is loaded
 	.checkProjectFile(projectFile, "pkanalix")
 	.ensureProjectLoaded(projectFile)
@@ -913,7 +916,7 @@ listingNCAConcentration <- function(projectFile = NULL,
 
 	#--- Always extract ACTUAL time version (baseline)
 	df_actual <- lixoftConnectors::getNCAConcentrations(displayIndividualProfiles = TRUE, useNominalTime = FALSE)
-	df_actual <- fixNCAConcentrationsColumnSwap(df_actual, covariates)
+	df_actual <- .fixNCAConcentrationsColumnSwap(df_actual, covariates)
 	metrics <- lixoftConnectors::getNCAConcentrations()$metric
 	metric_labels <- as.character(metrics[!is.na(metrics)])
 
@@ -999,13 +1002,21 @@ listingNCAConcentration <- function(projectFile = NULL,
 			Concentration = as.character(Concentration),
 			Censoring = dplyr::case_when(
 				is.na(BLQ) & Concentration != "" ~ 1,
-				TRUE ~ BLQ
-			)
-		) %>%
+				TRUE ~ BLQ)) %>%
 		dplyr::mutate(dplyr::across(dplyr::all_of(covariates), as.character)) %>%
 		dplyr::select(-BLQ, -includedForLambdaZ) %>%
 		dplyr::rename(ActualTime = Time) %>%
 		dplyr::relocate(dplyr::any_of(c("ActualTime", "NominalTime")), .before = Concentration)
+
+	# Apply rounding only to Concentration and UsedConc
+	indiv <- indiv %>%
+		dplyr::mutate(
+			Concentration = dplyr::case_when(
+				is.na(suppressWarnings(as.numeric(Concentration))) ~ Concentration,  # Keep original if can't convert to numeric
+				TRUE ~ as.character(.round_num(as.numeric(Concentration),
+																			 digits = roundDigits,
+																			 rounding_method = roundMethod))),
+			UsedConc = .round_num(UsedConc, digits = roundDigits, rounding_method = roundMethod))
 
 	return(as.data.frame(indiv))
 }
