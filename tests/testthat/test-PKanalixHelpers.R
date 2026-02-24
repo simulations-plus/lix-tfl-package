@@ -2,6 +2,8 @@ pkx_project_1 = "test-projects/pkanalix/project_remifentanil_excl.pkx"
 pkx_project_2 = "test-projects/pkanalix/project_occasions2.pkx"
 pkx_project_3 = "test-projects/pkanalix/project_aPCSK9_SAD_route.pkx"
 pkx_project_4 = "test-projects/pkanalix/project_steadystate_infusion.pkx"
+pkx_project_5  ="test-projects/pkanalix/project_repeated_4periods_multipleRatios.pkx"
+################################################################################
 ################################################################################
 # tableNCAConcentration
 
@@ -203,7 +205,8 @@ test_that("tableNCAConcentration errors", {
 	)
 })
 ################################################################################
-
+################################################################################
+# tableNCAParameters
 test_that("tableNCAParameters basic (no stratification)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
@@ -1110,6 +1113,430 @@ test_that("tableNCAParameters with include_id and numeric categorical covariate"
 	dose_values <- unique(table$DOSE_mg)
 	expect_gt(length(dose_values), 0)
 })
+################################################################################
+################################################################################
+# Tests for listingNCAParameters -----------------------------------------------
+
+test_that("listingNCAParameters works with basic settings", {
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	result <- listingNCAParameters(projectFile = pkx_project_1)
+
+	# Basic structure checks
+	expect_s3_class(result, "data.frame")
+	expect_true("id" %in% names(result))
+	expect_gt(nrow(result), 0)
+	expect_gt(ncol(result), 1)  # Should have id + parameters
+})
+
+test_that("listingNCAParameters works with covariates", {
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	result <- listingNCAParameters(
+		projectFile = pkx_project_1,
+		covariates = c("SEX", "TINFCAT")
+	)
+
+	# Check covariates are present and in correct order
+	expect_s3_class(result, "data.frame")
+	expect_true(all(c("id", "SEX", "TINFCAT") %in% names(result)))
+	expect_equal(names(result)[1:3], c("id", "SEX", "TINFCAT"))
+})
+
+test_that("listingNCAParameters filters to selected parameters", {
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	selected_params <- c("Clast", "Cmax", "AUClast", "AUCINF_obs")
+
+	result <- listingNCAParameters(
+		projectFile = pkx_project_2,
+		covariates = c("FOOD", "TREAT"),
+		NCAparams = selected_params,
+		roundDigits = 2,
+		roundMethod = "signif"
+	)
+
+	expect_s3_class(result, "data.frame")
+	expect_true(all(c("id", "FOOD", "TREAT") %in% names(result)))
+	# Should have limited columns: id + covariates + occasions + selected params
+	expect_lte(ncol(result), 3 + 2 + length(selected_params) + 5)  # Some buffer for occasions
+})
+
+test_that("listingNCAParameters applies rounding with signif method", {
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	result_rounded <- listingNCAParameters(
+		projectFile = pkx_project_2,
+		NCAparams = c("Cmax", "AUClast"),
+		roundDigits = 2,
+		roundMethod = "signif"
+	)
+
+	result_none <- listingNCAParameters(
+		projectFile = pkx_project_2,
+		NCAparams = c("Cmax", "AUClast"),
+		roundMethod = "none"
+	)
+
+	expect_s3_class(result_rounded, "data.frame")
+	expect_s3_class(result_none, "data.frame")
+	expect_equal(dim(result_rounded), dim(result_none))
+})
+
+test_that("listingNCAParameters applies rounding with monolix method", {
+	skip_if_not(file.exists(pkx_project_4), "Test project not available")
+
+	result <- listingNCAParameters(
+		projectFile = pkx_project_4,
+		roundDigits = 4,
+		roundMethod = "monolix"
+	)
+
+	expect_s3_class(result, "data.frame")
+	expect_gt(ncol(result), 1)
+})
+
+test_that("listingNCAParameters works without aliases", {
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	result_with_aliases <- listingNCAParameters(
+		projectFile = pkx_project_2,
+		aliases = TRUE
+	)
+
+	result_without_aliases <- listingNCAParameters(
+		projectFile = pkx_project_2,
+		aliases = FALSE
+	)
+
+	expect_s3_class(result_with_aliases, "data.frame")
+	expect_s3_class(result_without_aliases, "data.frame")
+	# Same structure but different column names
+	expect_equal(dim(result_with_aliases), dim(result_without_aliases))
+	# At least some column names should differ
+	expect_false(identical(names(result_with_aliases), names(result_without_aliases)))
+})
+
+test_that("listingNCAParameters works without units", {
+	skip_if_not(file.exists(pkx_project_4), "Test project not available")
+
+	result_with_units <- listingNCAParameters(
+		projectFile = pkx_project_4,
+		units = TRUE
+	)
+
+	result_without_units <- listingNCAParameters(
+		projectFile = pkx_project_4,
+		units = FALSE
+	)
+
+	expect_s3_class(result_with_units, "data.frame")
+	expect_s3_class(result_without_units, "data.frame")
+	expect_equal(nrow(result_with_units), nrow(result_without_units))
+})
+
+test_that("listingNCAParameters sorts by covariates in specified order", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	result <- listingNCAParameters(
+		projectFile = pkx_project_5,
+		covariates = c("SEQ", "TRT")
+	)
+
+	expect_s3_class(result, "data.frame")
+	# Check that data is sorted by covariates
+	if (nrow(result) > 1) {
+		sorted_check <- result %>% dplyr::arrange(SEQ, TRT)
+		expect_equal(result$id, sorted_check$id)
+	}
+})
+
+test_that("listingNCAParameters validates invalid covariates", {
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	expect_error(
+		listingNCAParameters(
+			projectFile = pkx_project_1,
+			covariates = c("INVALID_COVARIATE")
+		),
+		"Invalid covariate"
+	)
+})
+
+test_that("listingNCAParameters validates invalid NCA parameters", {
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	expect_error(
+		listingNCAParameters(
+			projectFile = pkx_project_1,
+			NCAparams = c("INVALID_PARAMETER", "ANOTHER_INVALID")
+		),
+		"None of the requested.*parameters were found"
+	)
+})
+
+test_that("listingNCAParameters warns for partially invalid parameters", {
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	expect_warning(
+		result <- listingNCAParameters(
+			projectFile = pkx_project_2,
+			NCAparams = c("Cmax", "INVALID_PARAM", "AUClast")
+		),
+		"Ignoring unknown.*parameters"
+	)
+
+	# Should still return valid parameters
+	expect_s3_class(result, "data.frame")
+	expect_gt(ncol(result), 1)
+})
+
+test_that("listingNCAParameters works with occasions and covariates", {
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	result <- listingNCAParameters(
+		projectFile = pkx_project_2,
+		covariates = c("FOOD", "TREAT"),
+		NCAparams = c("Clast", "Cmax", "AUClast", "AUCINF_obs")
+	)
+
+	expect_s3_class(result, "data.frame")
+	# Should include id, covariates, occasions, and parameters
+	expect_true(all(c("id", "FOOD", "TREAT") %in% names(result)))
+	expect_gt(ncol(result), 6)  # id + 2 covariates + occasions + params
+})
+
+test_that("listingNCAParameters handles multiple rounding methods", {
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	# Test all three rounding methods
+	result_monolix <- listingNCAParameters(
+		projectFile = pkx_project_3,
+		roundDigits = 3,
+		roundMethod = "monolix"
+	)
+
+	result_signif <- listingNCAParameters(
+		projectFile = pkx_project_3,
+		roundDigits = 3,
+		roundMethod = "signif"
+	)
+
+	result_none <- listingNCAParameters(
+		projectFile = pkx_project_3,
+		roundMethod = "none"
+	)
+
+	expect_s3_class(result_monolix, "data.frame")
+	expect_s3_class(result_signif, "data.frame")
+	expect_s3_class(result_none, "data.frame")
+	# All should have same structure
+	expect_equal(dim(result_monolix), dim(result_signif))
+	expect_equal(dim(result_monolix), dim(result_none))
+})
+
+test_that("listingNCAParameters returns correct column order", {
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	result <- listingNCAParameters(
+		projectFile = pkx_project_2,
+		covariates = c("TREAT", "FOOD")  # Specify order
+	)
+
+	# First columns should be: id, TREAT, FOOD (in that order)
+	expect_equal(names(result)[1], "id")
+	expect_equal(names(result)[2], "TREAT")
+	expect_equal(names(result)[3], "FOOD")
+})
+
+
+
+
+################################################################################
+################################################################################
+# Tests for listingNCAConcentration --------------------------------------------
+
+test_that("listingNCAConcentration works with basic settings", {
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	result <- listingNCAConcentration(projectFile = pkx_project_2)
+
+	expect_s3_class(result, "data.frame")
+	expect_true("id" %in% names(result))
+	expect_true("ActualTime" %in% names(result))
+	expect_true("Concentration" %in% names(result))
+	expect_gt(nrow(result), 0)
+})
+
+test_that("listingNCAConcentration works with covariates", {
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	result <- listingNCAConcentration(
+		projectFile = pkx_project_2,
+		covariates = c("FOOD", "TREAT")
+	)
+
+	expect_s3_class(result, "data.frame")
+	expect_true(all(c("id", "FOOD", "TREAT", "ActualTime", "Concentration") %in% names(result)))
+	# Check covariate ordering
+	expect_true(which(names(result) == "FOOD") < which(names(result) == "ActualTime"))
+})
+
+test_that("listingNCAConcentration works with useNominalTime", {
+	skip_if_not(file.exists(pkx_project_4), "Test project not available")
+
+	result <- listingNCAConcentration(
+		projectFile = pkx_project_4,
+		useNominalTime = TRUE
+	)
+
+	expect_s3_class(result, "data.frame")
+	# NominalTime only exists if nominal time is available in the project
+	# Always should have ActualTime
+	expect_true("ActualTime" %in% names(result))
+	# If NominalTime exists, both columns should be present
+	if ("NominalTime" %in% names(result)) {
+		expect_true(all(c("ActualTime", "NominalTime") %in% names(result)))
+	}
+})
+
+test_that("listingNCAConcentration applies rounding", {
+	skip_if_not(file.exists(pkx_project_4), "Test project not available")
+
+	result_rounded <- listingNCAConcentration(
+		projectFile = pkx_project_4,
+		roundDigits = 2,
+		roundMethod = "signif"
+	)
+
+	result_none <- listingNCAConcentration(
+		projectFile = pkx_project_4,
+		roundMethod = "none"
+	)
+
+	expect_s3_class(result_rounded, "data.frame")
+	expect_s3_class(result_none, "data.frame")
+	expect_equal(nrow(result_rounded), nrow(result_none))
+})
+
+test_that("listingNCAConcentration handles different rounding methods", {
+	skip_if_not(file.exists(pkx_project_4), "Test project not available")
+
+	result_monolix <- listingNCAConcentration(
+		projectFile = pkx_project_4,
+		roundDigits = 4,
+		roundMethod = "monolix"
+	)
+
+	result_signif <- listingNCAConcentration(
+		projectFile = pkx_project_4,
+		roundDigits = 4,
+		roundMethod = "signif"
+	)
+
+	expect_s3_class(result_monolix, "data.frame")
+	expect_s3_class(result_signif, "data.frame")
+	expect_equal(dim(result_monolix), dim(result_signif))
+})
+
+test_that("listingNCAConcentration includes UsedConc column", {
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	result <- listingNCAConcentration(projectFile = pkx_project_2)
+
+	expect_true("UsedConc" %in% names(result))
+	expect_true("Censoring" %in% names(result))
+})
+
+test_that("listingNCAConcentration includes ActualTime", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	result <- listingNCAConcentration(projectFile = pkx_project_5)
+
+	expect_true("ActualTime" %in% names(result))
+	expect_type(result$ActualTime, "double")
+})
+
+test_that("listingNCAConcentration handles occasions", {
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	result <- listingNCAConcentration(
+		projectFile = pkx_project_2,
+		covariates = c("FOOD", "TREAT")
+	)
+
+	expect_s3_class(result, "data.frame")
+	# Should handle occasion variables in the data
+	expect_gt(ncol(result), 5)
+})
+
+test_that("listingNCAConcentration validates invalid covariates", {
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	expect_error(
+		listingNCAConcentration(
+			projectFile = pkx_project_2,
+			covariates = c("INVALID_COV")
+		),
+		"Invalid covariate"
+	)
+})
+
+test_that("listingNCAConcentration handles BLQ flags", {
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	result <- listingNCAConcentration(projectFile = pkx_project_3)
+
+	expect_s3_class(result, "data.frame")
+	# Should have Censoring column for BLQ handling
+	expect_true("Censoring" %in% names(result))
+})
+
+test_that("listingNCAConcentration includes covariates in correct order", {
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	result <- listingNCAConcentration(
+		projectFile = pkx_project_2,
+		covariates = c("FOOD", "TREAT")
+	)
+
+	expect_s3_class(result, "data.frame")
+	# Check covariates are present
+	expect_true(all(c("FOOD", "TREAT") %in% names(result)))
+	# Check they come before ActualTime column
+	food_pos <- which(names(result) == "FOOD")
+	time_pos <- which(names(result) == "ActualTime")
+	expect_true(food_pos < time_pos)
+})
+
+test_that("listingNCAConcentration preserves concentration text flags", {
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	result <- listingNCAConcentration(projectFile = pkx_project_3)
+
+	expect_s3_class(result, "data.frame")
+	expect_type(result$Concentration, "character")
+	# Check if any non-numeric flags exist (like "<LLOQ")
+	non_na_conc <- result$Concentration[!is.na(result$Concentration)]
+	has_flags <- any(grepl("[<>]", non_na_conc))
+	# Concentration should always be character to handle flags
+	expect_true(is.character(result$Concentration))
+})
+
+test_that("listingNCAConcentration works across different project types", {
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	result1 <- listingNCAConcentration(projectFile = pkx_project_1)
+	result5 <- listingNCAConcentration(projectFile = pkx_project_5)
+
+	expect_s3_class(result1, "data.frame")
+	expect_s3_class(result5, "data.frame")
+	# Both should have required columns
+	expect_true(all(c("id", "ActualTime", "Concentration") %in% names(result1)))
+	expect_true(all(c("id", "ActualTime", "Concentration") %in% names(result5)))
+})
+
 
 ################################################################################
 # setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
