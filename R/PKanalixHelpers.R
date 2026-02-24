@@ -377,7 +377,8 @@ tableNCAParameters <- function(projectFile      = NULL,
 	.validateCovariateSelection(covariates, ratio = FALSE)
 	stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
 	covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
-
+	# Validate set parameters
+	.validateNCAParametersSelection(NCAparams, ratio = FALSE)
 	# Validate include_id parameter
 	if (include_id && horizontal) {
 		warning("include_id = TRUE only works with horizontal = FALSE. Setting include_id to FALSE.")
@@ -576,6 +577,7 @@ tableNCARatios <- function(projectFile      = NULL,
 	.checkProjectFile(projectFile, "pkanalix")
 	.ensureProjectLoaded(projectFile)
 
+	indivratio <- lixoftConnectors::getNCAIndividualRatios()
 	# Validate that ratio data is available
 	if (isFALSE(indivratio)) {
 		stop("No NCA ratio results available.")
@@ -586,50 +588,32 @@ tableNCARatios <- function(projectFile      = NULL,
 	stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
 	covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
 
-	indivratio <- lixoftConnectors::getNCAIndividualRatios()
-	ratio_info <- lixoftConnectors::getNCARatios()
+	# Validate set parameters
+	.validateNCAParametersSelection(ratioParams, ratio = TRUE)  # Early validation
 
+	ratio_info <- lixoftConnectors::getNCARatios()
 	ratio_cols <- names(ratio_info)
+
+	# Determine which ratio columns to pivot (ADD THIS BLOCK)
+	if (!is.null(ratioParams)) {
+		# Pivot only requested parameters (already validated)
+		cols_to_pivot <- intersect(ratioParams, ratio_cols)
+	} else {
+		# Pivot all ratio columns
+		cols_to_pivot <- ratio_cols
+	}
 
 	# Candidate group-by columns: in dataframe but not id and not ratio(s)
 	groupby_candidates <- setdiff(names(indivratio), c("id", ratio_cols))
-
-	# Sanitize requested covariates
-	if (is.null(covariates)) covariates <- character(0)
-	bad <- setdiff(covariates, groupby_candidates)
-	if (length(bad)) {
-		stop(
-			"Unsupported grouping column(s): ", paste(bad, collapse = ", "),
-			"\nAllowed: ", paste(groupby_candidates, collapse = ", "))
-	}
 
 	# ==========================================================================
 	# DATA PREPARATION
 	# Long form over ALL ratio columns
 	long_df <- tidyr::pivot_longer(
 		indivratio,
-		cols      = dplyr::all_of(ratio_cols),
+		cols      = dplyr::all_of(cols_to_pivot),
 		names_to  = "Parameter",
 		values_to = "Ratio")
-
-	# Filter to specific ratio parameters (if requested)
-	if (!is.null(ratioParams)) {
-		available_params <- unique(long_df$Parameter)
-		missing_params   <- setdiff(ratioParams, available_params)
-		valid_params     <- intersect(ratioParams, available_params)
-
-		if (!length(valid_params)) {
-			stop(
-				paste0(
-					"None of the requested ratio parameters were found.\n",
-					"Requested: ", paste(ratioParams, collapse = ", "), "\n",
-					"Available: ", paste(available_params, collapse = ", ")))
-		}
-		if (length(missing_params)) {
-			warning(paste0("Ignoring unknown ratio parameters: ", paste(missing_params, collapse = ", ")))
-		}
-		long_df <- dplyr::filter(long_df, Parameter %in% valid_params)
-	}
 
 	# ==========================================================================
 	# SUMMARIZE & FORMAT
@@ -905,8 +889,8 @@ listingAbbreviation <- function(data,
 #' # Include nominal time if available
 #' listingNCAConcentration(covariates = c("TREAT", "FOOD"), useNominalTime = TRUE)
 #'
-listingNCAConcentration <- function(projectFile = NULL,
-																		covariates = NULL,
+listingNCAConcentration <- function(projectFile    = NULL,
+																		covariates     = NULL,
 																		useNominalTime = FALSE,
 																		roundDigits    = 3,
 																		roundMethod    = c("monolix", "signif", "none")) {
@@ -916,7 +900,7 @@ listingNCAConcentration <- function(projectFile = NULL,
 	.ensureProjectLoaded(projectFile)
 
 	# Validate set covariates
-	.validateProvidedCovariates(covariates, ratio = FALSE)
+	.validateCovariateSelection(covariates, ratio = FALSE)
 
 	# reinitialize stratification connector
 	lixoftConnectors::setNCAResultsStratification()
@@ -1019,12 +1003,17 @@ listingNCAConcentration <- function(projectFile = NULL,
 	# Apply rounding only to Concentration and UsedConc
 	indiv <- indiv %>%
 		dplyr::mutate(
+			.conc_numeric = suppressWarnings(as.numeric(Concentration)), # Pre-compute numeric conversion (with warning suppression)
 			Concentration = dplyr::case_when(
-				is.na(suppressWarnings(as.numeric(Concentration))) ~ Concentration,  # Keep original if can't convert to numeric
-				TRUE ~ as.character(.round_num(as.numeric(Concentration),
+				is.na(.conc_numeric) ~ Concentration,
+				TRUE ~ as.character(.round_num(.conc_numeric,
 																			 digits = roundDigits,
 																			 rounding_method = roundMethod))),
-			UsedConc = .round_num(UsedConc, digits = roundDigits, rounding_method = roundMethod))
+			UsedConc = .round_num(UsedConc,
+														digits = roundDigits,
+														rounding_method = roundMethod)) %>%
+		dplyr::select(-.conc_numeric)
+
 
 	return(as.data.frame(indiv))
 }
@@ -1032,3 +1021,72 @@ listingNCAConcentration <- function(projectFile = NULL,
 
 
 #-------------------------------------------------------------------------------
+listingNCAParameters <- function(projectFile = NULL,
+																 covariates  = NULL,
+																 NCAparams   = NULL,
+																 roundDigits = 3,
+																 roundMethod = c("monolix", "signif", "none"),
+																 units       = TRUE,
+																 aliases     = TRUE){
+
+	roundMethod <- match.arg(roundMethod)
+	# Ensure the correct project is loaded
+	.checkProjectFile(projectFile, "pkanalix")
+	.ensureProjectLoaded(projectFile)
+
+	# Validate set covariates
+	.validateCovariateSelection(covariates, ratio = FALSE)
+	# Validate set parameters
+	.validateNCAParametersSelection(NCAparams, ratio = FALSE)
+
+	indivNCA <- lixoftConnectors::getNCAIndividualParameters()$parameter
+
+	# Get ALL available covariates from data
+	project_data <- lixoftConnectors::getData()
+	all_covariates <- project_data$header[project_data$headerTypes %in% c("catcov","contcov", "occ")]
+
+	# Filter to selected parameters if NCAparams is specified
+	if (!is.null(NCAparams)) {
+		# Keep id, all covariates, and selected parameters only
+		cols_to_keep <- c("id", all_covariates, NCAparams)
+		# Only keep columns that exist in the data
+		cols_to_keep <- intersect(cols_to_keep, names(indivNCA))
+		indivNCA <- indivNCA %>% dplyr::select(dplyr::all_of(cols_to_keep))
+	}
+
+	# Apply rounding to parameter columns (BEFORE renaming)
+	indivNCA <- .round_num(
+		to_round        = indivNCA,
+		digits          = roundDigits,
+		rounding_method = roundMethod,
+		exclude         = c("id", all_covariates))
+
+	# Identify parameter columns (exclude id and all covariates present in data)
+	param_cols <- setdiff(names(indivNCA), c("id", all_covariates))
+
+	# Create temporary data frame with parameter names
+	temp_df <- data.frame(parameter = param_cols, stringsAsFactors = FALSE)
+
+	# Apply units/aliases formatting
+	temp_df_formatted <- .addUnitsAliases(temp_df, add_units = units, add_aliases = aliases)
+
+	# Create mapping: original name -> formatted name
+	name_mapping <- setNames(temp_df_formatted$parameter, param_cols)
+
+	# Rename parameter columns in indivNCA
+	names(indivNCA) <- ifelse(names(indivNCA) %in% param_cols,
+														name_mapping[names(indivNCA)],
+														names(indivNCA))
+
+	if (!is.null(covariates)) {
+		# Get remaining columns (parameters and non-selected covariates)
+		remaining_cols <- setdiff(names(indivNCA), c("id", covariates))
+
+		# Reorder: id, then covariates in specified order, then rest
+		indivNCA <- indivNCA %>%
+			dplyr::select("id", dplyr::all_of(covariates), dplyr::all_of(remaining_cols)) %>%
+			dplyr::arrange(!!!rlang::syms(covariates))
+	}
+
+	return(indivNCA)
+}

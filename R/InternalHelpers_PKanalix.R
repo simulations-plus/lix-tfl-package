@@ -708,7 +708,7 @@
 
 	if (length(invalid_covs) > 0) {
 		stop(sprintf(
-			"Invalid covariate%s: %s\nAvailable %s in project: %s",
+			"Invalid covariate%s: %s\nAvailable %s: %s",
 			if (length(invalid_covs) > 1) "s" else "",
 			paste(invalid_covs, collapse = ", "),
 			context_msg,
@@ -789,7 +789,87 @@
 	return(final_labels)
 }
 
+##################################################################################
+#' Validate provided NCA or ratio parameters against available parameters
+#'
+#' @description
+#' Checks if the provided NCA parameters exist in the currently loaded PKanalix project.
+#' For ratio tables, validates against ratio parameters in getNCAIndividualRatios().
+#' For non-ratio tables, validates against computed NCA parameters from getNCASettings().
+#' Stops if none of the requested parameters are found; warns if some are missing.
+#'
+#' @param NCAparams Character vector of NCA parameter names to validate, or NULL
+#' @param ratio Logical; if TRUE, validates for ratio tables (checks ratio parameters).
+#'   If FALSE (default), validates against computed NCA parameters.
+#'
+#' @return Invisible NULL if validation passes. Stops with error if no valid parameters found.
+#'   Issues warning if some parameters are missing but continues.
+#'
+#' @details
+#' When ratio = FALSE:
+#'   - Uses lixoftConnectors::getNCASettings()$computedncaparameters
+#'   - Gets list of NCA parameters computed/enabled in the project
+#'   - Used in: listingNCAParameters, tableNCAParameters, tableNCAConcentration
+#'
+#' When ratio = TRUE:
+#'   - Uses lixoftConnectors::getNCAIndividualRatios()
+#'   - Extracts ratio parameter columns (excludes id and data variables)
+#'   - Used in: tableNCARatios, listingNCARatios
+#'
+#' Error handling:
+#'   - Stops if NONE of the requested parameters are available
+#'   - Warns if SOME parameters are missing (continues with valid ones)
+#'
+#' @noRd
+.validateNCAParametersSelection <- function(NCAparams, ratio = FALSE) {
+	# Skip validation if no parameters specified
+	if (is.null(NCAparams)) {
+		return(invisible(NULL))
+	}
 
+	if (ratio) {
+		# For ratio tables: get available ratio parameters
+		ratio_result <- lixoftConnectors::getNCAIndividualRatios()
+
+		# Get all parameters columns except id and covariates
+		data_info <- lixoftConnectors::getData()
+		data_vars <- data_info$header
+		ratio_cols <- setdiff(names(ratio_result), "id")
+
+		# Parameters are columns that only appear in ratio results, not in data
+		available_params <- setdiff(ratio_cols, data_vars)
+		context_msg      <- "ratio parameters"
+	} else {
+		# For non-ratio tables: get computed NCA parameters
+		available_params <- lixoftConnectors::getNCASettings()$computedncaparameters
+		context_msg      <- "NCA parameters"
+	}
+
+	# Find intersection of requested and available
+	valid_params   <- intersect(NCAparams, available_params)
+	missing_params <- setdiff(NCAparams, available_params)
+
+	# Stop if none of the requested parameters are available
+	if (length(valid_params) == 0) {
+		stop(sprintf(
+			"None of the requested %s were found.\nRequested: %s\nAvailable: %s",
+			context_msg,
+			paste(NCAparams, collapse = ", "),
+			if (length(available_params) > 0) paste(available_params, collapse = ", ") else "none"
+		), call. = FALSE)
+	}
+
+	# Warn if some parameters are missing (but continue with valid ones)
+	if (length(missing_params) > 0) {
+		warning(sprintf(
+			"Ignoring unknown %s: %s",
+			context_msg,
+			paste(missing_params, collapse = ", ")
+		), call. = FALSE)
+	}
+
+	return(invisible(NULL))
+}
 ##################################################################################
 #' Internal helper to add individual NCA parameters
 #'
