@@ -650,6 +650,74 @@
 		return(valid_metrics)
 	}
 }
+
+##################################################################################
+#' Validate selected covariates for NCA tables and listings
+#'
+#' @description
+#' Checks if the provided covariates exist in the currently loaded PKanalix project
+#' and are of valid types. For ratio tables, only categorical covariates are allowed.
+#' For other tables/listings, both categorical covariates and occasions are allowed.
+#'
+#' @param covariates Character vector of covariate names to validate, or NULL
+#' @param ratio Logical; if TRUE, validates for ratio tables (only categorical covariates allowed
+#'   via getCovariateInformation()). If FALSE (default), allows both categorical covariates
+#'   and occasions (via getData()).
+#'
+#' @return Invisible NULL if validation passes. Stops with error if validation fails.
+#'
+#' @details
+#' When ratio = FALSE:
+#'   - Uses lixoftConnectors::getData()
+#'   - Allows headerTypes: "catcov" (categorical covariate) or "occ" (occasion)
+#'   - Used in: listingNCAConcentration, tableNCAConcentration, tableNCAParameters, etc.
+#'
+#' When ratio = TRUE:
+#'   - Uses lixoftConnectors::getCovariateInformation()
+#'   - Allows only categorical covariates (type == "categorical")
+#'   - Does NOT allow occasions
+#'   - Used in: tableNCARatios, listingNCARatios
+#'
+#' @noRd
+
+.validateCovariateSelection <- function(covariates, ratio = FALSE) {
+	# Skip validation if no covariates provided
+	if (is.null(covariates)) {
+		return(invisible(NULL))
+	}
+
+	if (ratio) {
+		# For ratio tables: intersection of ratio columns and data variables
+		# This excludes parameters (which only appear in ratio results, not in data)
+		ratio_result <- lixoftConnectors::getNCAIndividualRatios()
+		ratio_cols <- setdiff(names(ratio_result), "id")
+		# Get all variables from data
+		data_vars <- lixoftConnectors::getData()$header
+		# Available covariates = intersection (parameters are filtered out)
+		available_covs <- intersect(ratio_cols, data_vars)
+		context_msg <- "covariates in ratio results"
+	} else {
+		# For other tables/listings: use getData(), allow catcov or occ
+		project_data <- lixoftConnectors::getData()
+		available_covs <- project_data$header[project_data$headerTypes %in% c("catcov", "occ")]
+		context_msg <- "covariates (catcov or occ)"
+	}
+
+	# Check if provided covariates are valid
+	invalid_covs <- setdiff(covariates, available_covs)
+
+	if (length(invalid_covs) > 0) {
+		stop(sprintf(
+			"Invalid covariate%s: %s\nAvailable %s in project: %s",
+			if (length(invalid_covs) > 1) "s" else "",
+			paste(invalid_covs, collapse = ", "),
+			context_msg,
+			if (length(available_covs) > 0) paste(available_covs, collapse = ", ") else "none"
+		), call. = FALSE)
+	}
+
+	return(invisible(NULL))
+}
 ##################################################################################
 #' Internal helper to validate stratification arguments
 #'

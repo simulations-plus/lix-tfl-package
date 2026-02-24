@@ -105,10 +105,9 @@ tableNCAConcentration <- function(projectFile = NULL,
 	.checkProjectFile(projectFile, "pkanalix")
 	.ensureProjectLoaded(projectFile)
 
-	# Validate Stratification Logic
+	# Validate covariates, stratification and covariate label arguments
+	.validateCovariateSelection(covariates, ratio = FALSE)
 	stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
-
-	# Validate Covariate Labels
 	covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
 
 	# ==========================================================================
@@ -374,7 +373,8 @@ tableNCAParameters <- function(projectFile      = NULL,
 	.checkProjectFile(projectFile, "pkanalix")
 	.ensureProjectLoaded(projectFile)
 
-	# Validate Stratification Logic & Covariate Labels
+	# Validate covariates, stratification and covariate label arguments
+	.validateCovariateSelection(covariates, ratio = FALSE)
 	stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
 	covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
 
@@ -576,17 +576,18 @@ tableNCARatios <- function(projectFile      = NULL,
 	.checkProjectFile(projectFile, "pkanalix")
 	.ensureProjectLoaded(projectFile)
 
-	# Validate stratification and covariate label arguments
+	# Validate that ratio data is available
+	if (isFALSE(indivratio)) {
+		stop("No NCA ratio results available.")
+	}
+
+	# Validate covariates, stratification and covariate label arguments
+	.validateCovariateSelection(covariates, ratio = TRUE)
 	stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
 	covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
 
 	indivratio <- lixoftConnectors::getNCAIndividualRatios()
 	ratio_info <- lixoftConnectors::getNCARatios()
-
-	# Validate that ratio data is available
-	if (isFALSE(indivratio)) {
-		stop("No NCA ratio results available.")
-	}
 
 	ratio_cols <- names(ratio_info)
 
@@ -857,6 +858,14 @@ listingAbbreviation <- function(data,
 #'   "nominaltime"}), the function will fall back to actual time and issue a
 #'   warning. Default is \code{FALSE}.
 #'
+#' @param roundDigits Integer specifying the number of decimal places for rounding
+#'   numeric values. Default is `3`.
+#'
+#' @param roundMethod Character string specifying the rounding method. Options are:
+#'   - `"monolix"` (default): Adaptive rounding that adds extra digits for values < 1
+#'   - `"signif"`: Standard significant figures rounding
+#'   - `"none"`: No rounding performed
+#'
 #' @details
 #'   The function first resets stratification via
 #'   \code{lixoftConnectors::setNCAResultsStratification()} and optionally splits results by
@@ -899,12 +908,15 @@ listingAbbreviation <- function(data,
 listingNCAConcentration <- function(projectFile = NULL,
 																		covariates = NULL,
 																		useNominalTime = FALSE,
-																		roundDigits      = 3,
-																		roundMethod      = c("monolix", "signif", "none")) {
+																		roundDigits    = 3,
+																		roundMethod    = c("monolix", "signif", "none")) {
 	roundMethod <- match.arg(roundMethod)
 	# Ensure the correct project is loaded
 	.checkProjectFile(projectFile, "pkanalix")
 	.ensureProjectLoaded(projectFile)
+
+	# Validate set covariates
+	.validateProvidedCovariates(covariates, ratio = FALSE)
 
 	# reinitialize stratification connector
 	lixoftConnectors::setNCAResultsStratification()
@@ -914,10 +926,10 @@ listingNCAConcentration <- function(projectFile = NULL,
 		lixoftConnectors::setNCAResultsStratification(split = covariates)
 	}
 
-	#--- Always extract ACTUAL time version (baseline)
+	# Always extract ACTUAL time version (baseline)
 	df_actual <- lixoftConnectors::getNCAConcentrations(displayIndividualProfiles = TRUE, useNominalTime = FALSE)
 	df_actual <- .fixNCAConcentrationsColumnSwap(df_actual, covariates)
-	metrics <- lixoftConnectors::getNCAConcentrations()$metric
+	metrics   <- lixoftConnectors::getNCAConcentrations()$metric
 	metric_labels <- as.character(metrics[!is.na(metrics)])
 
 	indiv_actual <- df_actual %>%
@@ -926,20 +938,18 @@ listingNCAConcentration <- function(projectFile = NULL,
 		tidyr::pivot_longer(
 			cols = setdiff(names(.), c("subject", covariates)), # pivot from wide format to long
 			names_to = "ActualTimeLabel",
-			values_to = "Concentration"
-		) %>%
+			values_to = "Concentration") %>%
 		dplyr::group_by(subject, dplyr::across(dplyr::all_of(covariates))) %>%
 		dplyr::filter(Concentration != "") %>% # drop empty cells
 		dplyr::mutate(row_id = row_number()) %>% # assign row index (per subject)
 		dplyr::ungroup() %>%
 		dplyr::mutate(
 			Time = as.numeric(ActualTimeLabel), # numeric actual time
-			id = as.character(subject)
-		) %>%
+			id   = as.character(subject)) %>%
 		dplyr::relocate(dplyr::any_of(covariates), id, Time, Concentration, row_id) %>%
 		dplyr::select(-subject)
 
-	#--- Optionally extract NOMINAL time version
+	# Optionally extract NOMINAL time version
 	if (useNominalTime) {
 		data <- lixoftConnectors::getData()
 		has_nomtime <- any(data$headerTypes == "nominaltime")
@@ -955,18 +965,16 @@ listingNCAConcentration <- function(projectFile = NULL,
 				dplyr::filter(!(subject %in% metric_labels)) %>%
 				dplyr::mutate(dplyr::across(setdiff(names(.), c("subject", covariates)), as.character)) %>%
 				tidyr::pivot_longer(
-					cols = setdiff(names(.), c("subject", covariates)),
-					names_to = "NominalTimeLabel",
-					values_to = "dummyConc"
-				) %>%
+					cols      = setdiff(names(.), c("subject", covariates)),
+					names_to  = "NominalTimeLabel",
+					values_to = "dummyConc") %>%
 				dplyr::group_by(subject, dplyr::across(dplyr::all_of(covariates))) %>%
 				dplyr::filter(dummyConc != "") %>%
 				dplyr::mutate(row_id = row_number()) %>% # align by row_id (same column order)
 				dplyr::ungroup() %>%
 				dplyr::mutate(
 					NominalTime = as.numeric(NominalTimeLabel),
-					id = as.character(subject)
-				) %>%
+					id = as.character(subject)) %>%
 				dplyr::relocate(dplyr::any_of(covariates), id, NominalTime, row_id) %>%
 				dplyr::select(-subject)
 
