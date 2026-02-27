@@ -893,14 +893,38 @@ listingNCAConcentration <- function(projectFile    = NULL,
 																		covariates     = NULL,
 																		useNominalTime = FALSE,
 																		roundDigits    = 3,
-																		roundMethod    = c("monolix", "signif", "none")) {
-	roundMethod <- match.arg(roundMethod)
+																		roundMethod    = "none") {
+
 	# Ensure the correct project is loaded
 	.checkProjectFile(projectFile, "pkanalix")
 	.ensureProjectLoaded(projectFile)
 
 	# Validate set covariates
 	.validateCovariateSelection(covariates, ratio = FALSE)
+
+	# Get occasion variables from data and add to stratification
+	project_data <- lixoftConnectors::getData()
+	occ_vars     <- project_data$header[project_data$headerTypes == "occ"]
+
+	# Add occasion variables to covariates
+	if (length(occ_vars) > 0) {
+		covariates <- unique(c(covariates, occ_vars))
+	}
+
+	has_time    <- any(project_data$headerTypes == "time")
+	has_nomtime <- any(project_data$headerTypes == "nominaltime")
+
+	# Determine which time to use for extraction
+	if (!has_time && has_nomtime) {
+		# Only nominal time available - must use it
+		use_nominal_for_actual <- TRUE
+		if (!useNominalTime) {
+			message("Note: No actual time available in project. Nominal time will be used.")
+		}
+	} else {
+		# Has actual time (standard case)
+		use_nominal_for_actual <- FALSE
+	}
 
 	# reinitialize stratification connector
 	lixoftConnectors::setNCAResultsStratification()
@@ -910,12 +934,20 @@ listingNCAConcentration <- function(projectFile    = NULL,
 		lixoftConnectors::setNCAResultsStratification(split = covariates)
 	}
 
+	# Extract time data
+	if (use_nominal_for_actual) {
+		# Only nominal time exists - use it as "actual time"
+		df_actual <- lixoftConnectors::getNCAConcentrations(displayIndividualProfiles = TRUE, useNominalTime = TRUE) # Must use TRUE when only nominal exists
+	} else {
+		# Has actual time - extract normally
+		df_actual <- lixoftConnectors::getNCAConcentrations(displayIndividualProfiles = TRUE, useNominalTime = FALSE)
+	}
 	# Always extract ACTUAL time version (baseline)
-	df_actual <- lixoftConnectors::getNCAConcentrations(displayIndividualProfiles = TRUE, useNominalTime = FALSE)
-	df_actual <- .fixNCAConcentrationsColumnSwap(df_actual, covariates)
-	metrics   <- lixoftConnectors::getNCAConcentrations()$metric
+	df_actual     <- .fixNCAConcentrationsColumnSwap(df_actual, covariates)
+	metrics       <- lixoftConnectors::getNCAConcentrations()$metric
 	metric_labels <- as.character(metrics[!is.na(metrics)])
 
+	# Process actual time data
 	indiv_actual <- df_actual %>%
 		dplyr::filter(!(subject %in% metric_labels)) %>% # drop summary rows
 		dplyr::mutate(dplyr::across(setdiff(names(.), c("subject", covariates)), as.character)) %>%
@@ -933,24 +965,26 @@ listingNCAConcentration <- function(projectFile    = NULL,
 		dplyr::relocate(dplyr::any_of(covariates), id, Time, Concentration, row_id) %>%
 		dplyr::select(-subject)
 
-	# Optionally extract NOMINAL time version
-	if (useNominalTime) {
-		data <- lixoftConnectors::getData()
-		has_nomtime <- any(data$headerTypes == "nominaltime")
 
-		if (!has_nomtime) {
-			warning("No nominal time available in project; only actual time will be included.")
+	# Handle nominal time extraction
+	if (useNominalTime) {
+		if (use_nominal_for_actual) {
+			# Only nominal time exists - already used as actual time
 			indiv <- indiv_actual %>% dplyr::select(-row_id, -ActualTimeLabel)
-		} else {
-			df_nom <- lixoftConnectors::getNCAConcentrations(displayIndividualProfiles = TRUE, useNominalTime = TRUE)
-			df_nom <- fixNCAConcentrationsColumnSwap(df_nom, covariates)
+
+		} else if (has_nomtime) {
+			# Has both actual and nominal time - extract nominal separately
+			df_nom <- lixoftConnectors::getNCAConcentrations(
+				displayIndividualProfiles = TRUE,
+				useNominalTime = TRUE)
+			df_nom <- .fixNCAConcentrationsColumnSwap(df_nom, covariates)
 
 			indiv_nom <- df_nom %>%
 				dplyr::filter(!(subject %in% metric_labels)) %>%
 				dplyr::mutate(dplyr::across(setdiff(names(.), c("subject", covariates)), as.character)) %>%
 				tidyr::pivot_longer(
-					cols      = setdiff(names(.), c("subject", covariates)),
-					names_to  = "NominalTimeLabel",
+					cols = setdiff(names(.), c("subject", covariates)),
+					names_to = "NominalTimeLabel",
 					values_to = "dummyConc") %>%
 				dplyr::group_by(subject, dplyr::across(dplyr::all_of(covariates))) %>%
 				dplyr::filter(dummyConc != "") %>%
@@ -962,13 +996,18 @@ listingNCAConcentration <- function(projectFile    = NULL,
 				dplyr::relocate(dplyr::any_of(covariates), id, NominalTime, row_id) %>%
 				dplyr::select(-subject)
 
-			# Join actual + nominal on subject + covariates + row_id
+			# Join actual + nominal
 			indiv <- indiv_actual %>%
 				dplyr::left_join(indiv_nom, by = c("id", covariates, "row_id")) %>%
 				dplyr::select(-row_id, -ActualTimeLabel, -NominalTimeLabel, -dummyConc)
+		} else {
+			# User requested nominal time but it's not available ← ADD THIS CASE
+			warning("No nominal time available in project; only actual time will be included.")
+			indiv <- indiv_actual %>% dplyr::select(-row_id, -ActualTimeLabel)
 		}
+
 	} else {
-		# If no nominal requested, clean up helper cols
+		# No nominal time requested
 		indiv <- indiv_actual %>% dplyr::select(-row_id, -ActualTimeLabel)
 	}
 
@@ -991,14 +1030,38 @@ listingNCAConcentration <- function(projectFile    = NULL,
 	indiv <- indiv %>%
 		dplyr::left_join(UsedConc, by = c("id", "Time")) %>%
 		dplyr::mutate(
+			id            = sub("#.*", "", id), # Remove # and everything after it
 			Concentration = as.character(Concentration),
-			Censoring = dplyr::case_when(
-				is.na(BLQ) & Concentration != "" ~ 1,
-				TRUE ~ BLQ)) %>%
+			Censoring     = dplyr::case_when(is.na(BLQ) & Concentration != "" ~ 1, TRUE ~ BLQ)) %>%
 		dplyr::mutate(dplyr::across(dplyr::all_of(covariates), as.character)) %>%
-		dplyr::select(-BLQ, -includedForLambdaZ) %>%
-		dplyr::rename(ActualTime = Time) %>%
-		dplyr::relocate(dplyr::any_of(c("ActualTime", "NominalTime")), .before = Concentration)
+		dplyr::select(-BLQ, -includedForLambdaZ)
+
+	# Rename Time column. Depends on ifactual time is available in dataset
+	if (use_nominal_for_actual) {
+		indiv <- indiv %>% dplyr::rename(NominalTime = Time)
+	} else {
+		indiv <- indiv %>% dplyr::rename(ActualTime = Time)
+	}
+
+	# Continue cleanup
+	indiv <- indiv %>%
+		dplyr::relocate(dplyr::any_of(c("ActualTime", "NominalTime")), .before = Concentration) %>%
+		dplyr::relocate(dplyr::any_of(occ_vars), .after = id) %>%
+		dplyr::mutate(.id_numeric = suppressWarnings(as.numeric(id))) %>% # Try converting to numeric
+		dplyr::arrange(
+			# Sort by numeric if possible, otherwise by character
+			dplyr::coalesce(.id_numeric, Inf), # Numeric IDs first, non-numeric at end
+			id,                                # Then by character (for non-numeric IDs)
+			!!!rlang::syms(occ_vars),
+			dplyr::across(dplyr::any_of(c("ActualTime", "NominalTime")))) %>%
+		dplyr::select(-.id_numeric)  # Remove helper column
+
+	# Get IDs from NCA data
+	nca_ids <- unique(lixoftConnectors::getNCAIndividualParameters()$parameters$id)
+
+	# Check if extracted IDs match
+	extracted_ids <- unique(as.numeric(indiv$id))
+	all(extracted_ids %in% nca_ids)  # Should return TRUE
 
 	# Apply rounding only to Concentration and UsedConc
 	indiv <- indiv %>%
