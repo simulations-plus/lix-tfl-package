@@ -86,15 +86,15 @@
 #' #   stratify_columns = TRUE
 #' # )
 #'
-tableNCAConcentration <- function(projectFile = NULL,
-																	covariates = NULL,
-																	useNominalTime = TRUE,
-																	metrics = NULL,
+tableNCAConcentration <- function(projectFile      = NULL,
+																	covariates       = NULL,
+																	useNominalTime   = TRUE,
+																	metrics          = NULL,
 																	stratify_columns = FALSE,
 																	covariate_labels = NULL,
-																	roundDigits = 3,
-																	roundMethod = c("monolix", "signif", "none"),
-																	prettyLabels = TRUE) {
+																	roundDigits      = 3,
+																	roundMethod      = c("monolix", "signif", "none"),
+																	prettyLabels     = TRUE) {
 
 	roundMethod <- match.arg(roundMethod)
 
@@ -104,6 +104,9 @@ tableNCAConcentration <- function(projectFile = NULL,
 
 	.checkProjectFile(projectFile, "pkanalix")
 	.ensureProjectLoaded(projectFile)
+
+	# Validate availability of analysis results
+	.validateProjectResultsAvailability(software = "pkanalix", resultType = "nca")
 
 	# Validate covariates, stratification and covariate label arguments
 	.validateCovariateSelection(covariates, ratio = FALSE)
@@ -373,6 +376,9 @@ tableNCAParameters <- function(projectFile      = NULL,
 	.checkProjectFile(projectFile, "pkanalix")
 	.ensureProjectLoaded(projectFile)
 
+	# Validate availability of analysis results
+	.validateProjectResultsAvailability(software = "pkanalix", resultType = "nca")
+
 	# Validate covariates, stratification and covariate label arguments
 	.validateCovariateSelection(covariates, ratio = FALSE)
 	stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
@@ -577,11 +583,8 @@ tableNCARatios <- function(projectFile      = NULL,
 	.checkProjectFile(projectFile, "pkanalix")
 	.ensureProjectLoaded(projectFile)
 
-	indivratio <- lixoftConnectors::getNCAIndividualRatios()
-	# Validate that ratio data is available
-	if (isFALSE(indivratio)) {
-		stop("No NCA ratio results available.")
-	}
+	# Validate availability of analysis results
+	.validateProjectResultsAvailability(software = "pkanalix", resultType = "ncaRatio")
 
 	# Validate covariates, stratification and covariate label arguments
 	.validateCovariateSelection(covariates, ratio = TRUE)
@@ -604,6 +607,7 @@ tableNCARatios <- function(projectFile      = NULL,
 	}
 
 	# Candidate group-by columns: in dataframe but not id and not ratio(s)
+	indivratio <- lixoftConnectors::getNCAIndividualRatios()
 	groupby_candidates <- setdiff(names(indivratio), c("id", ratio_cols))
 
 	# ==========================================================================
@@ -899,6 +903,8 @@ listingNCAConcentration <- function(projectFile    = NULL,
 	.checkProjectFile(projectFile, "pkanalix")
 	.ensureProjectLoaded(projectFile)
 
+	# Validate availability of analysis results
+	.validateProjectResultsAvailability(software = "pkanalix", resultType = "nca")
 	# Validate set covariates
 	.validateCovariateSelection(covariates, ratio = FALSE)
 
@@ -1081,9 +1087,47 @@ listingNCAConcentration <- function(projectFile    = NULL,
 	return(as.data.frame(indiv))
 }
 
-
-
 #-------------------------------------------------------------------------------
+#' NCA Individual Parameters Listing
+#'
+#' Creates a listing table of individual NCA parameter values from a PKanalix project.
+#'
+#' @param projectFile Character string. Path to the PKanalix project file (.pkx).
+#'   If NULL, uses the currently loaded project.
+#' @param covariates Character vector. Covariates to include and sort by. If specified,
+#'   the table is sorted by these covariates in the order provided.
+#' @param NCAparams Character vector. NCA parameters to include. If NULL (default),
+#'   all computed NCA parameters are included.
+#' @param roundDigits Numeric. Number of digits for rounding (default: 3).
+#' @param roundMethod Character. Rounding method: "monolix" (default), "signif", or "none".
+#' @param units Logical. If TRUE (default), parameter units are added to column names.
+#' @param aliases Logical. If TRUE (default), parameter names are replaced with their aliases.
+#'
+#' @return A data frame containing individual NCA parameter values with columns for ID,
+#'   covariates (if specified), and NCA parameters.
+#'
+#' @details
+#' The function validates that NCA analysis has been run and that specified covariates
+#' and parameters exist in the project. Parameter names can be formatted with units
+#' and/or aliases for improved readability.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Basic listing with all parameters
+#' params <- listingNCAParameters(projectFile = "path/to/project.pkx")
+#'
+#' # With covariate stratification and parameter filtering
+#' params <- listingNCAParameters(
+#'   projectFile = "path/to/project.pkx",
+#'   covariates = c("SEX", "DOSE"),
+#'   NCAparams = c("AUC", "Cmax", "Tmax"),
+#'   roundDigits = 2,
+#'   units = TRUE,
+#'   aliases = TRUE
+#' )
+#' }
 listingNCAParameters <- function(projectFile = NULL,
 																 covariates  = NULL,
 																 NCAparams   = NULL,
@@ -1097,6 +1141,8 @@ listingNCAParameters <- function(projectFile = NULL,
 	.checkProjectFile(projectFile, "pkanalix")
 	.ensureProjectLoaded(projectFile)
 
+	# Validate availability of analysis results
+	.validateProjectResultsAvailability(software = "pkanalix", resultType = "nca")
 	# Validate set covariates
 	.validateCovariateSelection(covariates, ratio = FALSE)
 	# Validate set parameters
@@ -1152,4 +1198,116 @@ listingNCAParameters <- function(projectFile = NULL,
 	}
 
 	return(indivNCA)
+}
+#-------------------------------------------------------------------------------
+#' NCA Ratios Individual Listing
+#'
+#' Creates a listing table of individual NCA ratio parameter values from a PKanalix project.
+#'
+#' @param projectFile Character string. Path to the PKanalix project file (.pkx).
+#'   If NULL, uses the currently loaded project.
+#' @param covariates Character vector. Covariates to include and sort by. If specified,
+#'   the table is sorted by these covariates in the order provided.
+#' @param ratioParams Character vector. Ratio parameters to include. If NULL (default),
+#'   all available ratio parameters are included.
+#' @param roundDigits Numeric. Number of digits for rounding (default: 3).
+#' @param roundMethod Character. Rounding method: "monolix" (default), "signif", or "none".
+#' @param aliases Logical. If TRUE (default), parameter names are replaced with their aliases.
+#'
+#' @return A data frame containing individual NCA ratio values with columns for ID,
+#'   covariates (if specified), and ratio parameters.
+#'
+#' @details
+#' The function validates that:
+#' - NCA analysis has been run (required for ratios)
+#' - NCA ratio module is configured
+#' - Specified covariates and parameters exist in the project
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Basic listing with all ratios
+#' ratios <- listingNCARatios(projectFile = "path/to/project.pkx")
+#'
+#' # With covariate stratification and parameter filtering
+#' ratios <- listingNCARatios(
+#'   projectFile = "path/to/project.pkx",
+#'   covariates = c("SEX", "DOSE"),
+#'   ratioParams = c("AUC_ratio", "Cmax_ratio"),
+#'   roundDigits = 2
+#' )
+#' }
+listingNCARatios <- function(projectFile = NULL,
+														 covariates  = NULL,
+														 ratioParams = NULL,
+														 roundDigits = 3,
+														 roundMethod = c("monolix", "signif", "none"),
+														 aliases     = TRUE){
+
+	roundMethod <- match.arg(roundMethod)
+	# Ensure the correct project is loaded
+	.checkProjectFile(projectFile, "pkanalix")
+	.ensureProjectLoaded(projectFile)
+
+	# Validate availability of analysis results
+	.validateProjectResultsAvailability(software = "pkanalix", resultType = "ncaRatio")
+	# Validate set covariates
+	.validateCovariateSelection(covariates, ratio = TRUE)
+	# Validate set parameters
+	.validateNCAParametersSelection(ratioParams, ratio = TRUE)
+
+	indivRatios <- lixoftConnectors::getNCAIndividualRatios()
+
+	# Get ALL available covariates from data
+	project_data   <- lixoftConnectors::getData()
+	all_covariates <- project_data$header[project_data$headerTypes %in% c("catcov","contcov", "occ")]
+	#intersection between all covariates available in data and in ratios listing
+	all_covariates <- intersect(all_covariates, names(indivRatios))
+
+	# Filter to selected parameters if ratioParams is specified
+	if (!is.null(ratioParams)) {
+		# Keep id, all covariates, and selected parameters only
+		cols_to_keep <- c("id", all_covariates, ratioParams)
+		# Only keep columns that exist in the data
+		cols_to_keep <- intersect(cols_to_keep, names(indivRatios))
+		indivRatios <- indivRatios %>% dplyr::select(dplyr::all_of(cols_to_keep))
+	}
+
+	# Apply rounding to parameter columns (BEFORE renaming)
+	indivRatios <- .round_num(
+		to_round        = indivRatios,
+		digits          = roundDigits,
+		rounding_method = roundMethod,
+		exclude         = c("id", all_covariates))
+
+	# Identify parameter columns (exclude id and all covariates present in data)
+	param_cols <- setdiff(names(indivRatios), c("id", all_covariates))
+
+	# Create temporary data frame with parameter names
+	temp_df <- data.frame(parameter = param_cols, stringsAsFactors = FALSE)
+
+	# line 111 to 120 usefull in case aliases would be available for ratio parameters
+	# Apply units/aliases formatting
+	temp_df_formatted <- .addUnitsAliases(temp_df, add_units = FALSE, add_aliases = aliases)
+
+	# Create mapping: original name -> formatted name
+	name_mapping <- setNames(temp_df_formatted$parameter, param_cols)
+
+	# Rename parameter columns in indivNCA
+	names(indivRatios) <- ifelse(names(indivRatios) %in% param_cols,
+															 name_mapping[names(indivRatios)],
+															 names(indivRatios))
+
+	if (!is.null(covariates)) {
+		# Get remaining columns (parameters and non-selected covariates)
+		remaining_cols <- setdiff(names(indivRatios), c("id", covariates))
+
+		# Reorder: id, then covariates in specified order, then rest
+		indivRatios <- indivRatios %>%
+			dplyr::select("id", dplyr::all_of(covariates), dplyr::all_of(remaining_cols)) %>%
+			dplyr::arrange(!!!rlang::syms(covariates))
+	}
+
+	return(indivRatios)
 }

@@ -607,6 +607,77 @@
 	return(summary_stats)
 }
 
+#-------------------------------------------------------------------------------
+#' Validate Analysis Results Availability
+#'
+#' Checks if required analysis results are available in the currently loaded project.
+#' Throws an error with an informative message if results are missing.
+#'
+#' @param software Character string specifying the software. One of "monolix" or "pkanalix".
+#' @param resultType Character string specifying the type of results to validate.
+#'   For PKanalix: "nca" (NCA parameters/concentrations), "ncaRatio" (NCA ratios),
+#'   "ca" (compartmental analysis), or "be" (bioequivalence).
+#'   For Monolix: "pop" (population parameters).
+#'
+#' @return Invisible NULL if validation passes. Stops with an error if results are unavailable.
+#'
+#' @details
+#' For BE and ratio analyses, also validates that prerequisite NCA results exist.
+#' BE and ratio analyses require NCA to be run first.
+#'
+#' @keywords internal
+#' @noRd
+.validateProjectResultsAvailability <- function(software   = c("monolix", "pkanalix"),
+																								resultType = c("pop", "nca", "ncaRatio", "be", "ca")){
+	resultType <- match.arg(resultType)
+
+	if(software == "pkanalix"){
+		if(resultType %in% c("nca")){
+			result    <- tryCatch(lixoftConnectors::getNCAIndividualParameters()$parameters, error = function(e) NULL)
+			error_msg <- "No NCA results available. Please run non-compartmental analysis first."
+
+		}else if(resultType == "ncaRatio"){
+			nca_result <- tryCatch(lixoftConnectors::getNCAIndividualParameters(), error = function(e) NULL)
+
+			if (is.null(nca_result) || isFALSE(nca_result)) {
+				# NCA missing -> both need to run
+				stop("No NCA results available. Please run non-compartmental analysis (required for NCA ratios).", call. = FALSE)
+			}
+			result    <- tryCatch(lixoftConnectors::getNCAIndividualRatios(), error = function(e) NULL)
+			error_msg <- "No NCA ratios available. Please configure NCA ratio module before running NCA."
+
+		}else if(resultType == "ca"){
+			result    <- tryCatch(lixoftConnectors::getCAIndividualParameters(), error = function(e) NULL)
+			error_msg <- "No CA results available. Please run compartmental analysis first."
+		}else if(resultType == "be"){
+			# BE depends on NCA - check NCA first
+			nca_result <- tryCatch(lixoftConnectors::getNCAIndividualParameters(), error = function(e) NULL)
+
+			if (is.null(nca_result) || isFALSE(nca_result)) {
+				# NCA missing -> both need to run
+				stop("No NCA results available. Please run non-compartmental analysis (required for BE analysis).", call. = FALSE)
+			}
+			# NCA exists, check BE
+			be_result <- tryCatch(lixoftConnectors::getBEResults(), error = function(e) NULL)
+
+			if (is.null(be_result) || isFALSE(be_result)) {
+				# Only BE missing
+				stop("No BE results available. Please run bioequivalence analysis first", call. = FALSE)
+			}
+			return(invisible(NULL))  # Early return for BE
+		}
+	}else if(software == "monolix"){
+		if(resultType == "pop"){
+			result    <- tryCatch(lixoftConnectors::getEstimatedPopulationParameters(), error = function(e) NULL)
+			error_msg <- "No population parameter estimates available. Please run SAEM first."
+		}
+	}
+	if (is.null(result) || isFALSE(result)) {
+		stop(error_msg, call. = FALSE)
+	}
+
+	return(invisible(NULL))
+}
 
 ##################################################################################
 #' Internal helper to validate and select metrics
