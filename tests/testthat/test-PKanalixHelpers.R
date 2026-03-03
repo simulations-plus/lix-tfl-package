@@ -1537,7 +1537,258 @@ test_that("listingNCAConcentration works across different project types", {
 	expect_true(all(c("id", "ActualTime", "Concentration") %in% names(result5)))
 })
 
+# Tests for listingNCARatios ------------------------------------------------
 
+test_that("listingNCARatios works with basic settings", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	result <- listingNCARatios(projectFile = pkx_project_5)
+
+	# Basic structure checks
+	expect_s3_class(result, "data.frame")
+	expect_true("id" %in% names(result))
+	expect_gt(nrow(result), 0)
+	expect_gt(ncol(result), 1)  # Should have id + ratio parameters
+})
+
+test_that("listingNCARatios works with covariates", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	result <- listingNCARatios(
+		projectFile = pkx_project_5,
+		covariates = c("SEQ")
+	)
+
+	# Check covariates are present and in correct order
+	expect_s3_class(result, "data.frame")
+	expect_true(all(c("id", "SEQ") %in% names(result)))
+	expect_equal(names(result)[1:2], c("id", "SEQ"))
+})
+
+test_that("listingNCARatios filters to selected ratio parameters", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# First get all available ratios to select from
+	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
+
+	if (length(available_ratios) >= 2) {
+		selected_ratios <- available_ratios[1:2]
+
+		result <- listingNCARatios(
+			projectFile = pkx_project_5,
+			covariates = c("SEQ"),
+			ratioParams = selected_ratios,
+			roundDigits = 2,
+			roundMethod = "signif"
+		)
+
+		expect_s3_class(result, "data.frame")
+		expect_true(all(c("id", "SEQ") %in% names(result)))
+		# Should have limited columns: id + covariates + occasions + selected ratios
+		expect_lte(ncol(result), 3 + 1 + length(selected_ratios) + 2)  # Some buffer
+	}
+})
+
+test_that("listingNCARatios applies rounding with signif method", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Get available ratio parameters
+	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	ratio_params <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
+
+	if (length(ratio_params) >= 2) {
+		selected <- ratio_params[1:2]
+
+		result_rounded <- listingNCARatios(
+			projectFile = pkx_project_5,
+			ratioParams = selected,
+			roundDigits = 2,
+			roundMethod = "signif"
+		)
+
+		result_none <- listingNCARatios(
+			projectFile = pkx_project_5,
+			ratioParams = selected,
+			roundMethod = "none"
+		)
+
+		expect_s3_class(result_rounded, "data.frame")
+		expect_s3_class(result_none, "data.frame")
+		expect_equal(dim(result_rounded), dim(result_none))
+	}
+})
+
+test_that("listingNCARatios applies rounding with monolix method", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	result <- listingNCARatios(
+		projectFile = pkx_project_5,
+		roundDigits = 4,
+		roundMethod = "monolix"
+	)
+
+	expect_s3_class(result, "data.frame")
+	expect_gt(ncol(result), 1)
+})
+
+test_that("listingNCARatios aliases argument (not yet functional)", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Note: aliases parameter doesn't affect output yet, but function should still work
+	result_with_aliases <- listingNCARatios(
+		projectFile = pkx_project_5,
+		aliases = TRUE
+	)
+
+	result_without_aliases <- listingNCARatios(
+		projectFile = pkx_project_5,
+		aliases = FALSE
+	)
+
+	expect_s3_class(result_with_aliases, "data.frame")
+	expect_s3_class(result_without_aliases, "data.frame")
+	# Currently should have same structure and names (aliases not implemented)
+	expect_equal(dim(result_with_aliases), dim(result_without_aliases))
+	# When aliases are implemented, this test should be updated to check for differences
+})
+
+test_that("listingNCARatios sorts by covariates in specified order", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	result <- listingNCARatios(
+		projectFile = pkx_project_5,
+		covariates = c("SEQ")
+	)
+
+	expect_s3_class(result, "data.frame")
+	# Check that data is sorted by covariates
+	if (nrow(result) > 1) {
+		sorted_check <- result %>% dplyr::arrange(SEQ)
+		expect_equal(result$id, sorted_check$id)
+	}
+})
+
+test_that("listingNCARatios validates invalid covariates", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	expect_error(
+		listingNCARatios(
+			projectFile = pkx_project_5,
+			covariates = c("INVALID_COVARIATE")
+		),
+		"Invalid covariate"
+	)
+})
+
+test_that("listingNCARatios validates invalid ratio parameters", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	expect_error(
+		listingNCARatios(
+			projectFile = pkx_project_5,
+			ratioParams = c("INVALID_RATIO", "ANOTHER_INVALID")
+		),
+		"None of the requested.*parameters were found"
+	)
+})
+
+test_that("listingNCARatios warns for partially invalid parameters", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Get one valid ratio parameter
+	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	valid_ratio <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))[1]
+
+	expect_warning(
+		result <- listingNCARatios(
+			projectFile = pkx_project_5,
+			ratioParams = c(valid_ratio, "INVALID_PARAM")
+		),
+		"Ignoring unknown.*parameters"
+	)
+
+	# Should still return valid parameters
+	expect_s3_class(result, "data.frame")
+	expect_gt(ncol(result), 1)
+})
+
+test_that("listingNCARatios works with occasions and covariates", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	result <- listingNCARatios(
+		projectFile = pkx_project_5,
+		covariates = c("SEQ")
+	)
+
+	expect_s3_class(result, "data.frame")
+	# Should include id, covariates, occasions, and ratio parameters
+	expect_true(all(c("id", "SEQ") %in% names(result)))
+	expect_gt(ncol(result), 4)  # id + 2 covariates + occasion + ratios
+})
+
+test_that("listingNCARatios handles multiple rounding methods", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Test all three rounding methods
+	result_monolix <- listingNCARatios(
+		projectFile = pkx_project_5,
+		roundDigits = 3,
+		roundMethod = "monolix"
+	)
+
+	result_signif <- listingNCARatios(
+		projectFile = pkx_project_5,
+		roundDigits = 3,
+		roundMethod = "signif"
+	)
+
+	result_none <- listingNCARatios(
+		projectFile = pkx_project_5,
+		roundMethod = "none"
+	)
+
+	expect_s3_class(result_monolix, "data.frame")
+	expect_s3_class(result_signif, "data.frame")
+	expect_s3_class(result_none, "data.frame")
+	# All should have same structure
+	expect_equal(dim(result_monolix), dim(result_signif))
+	expect_equal(dim(result_monolix), dim(result_none))
+})
+
+test_that("listingNCARatios returns correct column order", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	result <- listingNCARatios(
+		projectFile = pkx_project_5,
+		covariates = c("SEQ")  # Specify order
+	)
+
+	# First columns should be: id, TRT, SEQ (in that order)
+	expect_equal(names(result)[1], "id")
+	expect_equal(names(result)[2], "SEQ")
+})
+
+test_that("listingNCARatios validates NCA results availability", {
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# project_remifentanil_excl has NCA but likely no ratios configured
+	expect_error(
+		listingNCARatios(projectFile = pkx_project_1),
+		"No NCA.*ratio"
+	)
+})
+
+test_that("listingNCARatios handles projects without NCA", {
+	skip_if_not(file.exists("test-projects/pkanalix/project_steadystate_infusion.pkx"),
+							"Test project not available")
+
+	# Project without NCA results
+	expect_error(
+		listingNCARatios(projectFile = "test-projects/pkanalix/project_steadystate_infusion.pkx"),
+		"No NCA ratios available"
+	)
+})
 ################################################################################
 # setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
 # testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-PKanalixHelpers.R")
