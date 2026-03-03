@@ -374,11 +374,12 @@
 		# Wide format: split header at top + section headers for CORR/RES_ERR
 		# Determine labels for non-FE/IIV/IOV sections
 		section_labels <- c(
+			FE_CAT   = "Fixed effects by category",
 			CORR     = "Correlations",
 			CORR_IIV = "Correlations IIV",
 			CORR_IOV = "Correlations IOV",
-			RES_ERR  = "Residual error"
-		)
+			RES_ERR  = "Residual error",
+			LAT      = "Latent probabilities")
 
 		# Move Section column to the end
 		other_cols <- setdiff(names(data.flex), "Section")
@@ -456,13 +457,14 @@
 		has_IOV <- any(section_col == "IOV")
 		section_labels <- c(
 			FE       = "Fixed effects",
+			FE_CAT   = "Fixed effects by category",
 			IIV      = if (has_IOV) "Random effects IIV" else "Random effects",
 			IOV      = "Random effects IOV",
 			CORR     = "Correlations",
 			CORR_IIV = "Correlations IIV",
 			CORR_IOV = "Correlations IOV",
-			RES_ERR  = "Residual error"
-		)
+			RES_ERR  = "Residual error",
+			LAT      = "Latent probabilities")
 
 		# Move Section column to the end
 		other_cols <- setdiff(names(data.flex), "Section")
@@ -603,6 +605,7 @@ print_table_flex <- function(data.flex,
 														 align_grouping   = NULL,     # alignment for grouping columns (NULL = use default)
 														 align_cols       = NULL)     # named vector for column-specific alignments
 {
+
 	color <- toupper(color) # optional but helpful
 
 	# Check if columns exist
@@ -811,38 +814,51 @@ print_table_flex <- function(data.flex,
 	# ---------------------------------------------------------------------------
 	base_yellow <- "#FFD700"
 	base_orange <- "#EE7600"
-	base_red <- "#8B1A1A"
-	base_green <- "#458B00"
+	base_red    <- "#8B1A1A"
+	base_green  <- "#458B00"
 
 	# Default: pastel hex (good for docx/pptx and generally safe)
 	col_yellow <- .soften_hex(base_yellow, soften_amount)
 	col_orange <- .soften_hex(base_orange, soften_amount)
-	col_red <- .soften_hex(base_red, soften_amount)
-	col_green <- .soften_hex(base_green, soften_amount)
+	col_red    <- .soften_hex(base_red, soften_amount)
+	col_green  <- .soften_hex(base_green, soften_amount)
 
 	# If HTML output, optionally use rgba for transparency
 	if (.is_html_output()) {
 		col_yellow <- .hex_to_rgba(base_yellow, html_alpha)
 		col_orange <- .hex_to_rgba(base_orange, html_alpha)
-		col_red <- .hex_to_rgba(base_red, html_alpha)
-		col_green <- .hex_to_rgba(base_green, html_alpha)
+		col_red    <- .hex_to_rgba(base_red, html_alpha)
+		col_green  <- .hex_to_rgba(base_green, html_alpha)
 	}
 
 	# Apply conditional background formatting for RSE columns
 	if (RSE.flag && length(RSE.cols) > 0) {
 		for (rse_col in RSE.cols) {
-			# Use backtick notation to handle column names with special characters
-			col_expr <- paste0("`", rse_col, "`")
+			all_rows <- seq_len(nrow(data.flex))
+			data_row_indices <- if (length(section_header_rows) > 0) {
+				setdiff(all_rows, section_header_rows)
+			} else {
+				all_rows
+			}
 
-			# Build formulas as strings and convert to formulas
-			formula_yellow <- as.formula(paste("~", col_expr, ">= 50 &", col_expr, "< 100"))
-			formula_orange <- as.formula(paste("~", col_expr, ">= 100 &", col_expr, "< 200"))
-			formula_red <- as.formula(paste("~", col_expr, "> 200"))
+			for (row_idx in data_row_indices) {
+				rse_value <- as.numeric(data.flex[row_idx, rse_col])
 
-			ft <- ft %>%
-				flextable::bg(i = formula_yellow, j = rse_col, bg = col_yellow, part = "body") %>%
-				flextable::bg(i = formula_orange, j = rse_col, bg = col_orange, part = "body") %>%
-				flextable::bg(i = formula_red, j = rse_col, bg = col_red, part = "body")
+				if (is.na(rse_value) || is.nan(rse_value)) {
+					next
+				}
+
+				if (rse_value > 200) {
+					ft <- flextable::bg(ft, i = row_idx, j = rse_col, bg = col_red, part = "body")
+				} else if (rse_value >= 100 && rse_value < 200) {
+					ft <- flextable::bg(ft, i = row_idx, j = rse_col, bg = col_orange, part = "body")
+				} else if (rse_value >= 50 && rse_value < 100) {
+					ft <- flextable::bg(ft, i = row_idx, j = rse_col, bg = col_yellow, part = "body")
+				} else {
+					# VALUES < 50: explicitly clear any existing background color
+					ft <- flextable::bg(ft, i = row_idx, j = rse_col, bg = "transparent", part = "body")
+				}
+			}
 		}
 	}
 

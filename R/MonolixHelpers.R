@@ -298,120 +298,136 @@ tableParameterEstimates <- function(project_file    = NULL,
                                     use_wide_format = FALSE,
                                     std_err_method  = "", digits = 3, roundingMethod = c("monolix", "signif", "none"),
                                     prettyLabels    = TRUE) {
-    roundingMethod <- match.arg(roundingMethod)
 
-    .ensureProjectLoaded(project_file)
-    availableParam <- names(lixoftConnectors::getEstimatedPopulationParameters(coefficientsOfVariation = include_CV))
+	roundingMethod <- match.arg(roundingMethod)
+
+    .checkProjectFile(projectFile, "monolix")
+    .ensureProjectLoaded(projectFile)
+
+    # Validate availability of analysis results
+    .validateProjectResultsAvailability(software = "monolix", resultType = "pop")
+
+    availableParam <- names(lixoftConnectors::getEstimatedPopulationParameters(coefficientsOfVariation = include_CV,
+    																																					 withValuesByGroups      = include_FEcategory))
 
     if (is.null(nameMapping)) {
-        nameMapping <- data.frame(Parameter = availableParam, Label = sub("_pop$", "", availableParam))
+    	nameMapping <- data.frame(Parameter = availableParam, Label = sub("_pop$", "", availableParam))
     }
     if (!is.data.frame(nameMapping)) {
-        stop("The argument 'nameMapping' must be a dataframe.", call. = FALSE)
+    	stop("The argument 'nameMapping' must be a dataframe.", call. = FALSE)
     }
 
     if (!("Parameter" %in% names(nameMapping)) || !("Label" %in% names(nameMapping))) {
-        stop(paste0(
-            "The argument 'nameMapping' must contain the headers 'Parameter', 'Label' and optionally 'Unit', in this order. Found headers are: ",
-            paste(names(nameMapping), collapse = ", ")
-        ), call. = FALSE)
+    	stop(paste0(
+    		"The argument 'nameMapping' must contain the headers 'Parameter', 'Label' and optionally 'Unit', in this order. Found headers are: ",
+    		paste(names(nameMapping), collapse = ", ")
+    	), call. = FALSE)
     }
 
-    if (is.null(availableParam) | length(availableParam) < 1) {
-        stop("The Monolix project does not contain valid results.", call. = FALSE)
-    }
+    # if (is.null(availableParam) | length(availableParam) < 1) {
+    #   stop("The Monolix project does not contain valid results.", call. = FALSE)
+    # }
 
     param_renaming <- nameMapping$parameter
     wrong_param_renaming <- param_renaming[!(param_renaming %in% availableParam)]
     if (length(wrong_param_renaming) > 0) {
-        warning(paste0(
-            "The column 'parameter' of the argument 'nameMapping' contains the following parameters which do not appear in the project: ",
-            paste(wrong_param_renaming, collapse = ", "), ". They will be ignored."
-        ), call. = FALSE)
+    	warning(paste0(
+    		"The column 'parameter' of the argument 'nameMapping' contains the following parameters which do not appear in the project: ",
+    		paste(wrong_param_renaming, collapse = ", "), ". They will be ignored."
+    	), call. = FALSE)
     }
 
 
-    pop <- data.frame(lixoftConnectors::getEstimatedPopulationParameters(coefficientsOfVariation = include_CV))
+    pop <- data.frame(lixoftConnectors::getEstimatedPopulationParameters(coefficientsOfVariation = include_CV,
+    																																		 withValuesByGroups      = include_FEcategory))
     names(pop) <- c("Estimate")
     pop$Parameter <- rownames(pop)
 
     err <- NULL
 
     if (include_RSE) {
-        err <- lixoftConnectors::getEstimatedStandardErrors(method = std_err_method)
-        if (length(err) == 0) {
-            .TFL_message("Standard errors not available for method: ", std_err_method)
-        } else {
-            if (length(err) > 1) {
-                .TFL_message("Standard errors available for multiple methods, selecting ", names(err)[[1]])
-            }
-            err <- err[[1]]
-        }
+    	err <- lixoftConnectors::getEstimatedStandardErrors(method = std_err_method, withValuesByGroups = include_FEcategory)
+    	if (length(err) == 0) {
+    		.TFL_message("Standard errors not available for method: ", std_err_method)
+    	} else {
+    		if (length(err) > 1) {
+    			.TFL_message("Standard errors available for multiple methods, selecting ", names(err)[[1]])
+    		}
+    		err <- err[[1]]
+    	}
 
-        if (is.null(err)) {
-            err <- data.frame(Parameter = pop$Parameter, RSE = NA)
-        } else {
-            err$rse <- abs(as.numeric(err$rse)) # corrects bug that RSE has negative sign
-            err <- err %>%
-                dplyr::select(c("parameter", "rse")) %>%
-                dplyr::rename(Parameter = "parameter", RSE = "rse")
-        }
+    	if (is.null(err)) {
+    		err <- data.frame(Parameter = pop$Parameter, RSE = NA)
+    	} else {
+    		err$rse <- abs(as.numeric(err$rse)) # corrects bug that RSE has negative sign
+    		err <- err %>%
+    			dplyr::select(c("parameter", "rse")) %>%
+    			dplyr::rename(Parameter = "parameter", RSE = "rse")
+    	}
     }
 
     CI <- NULL
 
     if (include_CI) {
-        CI <- lixoftConnectors::getEstimatedConfidenceIntervals(method = std_err_method)
-        if (length(CI) == 0) {
-            .TFL_message("Standard errors not available for method: ", std_err_method)
-        } else {
-            if (length(CI) > 1) {
-                .TFL_message("Standard errors available for multiple methods, selecting ", names(CI)[[1]])
-            }
-            CI <- CI[[1]]
-        }
+    	CI <- lixoftConnectors::getEstimatedConfidenceIntervals(method = std_err_method, withValuesByGroups = include_FEcategory)
+    	if (length(CI) == 0) {
+    		.TFL_message("Standard errors not available for method: ", std_err_method)
+    	} else {
+    		if (length(CI) > 1) {
+    			.TFL_message("Standard errors available for multiple methods, selecting ", names(CI)[[1]])
+    		}
+    		CI <- CI[[1]]
+    	}
 
-        if (is.null(CI)) {
-            CI <- data.frame(
-                Parameter = pop$Parameter,
-                P2.5      = NA,
-                P97.5     = NA)
-        }
-        names(CI) <- c("Parameter", "P2.5", "P97.5")
+    	if (is.null(CI)) {
+    		CI <- data.frame(
+    			Parameter = pop$Parameter,
+    			P2.5      = NA,
+    			P97.5     = NA)
+    	}
+    	names(CI) <- c("Parameter", "P2.5", "P97.5")
     }
 
     bootstrap <- NULL
 
     if (include_bootstrap) {
-        # boot <- lixoftConnectors::getBootstrapResults()$populationSummary %>%
-        # 	dplyr::select("RSE(%)") %>%
-        # 	dplyr::rename("rse" = "RSE(%)")
-        # boot$Parameter <- rownames(boot)
-        bootstrap <- lixoftConnectors::getBootstrapResults()$populationSummary
-        if (is.null(bootstrap)) {
-            bootstrap <- data.frame(
-                Parameter = pop$Parameter,
-                P2.5      = NA,
-                Median    = NA,
-                P97.5     = NA)
-        } else {
-            bootstrap <- bootstrap %>%
-                dplyr::select(dplyr::starts_with("P"), "MEDIAN") %>%
-                dplyr::rename(Median = "MEDIAN") %>%
-                dplyr::mutate(Parameter = rownames(.)) %>%
-                dplyr::relocate("Parameter")
-        }
-        names(bootstrap) <- c("Parameter", paste0("Bootstrap_", names(bootstrap)[2:4]))
+    	# boot <- lixoftConnectors::getBootstrapResults()$populationSummary %>%
+    	# 	dplyr::select("RSE(%)") %>%
+    	# 	dplyr::rename("rse" = "RSE(%)")
+    	# boot$Parameter <- rownames(boot)
+    	bootstrap <- lixoftConnectors::getBootstrapResults()$populationSummary
+    	if (is.null(bootstrap)) {
+    		bootstrap <- data.frame(
+    			Parameter = pop$Parameter,
+    			P2.5      = NA,
+    			Median    = NA,
+    			P97.5     = NA)
+    	} else {
+    		bootstrap <- bootstrap %>%
+    			dplyr::select(dplyr::starts_with("P"), "MEDIAN") %>%
+    			dplyr::rename(Median = "MEDIAN") %>%
+    			dplyr::mutate(Parameter = rownames(.)) %>%
+    			dplyr::relocate("Parameter")
+    	}
+    	names(bootstrap) <- c("Parameter", paste0("Bootstrap_", names(bootstrap)[2:4]))
     }
 
+    # Get parameters WITHOUT fixed effects by category
+    params_no_FEcategory<- names(lixoftConnectors::getEstimatedPopulationParameters(coefficientsOfVariation = include_CV, withValuesByGroups = FALSE))
+    # Set difference gives the category-specific FE parameters
+    FE_category_params <- setdiff(availableParam, params_no_FEcategory)
+
+
     pop$Section <- ""
-    pop$Section[grep("_pop|beta_", pop$Parameter)] <- "FE"
-    pop$Section[grep("omega_",     pop$Parameter)] <- "IIV"
-    pop$Section[grep("^corr_",     pop$Parameter)] <- "CORR"
-    pop$Section[grep("^corr1_",    pop$Parameter)] <- "CORR_IIV"
-    pop$Section[grep("gamma_",     pop$Parameter)] <- "IOV"
-    pop$Section[grep("^corr2_",    pop$Parameter)] <- "CORR_IOV"
-    pop$Section[pop$Parameter %in% c("a", "b", "c")] <- "RES_ERR"
+    pop$Section[grep("_pop|beta_", pop$Parameter)]     <- "FE"
+    pop$Section[grep("omega_",     pop$Parameter)]     <- "IIV"
+    pop$Section[grep("^corr_",     pop$Parameter)]     <- "CORR"
+    pop$Section[grep("^corr1_",    pop$Parameter)]     <- "CORR_IIV"
+    pop$Section[grep("gamma_",     pop$Parameter)]     <- "IOV"
+    pop$Section[grep("^corr2_",    pop$Parameter)]     <- "CORR_IOV"
+    pop$Section[pop$Parameter %in% c("a", "b", "c")]   <- "RES_ERR"
+    pop$Section[grep("plcat_",     pop$Parameter)]     <- "LAT"
+    pop$Section[pop$Parameter %in% FE_category_params] <- "FE_CAT"
 
     # Restrict to just the requested parameters in specified order
     pop <- pop[match(nameMapping$Parameter, pop$Parameter), ]
@@ -421,144 +437,148 @@ tableParameterEstimates <- function(project_file    = NULL,
     # Add CV column in long format if requested (only when NOT using wide format)
     # Must be done before RSE join to get correct column order: Estimate -> CV -> RSE -> CI
     if (include_CV && !use_wide_format) {
-        pop[["CV"]] <- NA_real_
-        # Extract CV values for omega and gamma parameters
-        cv_params <- grep("_CV$", pop$Parameter, value = TRUE)
-        if (length(cv_params) > 0) {
-            # For each CV parameter, assign it to the corresponding base parameter
-            for (cv_param in cv_params) {
-                base_param <- sub("_CV$", "", cv_param)
-                cv_value <- pop[pop$Parameter == cv_param, "Estimate"]
-                if (base_param %in% pop$Parameter && length(cv_value) > 0) {
-                    pop[pop$Parameter == base_param, "CV"] <- cv_value
-                }
-            }
-            # Remove the _CV parameter rows from the table
-            pop <- pop[!endsWith(pop$Parameter, "_CV"), ]
-        }
+    	pop[["CV"]] <- NA_real_
+    	# Extract CV values for omega and gamma parameters
+    	cv_params <- grep("_CV$", pop$Parameter, value = TRUE)
+    	if (length(cv_params) > 0) {
+    		# For each CV parameter, assign it to the corresponding base parameter
+    		for (cv_param in cv_params) {
+    			base_param <- sub("_CV$", "", cv_param)
+    			cv_value <- pop[pop$Parameter == cv_param, "Estimate"]
+    			if (base_param %in% pop$Parameter && length(cv_value) > 0) {
+    				pop[pop$Parameter == base_param, "CV"] <- cv_value
+    			}
+    		}
+    		# Remove the _CV parameter rows from the table
+    		pop <- pop[!endsWith(pop$Parameter, "_CV"), ]
+    	}
     }
 
     if (include_RSE) {
-        pop <- dplyr::left_join(pop, err, by = "Parameter")
+    	pop <- dplyr::left_join(pop, err, by = "Parameter")
     }
     if (include_CI) {
-        pop <- dplyr::left_join(pop, CI, by = "Parameter")
-        # Round CI values before combining them
-        if ("P2.5" %in% names(pop) && "P97.5" %in% names(pop)) {
-            # Round the CI values using the same logic as the main rounding
-            ci_rounded <- .round_num(pop[, c("P2.5", "P97.5")], digits, rounding_method = roundingMethod)
-            # Combine CI columns into single column with format (P2.5; P97.5)
-            pop[["CI_2.5_97.5"]] <- paste0("(", ci_rounded[["P2.5"]], "; ", ci_rounded[["P97.5"]], ")")
-            pop <- pop[, !(names(pop) %in% c("P2.5", "P97.5"))]
-        }
+    	pop <- dplyr::left_join(pop, CI, by = "Parameter")
+    	# Round CI values before combining them
+    	if ("P2.5" %in% names(pop) && "P97.5" %in% names(pop)) {
+    		# Round the CI values using the same logic as the main rounding
+    		ci_rounded <- .round_num(pop[, c("P2.5", "P97.5")], roundDigits, rounding_method = roundingMethod)
+
+    		# Since P2.5 and P97.5 are always both NA (never 92.5 =NA, 97.5 = value), just check one column
+    		is_true_NA <- is.na(ci_rounded[["P2.5"]]) & !is.nan(ci_rounded[["P2.5"]])
+    		# Combine CI columns into single column with format (P2.5; P97.5) except the entries with NA
+    		pop[["CI_2.5_97.5"]] <- ifelse(is_true_NA, NA_character_, paste0("(", ci_rounded[["P2.5"]], "; ", ci_rounded[["P97.5"]], ")"))
+    		pop <- pop[, !(names(pop) %in% c("P2.5", "P97.5"))]
+    	}
     }
     if (include_bootstrap) {
-        pop <- dplyr::left_join(pop, bootstrap, by = "Parameter")
+    	pop <- dplyr::left_join(pop, bootstrap, by = "Parameter")
     }
-
+    pop_long <- pop
     if (use_wide_format) {
-        # Rename fixed effect columns using hierarchical naming with underscore separator
-        names(pop)[names(pop) == "Estimate"] <- "FE_Estimate"
-        if (include_RSE && "RSE" %in% names(pop)) {
-            names(pop)[names(pop) == "RSE"] <- "FE_RSE"
-        }
-        if (include_CI && "CI_2.5_97.5" %in% names(pop)) {
-            names(pop)[names(pop) == "CI_2.5_97.5"] <- "FE_CI"
-        }
+    	# Rename fixed effect columns using hierarchical naming with underscore separator
+    	names(pop)[names(pop) == "Estimate"] <- "FE_Estimate"
+    	if (include_RSE && "RSE" %in% names(pop)) {
+    		names(pop)[names(pop) == "RSE"] <- "FE_RSE"
+    	}
+    	if (include_CI && "CI_2.5_97.5" %in% names(pop)) {
+    		names(pop)[names(pop) == "CI_2.5_97.5"] <- "FE_CI"
+    	}
 
-        pop_idx <- grep("_pop", pop$Parameter)
-        omega_idx <- grep("omega_", pop$Parameter)
-        omega_cv_idx <- NULL
+    	pop_idx <- grep("_pop", pop$Parameter)
+    	omega_idx <- grep("omega_", pop$Parameter)
+    	omega_cv_idx <- NULL
 
-        pop_root   <- sub("_pop$", "", pop$Parameter[pop_idx])
-        omega_root <- sub("^omega_", "", pop$Parameter[omega_idx])
+    	pop_root   <- sub("_pop$", "", pop$Parameter[pop_idx])
+    	omega_root <- sub("^omega_", "", pop$Parameter[omega_idx])
 
-        if (include_CV) {
-            omega_cv_idx <- omega_idx[endsWith(pop$Parameter[omega_idx], "_CV")]
-            omega_idx    <- setdiff(omega_idx, omega_cv_idx)
-            omega_root   <- sub("^omega_", "", pop$Parameter[omega_idx]) # to not duplicate
-        }
+    	if (include_CV) {
+    		omega_cv_idx <- omega_idx[endsWith(pop$Parameter[omega_idx], "_CV")]
+    		omega_idx    <- setdiff(omega_idx, omega_cv_idx)
+    		omega_root   <- sub("^omega_", "", pop$Parameter[omega_idx]) # to not duplicate
+    	}
 
-        # Add IIV columns if requested (default TRUE)
-        if (include_IIV && length(omega_idx) > 0) {
-            pop[["IIV_SD"]] <- NA_real_
-            pop[pop_idx, "IIV_SD"] <- pop[omega_idx[match(pop_root, omega_root)], "FE_Estimate"]
+    	# Add IIV columns if requested (default TRUE)
+    	if (include_IIV && length(omega_idx) > 0) {
+    		pop[["IIV_SD"]] <- NA_real_
+    		pop[pop_idx, "IIV_SD"] <- pop[omega_idx[match(pop_root, omega_root)], "FE_Estimate"]
 
-            # Add IIV CV column right after SD
-            if (include_CV && length(omega_cv_idx) > 0) {
-                pop[["IIV_CV"]] <- NA_real_
-                pop[pop_idx, "IIV_CV"] <- pop[omega_cv_idx[match(pop_root, omega_root)], "FE_Estimate"]
-            }
+    		# Add IIV CV column right after SD
+    		if (include_CV && length(omega_cv_idx) > 0) {
+    			pop[["IIV_CV"]] <- NA_real_
+    			pop[pop_idx, "IIV_CV"] <- pop[omega_cv_idx[match(pop_root, omega_root)], "FE_Estimate"]
+    		}
 
-            if (include_RSE && "FE_RSE" %in% names(pop)) {
-                pop[["IIV_RSE"]] <- NA_real_
-                pop[pop_idx, "IIV_RSE"] <- pop[omega_idx[match(pop_root, omega_root)], "FE_RSE"]
-            }
+    		if (include_RSE && "FE_RSE" %in% names(pop)) {
+    			pop[["IIV_RSE"]] <- NA_real_
+    			pop[pop_idx, "IIV_RSE"] <- pop[omega_idx[match(pop_root, omega_root)], "FE_RSE"]
+    		}
 
-            if (include_CI && "FE_CI" %in% names(pop)) {
-                pop[["IIV_CI"]] <- NA_character_
-                pop[pop_idx, "IIV_CI"] <- pop[omega_idx[match(pop_root, omega_root)], "FE_CI"]
-            }
-        }
+    		if (include_CI && "FE_CI" %in% names(pop)) {
+    			pop[["IIV_CI"]] <- NA_character_
+    			pop[pop_idx, "IIV_CI"] <- pop[omega_idx[match(pop_root, omega_root)], "FE_CI"]
+    		}
+    	}
 
-        # Add IOV columns if requested (default TRUE)
-        gamma_idx <- grep("gamma_", pop$Parameter)
-        gamma_cv_idx <- NULL
+    	# Add IOV columns if requested (default TRUE)
+    	gamma_idx <- grep("gamma_", pop$Parameter)
+    	gamma_cv_idx <- NULL
 
-        if (include_IOV && length(gamma_idx) > 0) {
-            gamma_root <- sub("^gamma_", "", pop$Parameter[gamma_idx])
+    	if (include_IOV && length(gamma_idx) > 0) {
+    		gamma_root <- sub("^gamma_", "", pop$Parameter[gamma_idx])
 
-            if (include_CV) {
-                gamma_cv_idx <- gamma_idx[endsWith(pop$Parameter[gamma_idx], "_CV")]
-                gamma_idx    <- setdiff(gamma_idx, gamma_cv_idx)
-                gamma_root   <- sub("^gamma_", "", pop$Parameter[gamma_idx]) # to not duplicate
-            }
+    		if (include_CV) {
+    			gamma_cv_idx <- gamma_idx[endsWith(pop$Parameter[gamma_idx], "_CV")]
+    			gamma_idx    <- setdiff(gamma_idx, gamma_cv_idx)
+    			gamma_root   <- sub("^gamma_", "", pop$Parameter[gamma_idx]) # to not duplicate
+    		}
 
-            pop[["IOV_SD"]] <- NA_real_
-            pop[pop_idx, "IOV_SD"] <- pop[gamma_idx[match(pop_root, gamma_root)], "FE_Estimate"]
+    		pop[["IOV_SD"]] <- NA_real_
+    		pop[pop_idx, "IOV_SD"] <- pop[gamma_idx[match(pop_root, gamma_root)], "FE_Estimate"]
 
-            # Add IOV CV column right after SD
-            if (include_CV && length(gamma_cv_idx) > 0) {
-                pop[["IOV_CV"]] <- NA_real_
-                pop[pop_idx, "IOV_CV"] <- pop[gamma_cv_idx[match(pop_root, gamma_root)], "FE_Estimate"]
-            }
+    		# Add IOV CV column right after SD
+    		if (include_CV && length(gamma_cv_idx) > 0) {
+    			pop[["IOV_CV"]] <- NA_real_
+    			pop[pop_idx, "IOV_CV"] <- pop[gamma_cv_idx[match(pop_root, gamma_root)], "FE_Estimate"]
+    		}
 
-            if (include_RSE && "FE_RSE" %in% names(pop)) {
-                pop[["IOV_RSE"]] <- NA_real_
-                pop[pop_idx, "IOV_RSE"] <- pop[gamma_idx[match(pop_root, gamma_root)], "FE_RSE"]
-            }
+    		if (include_RSE && "FE_RSE" %in% names(pop)) {
+    			pop[["IOV_RSE"]] <- NA_real_
+    			pop[pop_idx, "IOV_RSE"] <- pop[gamma_idx[match(pop_root, gamma_root)], "FE_RSE"]
+    		}
 
-            if (include_CI && "FE_CI" %in% names(pop)) {
-                pop[["IOV_CI"]] <- NA_character_
-                pop[pop_idx, "IOV_CI"] <- pop[gamma_idx[match(pop_root, gamma_root)], "FE_CI"]
-            }
-        }
+    		if (include_CI && "FE_CI" %in% names(pop)) {
+    			pop[["IOV_CI"]] <- NA_character_
+    			pop[pop_idx, "IOV_CI"] <- pop[gamma_idx[match(pop_root, gamma_root)], "FE_CI"]
+    		}
+    	}
 
-        # Remove omega and gamma rows from long format
-        rows_to_remove <- c(omega_idx, omega_cv_idx, gamma_idx, gamma_cv_idx)
-        if (length(rows_to_remove) > 0) {
-            pop <- pop[-rows_to_remove, ]
-        }
+    	# Remove omega and gamma rows from long format
+    	rows_to_remove <- c(omega_idx, omega_cv_idx, gamma_idx, gamma_cv_idx)
+    	if (length(rows_to_remove) > 0) {
+    		pop <- pop[-rows_to_remove, ]
+    	}
     }
 
     pop <- dplyr::select(pop, -"Parameter") %>%
-        dplyr::rename(Parameter = "Label")
+    	dplyr::rename(Parameter = "Label")
 
     # Set Section as factor with desired order
     pop$Section <- factor(pop$Section,
-        levels = c("FE",
-                   "IIV", "IOV",
-                   "CORR", "CORR_IIV", "CORR_IOV",
-        					 "RES_ERR"))
+    											levels = c("FE","FE_CAT",
+    																 "IIV", "IOV",
+    																 "CORR", "CORR_IIV", "CORR_IOV",
+    																 "RES_ERR",
+    																 "LAT"))
 
     pop <- pop %>%
-        dplyr::arrange(.data$Section) %>%
-        dplyr::relocate("Section")
-    pop <- .round_num(pop, digits, rounding_method = roundingMethod)
+    	dplyr::arrange(.data$Section) %>%
+    	dplyr::relocate("Section")
+    pop <- .round_num(pop, roundDigits, exclude = c("Section", "Parameter", "Label") , rounding_method = roundingMethod)
 
     # Apply pretty labels if requested for nice column names display
     if (prettyLabels) {
-        pop <- .prettyLabels(pop)
+    	pop <- .prettyLabels(pop)
     }
 
     # for later identfication in flextable function

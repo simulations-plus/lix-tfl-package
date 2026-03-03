@@ -204,6 +204,7 @@ utils::globalVariables(c("."))
 #' @returns rounded number
 #' @noRd
 .round_num = function(to_round, digits, exclude = character(0), rounding_method = c("monolix", "signif", "none")) {
+
 	rounding_method <- match.arg(rounding_method)
 
 	if (rounding_method == "none") {
@@ -214,30 +215,37 @@ utils::globalVariables(c("."))
 		rr <- to_round %>%
 			dplyr::mutate(dplyr::across(tidyselect::where(is.double) & !dplyr::any_of(exclude),
 																	.fns = ~.round_num(.x, digits, rounding_method = rounding_method))) %>%
-		# Character-to-numeric conversion if needed
-		dplyr::mutate(dplyr::across(
-			tidyselect::where(is.character) & !dplyr::any_of(exclude),
-			.fns = ~{num_converted <- suppressWarnings(as.numeric(.x))
-				if (any(!is.na(num_converted))) {
-					.round_num(num_converted, digits, rounding_method = rounding_method)
-				} else {
-					.x
+			# Character-to-numeric conversion if needed
+			dplyr::mutate(dplyr::across(
+				tidyselect::where(is.character) & !dplyr::any_of(exclude),
+				.fns = ~{
+					num_converted <- suppressWarnings(as.numeric(.x))
+					if (any(!is.na(num_converted))) {
+						.round_num(num_converted, digits, rounding_method = rounding_method)
+					} else {
+						.x
+					}
 				}
-			}
 			))
-	}
-	else if (is.numeric(to_round)) {
+	}else if(is.numeric(to_round)) {
+		# Track NaN positions BEFORE rounding
+		nan_positions <- is.nan(to_round)
 
 		if (rounding_method == "monolix") {
+			# integer_part <- trunc(to_round)
+			# decimal <- to_round - integer_part
 			decimal <- to_round - as.integer(to_round)
 			rr <- as.integer(to_round) + signif(decimal, digits = digits)
 		} else if (rounding_method == "signif") {
 			rr <- signif(to_round, digits = digits)
 		}
-	}
-	else {
+
+		# Restore NaN values AFTER rounding
+		rr[nan_positions] <- NaN
+	}else{
 		rr <- to_round
 	}
+
 	return(rr)
 }
 
