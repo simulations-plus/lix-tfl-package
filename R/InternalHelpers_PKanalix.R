@@ -628,56 +628,82 @@
 #' @keywords internal
 #' @noRd
 .validateProjectResultsAvailability <- function(software   = c("monolix", "pkanalix"),
-																								resultType = c("pop", "nca", "ncaRatio", "be", "ca")){
+																								resultType = c("pop", "rse", "bootstrap", "nca", "ncaRatio", "be", "ca"),
+																								method     = "") {
 	resultType <- match.arg(resultType)
 
-	if(software == "pkanalix"){
-		if(resultType %in% c("nca")){
+	if (software == "pkanalix") {
+		if (resultType %in% c("nca")) {
 			result    <- tryCatch(lixoftConnectors::getNCAIndividualParameters()$parameters, error = function(e) NULL)
 			error_msg <- "No NCA results available. Please run non-compartmental analysis first."
 
-		}else if(resultType == "ncaRatio"){
+		} else if (resultType == "ncaRatio") {
 			nca_result <- tryCatch(lixoftConnectors::getNCAIndividualParameters(), error = function(e) NULL)
 
 			if (is.null(nca_result) || isFALSE(nca_result)) {
-				# NCA missing -> both need to run
 				stop("No NCA results available. Please run non-compartmental analysis (required for NCA ratios).", call. = FALSE)
 			}
 			result    <- tryCatch(lixoftConnectors::getNCAIndividualRatios(), error = function(e) NULL)
 			error_msg <- "No NCA ratios available. Please configure NCA ratio module before running NCA."
 
-		}else if(resultType == "ca"){
+		} else if (resultType == "ca") {
 			result    <- tryCatch(lixoftConnectors::getCAIndividualParameters(), error = function(e) NULL)
 			error_msg <- "No CA results available. Please run compartmental analysis first."
-		}else if(resultType == "be"){
+
+		} else if (resultType == "be") {
 			# BE depends on NCA - check NCA first
 			nca_result <- tryCatch(lixoftConnectors::getNCAIndividualParameters(), error = function(e) NULL)
 
 			if (is.null(nca_result) || isFALSE(nca_result)) {
-				# NCA missing -> both need to run
 				stop("No NCA results available. Please run non-compartmental analysis (required for BE analysis).", call. = FALSE)
 			}
-			# NCA exists, check BE
 			be_result <- tryCatch(lixoftConnectors::getBEResults(), error = function(e) NULL)
 
 			if (is.null(be_result) || isFALSE(be_result)) {
-				# Only BE missing
-				stop("No BE results available. Please run bioequivalence analysis first", call. = FALSE)
+				stop("No BE results available. Please run bioequivalence analysis first.", call. = FALSE)
 			}
-			return(invisible(NULL))  # Early return for BE
+			return(invisible(NULL))
 		}
-	}else if(software == "monolix"){
-		if(resultType == "pop"){
+
+	} else if (software == "monolix") {
+		if (resultType == "pop") {
 			result    <- tryCatch(lixoftConnectors::getEstimatedPopulationParameters(), error = function(e) NULL)
 			error_msg <- "No population parameter estimates available. Please run SAEM first."
+
+		} else if (resultType == "rse") {
+			# Get all available SE results
+			all_rse <- tryCatch(lixoftConnectors::getEstimatedStandardErrors(), error = function(e) NULL)
+
+			# Case 1: No RSE results at all
+			if (is.null(all_rse) || length(all_rse) == 0) {
+				stop("No standard error estimates available. Please run standard error estimation first.", call. = FALSE)
+			}
+
+			# Case 2: Specific method requested
+			if (method != "") {
+				available_methods <- names(all_rse)
+				if (!(method %in% available_methods)) {
+					stop(paste0(
+						"Standard errors for method '", method, "' not available. ",
+						"Available methods: ", paste(available_methods, collapse = ", "), "."), call. = FALSE)
+				}
+			}
+			return(invisible(NULL))
+
+		} else if (resultType == "bootstrap") {
+			result <- tryCatch(lixoftConnectors::getBootstrapResults()$populationSummary, error = function(e) NULL)
+			error_msg <- "No bootstrap results available. Please run bootstrap analysis first."
 		}
 	}
+
+	# Generic validation for non-rse cases
 	if (is.null(result) || isFALSE(result)) {
 		stop(error_msg, call. = FALSE)
 	}
 
 	return(invisible(NULL))
 }
+
 
 ##################################################################################
 #' Internal helper to validate and select metrics
