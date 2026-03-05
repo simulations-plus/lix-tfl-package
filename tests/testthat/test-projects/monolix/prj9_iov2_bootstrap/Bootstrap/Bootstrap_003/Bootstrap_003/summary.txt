@@ -1,0 +1,81 @@
+********************************************************************************
+*                         prj10_iov2_bootstrap.mlxtran                         *
+*                         March 04, 2026 at 13:18:11                           *
+*                         Monolix version : 2024R1                             *
+********************************************************************************
+
+
+ESTIMATION OF THE POPULATION PARAMETERS ________________________________________
+
+Fixed Effects ----------------------------     se_sa    rse(%)   P2.5_sa  P97.5_sa
+ka_pop          :                     1.39    0.0805      5.79      1.24      1.56
+beta_ka_TREAT_B :                   0.0469    0.0444      94.6   -0.0401     0.134
+V_pop           :                    0.469   0.00987       2.1      0.45     0.489
+beta_V_TREAT_B  :                   -0.187    0.0244      13.1    -0.234    -0.139
+Cl_pop          :                    0.044   0.00136      3.08    0.0414    0.0467
+beta_Cl_TREAT_B :                   -0.249    0.0433      17.4    -0.334    -0.164
+
+Standard Deviation of the Random Effects -
+omega_ka        :                     0.31    0.0429      13.8     0.237     0.405
+omega_V         :                    0.084    0.0189      22.5    0.0549     0.129
+omega_Cl        :                  0.00443       nan         0       nan       nan
+gamma_ka        :                   0.0574      0.04      69.7    0.0194      0.17
+gamma_V         :                   0.0353    0.0242      68.5    0.0121     0.103
+gamma_Cl        :                    0.179    0.0186      10.4     0.146     0.219
+
+Correlations -----------------------------
+corr1_V_Cl      :                   -0.216      8.87   4.1e+03        -1         1
+corr2_V_Cl      :                   0.0899     0.699       777    -0.859       0.9
+
+Error Model Parameters -------------------
+a               :                    0.157    0.0348      22.1     0.104     0.239
+b               :                   0.0961   0.00831      8.65    0.0812     0.114
+
+Elapsed time (seconds):       10
+Exploratory phase iterations:      264 (Autostop)
+Smoothing phase iterations:        161 (Autostop)
+
+ _______________________________________________________________________________
+
+
+
+
+ESTIMATION OF THE FISHER INFORMATION MATRIX ____________________________________
+
+
+Estimation of the Fisher information matrix by Stochastic Approximation --------
+
+Correlation Matrix :
+         ka_pop         1
+beta_ka_TREAT_B  -0.37938         1
+          V_pop   0.28335  -0.42405         1
+ beta_V_TREAT_B  -0.28481   0.73781  -0.59385         1
+         Cl_pop -0.038929  0.041656 -0.041969  0.031656         1
+beta_Cl_TREAT_B  0.021111 -0.076137  0.019999 -0.051272  -0.70404         1
+       omega_ka 0.0084867 0.0041804 -0.015243 0.0098739 0.0016614 0.0012926         1
+        omega_V  -0.11401   0.24097  -0.23365   0.29731  0.013446-0.0024164   0.16503         1
+     corr1_V_Cl  -0.11542   0.29618  -0.19965   0.34148 0.0012786 -0.012712  0.026688    0.2748         1
+       omega_Cl       nan       nan       nan       nan       nan       nan       nan       nan       nan       nan
+       gamma_ka -0.058314   0.10479  -0.07002   0.11134  0.048101-0.0073662 -0.028451   0.17642 -0.044302       nan         1
+        gamma_V   0.16118  -0.32906   0.28751  -0.43663 -0.035744 0.0093082  0.029478  -0.47158  -0.48061       nan  -0.37822         1
+     corr2_V_Cl   0.16652  -0.38161   0.29667  -0.45064 0.0085247 0.0069367-0.0098362  -0.42967  -0.75269       nan   0.12582   0.57017         1
+       gamma_Cl  0.047689  -0.10737  0.080142  -0.11749 -0.023431   0.01242  -0.02605 -0.098663  -0.41826       nan-0.0049466   0.17458   0.24263         1
+              a   0.04233  0.093084   0.09413  0.041137  -0.03543 -0.044326 -0.059873  -0.15405   0.14192       nan  -0.19709   0.11081 -0.063109 -0.062752         1
+              b -0.046449 -0.075716 -0.087706 -0.018917  0.040942  0.041528   0.01974   0.12436  -0.10424       nan   0.12663  -0.16627  0.010193  0.034288  -0.88343         1
+
+WARNING : Impossible to compute the eigen values of the correlation matrix.
+
+Elapsed time (seconds):      5.4
+Iterations:      200 (Stopped at the maximum number of iterations/Fisher matrix was not correctly estimated)
+
+ -------------------------------------------------------------------------------
+
+ _______________________________________________________________________________
+
+
+DATASET INFORMATION
+Number of individuals: 40
+Number of subjects-occasion: 80
+Number of observations (Y): 800
+Number of doses: 80
+

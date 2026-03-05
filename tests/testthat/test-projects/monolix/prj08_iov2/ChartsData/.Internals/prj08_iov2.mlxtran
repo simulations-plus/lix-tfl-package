@@ -1,7 +1,7 @@
 <DATAFILE>
 
 [FILEINFO]
-file={path='../../../../../../../../../../lixoft/monolix/monolix2024R1/demos/5.models_for_individual_parameters/5.4.inter_occasion_variability/data/iov2_data.txt'}
+file={path='../../../iov2_data.txt'}
 delimiter = tab
 header={ID, Time, Y, DOSE, EVID, TREAT, SEX, OCC}
 
@@ -80,4 +80,5 @@ plots = {indfits = {selected = true}, parameterdistribution = {selected = true},
 [SETTINGS]
 GLOBAL:
 exportpath = '../../'
+dataandmodelnexttoproject = yes
 
