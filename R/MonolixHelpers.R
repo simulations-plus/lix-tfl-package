@@ -354,6 +354,8 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	err <- NULL
 
 	if (include_RSE) {
+		# Validate RSE availability with method
+		.validateProjectResultsAvailability(software = "monolix", resultType = "rse", method = std_err_method)
 		err <- lixoftConnectors::getEstimatedStandardErrors(method = std_err_method, withValuesByGroups = include_FEcategory)
 		if (length(err) == 0) {
 			.TFL_message("Standard errors not available for method: ", std_err_method)
@@ -377,6 +379,8 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	CI <- NULL
 
 	if (include_CI) {
+		# Validate RSE availability with method
+		.validateProjectResultsAvailability(software = "monolix", resultType = "rse", method = std_err_method)
 		CI <- lixoftConnectors::getEstimatedConfidenceIntervals(method = std_err_method, withValuesByGroups = include_FEcategory)
 		if (length(CI) == 0) {
 			.TFL_message("Standard errors not available for method: ", std_err_method)
@@ -399,6 +403,8 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	bootstrap <- NULL
 
 	if (include_bootstrap) {
+		# Validate RSE availability with method
+		.validateProjectResultsAvailability(software = "monolix", resultType = "bootstrap", method = std_err_method)
 		bootstrap <- lixoftConnectors::getBootstrapResults()$populationSummary
 		if (is.null(bootstrap)) {
 			# No bootstrap results;  use default naming (could be updated later)
