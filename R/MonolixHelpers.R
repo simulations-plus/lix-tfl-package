@@ -307,6 +307,22 @@ tableParameterEstimates <- function(projectFile        = NULL,
 																		roundingMethod     = c("monolix", "signif", "none"),
 																		prettyLabels       = TRUE) {
 
+
+	# projectFile =prj10
+	# nameMapping = NULL
+	# include_RSE = TRUE
+	# include_IIV = TRUE
+	# include_IOV = TRUE
+	# include_CV =TRUE
+	# include_CI= TRUE
+	# include_FEcategory = FALSE
+	# include_bootstrap  = TRUE
+	# use_wide_format = TRUE
+	# std_err_method  = ""
+	# roundDigits     = 3
+	# roundingMethod  = "signif"
+	# prettyLabels = FALSE
+
 	roundingMethod <- match.arg(roundingMethod)
 
 	.checkProjectFile(projectFile, "monolix")
@@ -377,10 +393,21 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	}
 
 	CI <- NULL
+	ci_col_name <- NULL
 
 	if (include_CI) {
 		# Validate RSE availability with method
 		.validateProjectResultsAvailability(software = "monolix", resultType = "rse", method = std_err_method)
+
+		interval_level <- lixoftConnectors::getStandardErrorEstimationSettings()$intervallevel
+
+		# Calculate percentiles based on interval level
+		lower_p     <- (100 - interval_level) / 2
+		upper_p     <-  100 - lower_p
+		lower_col   <- paste0("P", lower_p)
+		upper_col   <- paste0("P", upper_p)
+		ci_col_name <- paste0("CI_", lower_p, "_", upper_p)
+
 		CI <- lixoftConnectors::getEstimatedConfidenceIntervals(method = std_err_method, withValuesByGroups = include_FEcategory)
 		if (length(CI) == 0) {
 			.TFL_message("Standard errors not available for method: ", std_err_method)
@@ -392,12 +419,28 @@ tableParameterEstimates <- function(projectFile        = NULL,
 		}
 
 		if (is.null(CI)) {
-			CI <- data.frame(
-				Parameter = pop$Parameter,
-				P2.5      = NA,
-				P97.5     = NA)
+			CI <- data.frame(Parameter = pop$Parameter)
+			CI[[lower_col]] <- NA_real_
+			CI[[upper_col]] <- NA_real_
+
+			CI[[ci_col_name]] <- NA_character_
+			CI <- CI %>% dplyr::select(Parameter, !!ci_col_name)
+		} else {
+			# Process CI with dynamic column detection
+			# Verify the detected columns match settings
+			percentile_cols <- grep("^P[0-9]", names(CI), value = TRUE)
+
+			if (length(percentile_cols) == 0) {
+				warning("No percentile columns found in CI results, using settings-based names")
+			}
+			CI <- CI %>%
+				dplyr::mutate(
+					Parameter = .data$parameter,
+					lower_rounded = .round_num(.data[[lower_col]], digits = roundDigits, rounding_method = roundingMethod),
+					upper_rounded = .round_num(.data[[upper_col]], digits = roundDigits, rounding_method = roundingMethod),
+					!!ci_col_name := paste0("(", lower_rounded, "; ", upper_rounded, ")")) %>%
+				dplyr::select(Parameter, !!ci_col_name)
 		}
-		names(CI) <- c("Parameter", "P2.5", "P97.5")
 	}
 
 	bootstrap <- NULL
@@ -405,6 +448,16 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	if (include_bootstrap) {
 		# Validate RSE availability with method
 		.validateProjectResultsAvailability(software = "monolix", resultType = "bootstrap", method = std_err_method)
+
+		boot_interval_level <- getBootstrapSettings()$level
+
+		# Calculate percentiles based on interval level
+		boot_lower_p     <- (100 - boot_interval_level) / 2
+		boot_upper_p     <-  100 - lower_p
+		boot_lower_col   <- paste0("P", lower_p)
+		boot_upper_col   <- paste0("P", upper_p)
+		boot_ci_col_name <- paste0("CI_", lower_p, "_", upper_p)
+
 		bootstrap <- lixoftConnectors::getBootstrapResults()$populationSummary
 		if (is.null(bootstrap)) {
 			# No bootstrap results;  use default naming (could be updated later)
@@ -417,19 +470,19 @@ tableParameterEstimates <- function(projectFile        = NULL,
 			has_rse <- "RSE(%)" %in% names(bootstrap)
 
 			# Find percentile columns
-			percentile_cols <- grep("^P[0-9]", names(bootstrap), value = TRUE)
+			boot_percentile_cols <- grep("^P[0-9]", names(bootstrap), value = TRUE)
 
 			# Extract numeric values from column names
-			percentile_values  <- as.numeric(sub("^P", "", percentile_cols))
+			boot_percentile_values <- as.numeric(sub("^P", "", boot_percentile_cols))
 
-			lower_p     <- min(percentile_values)
-			upper_p     <- max(percentile_values)
-			lower_col   <- paste0("P", lower_p)
-			upper_col   <- paste0("P", upper_p)
-			ci_col_name <- paste0("Boot_CI_", lower_p, "_", upper_p)
+			boot_lower_p     <- min(boot_percentile_values)
+			boot_upper_p     <- max(boot_percentile_values)
+			boot_lower_col   <- paste0("P", boot_lower_p)
+			boot_upper_col   <- paste0("P", boot_upper_p)
+			boot_ci_col_name <- paste0("Boot_CI_", boot_lower_p, "_", boot_upper_p)
 
-			cols_to_select <- c(lower_col, upper_col, "MEDIAN")
-			final_cols     <- c("Parameter", "Boot_Median", ci_col_name)
+			cols_to_select <- c(boot_lower_col, boot_upper_col, "MEDIAN")
+			final_cols     <- c("Parameter", "Boot_Median", boot_ci_col_name)
 			if (has_rse) {
 				cols_to_select <- c(cols_to_select, "RSE(%)")
 				final_cols     <- c(final_cols, "Boot_RSE")
@@ -437,15 +490,14 @@ tableParameterEstimates <- function(projectFile        = NULL,
 			bootstrap <- bootstrap %>%
 				dplyr::select(dplyr::all_of(cols_to_select)) %>%
 				dplyr::mutate(
-					Parameter = rownames(.),
-					lower_rounded = .round_num(.data[[lower_col]], digits = roundDigits, rounding_method = roundingMethod),
-					upper_rounded = .round_num(.data[[upper_col]], digits = roundDigits, rounding_method = roundingMethod),
-					Boot_Median   = .round_num(MEDIAN,             digits = roundDigits, rounding_method = roundingMethod),
-					!!ci_col_name := paste0("(", lower_rounded, "; ", upper_rounded, ")"))
+					Parameter          = rownames(.),
+					boot_lower_rounded = .round_num(.data[[boot_lower_col]], digits = roundDigits, rounding_method = roundingMethod),
+					boot_upper_rounded = .round_num(.data[[boot_upper_col]], digits = roundDigits, rounding_method = roundingMethod),
+					Boot_Median        = .round_num(MEDIAN,                  digits = roundDigits, rounding_method = roundingMethod),
+					!!boot_ci_col_name := paste0("(", boot_lower_rounded, "; ", boot_upper_rounded, ")"))
 
 			if (has_rse) {
-				bootstrap <- bootstrap %>%
-					dplyr::mutate(Boot_RSE = .round_num(`RSE(%)`, digits = roundDigits, rounding_method = roundingMethod))
+				bootstrap <- bootstrap %>% dplyr::mutate(Boot_RSE = .round_num(`RSE(%)`, digits = roundDigits, rounding_method = roundingMethod))
 			}
 			bootstrap <- bootstrap %>% dplyr::select(dplyr::all_of(final_cols))
 		}
@@ -494,17 +546,6 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	}
 	if (include_CI) {
 		pop <- dplyr::left_join(pop, CI, by = "Parameter")
-		# Round CI values before combining them
-		if ("P2.5" %in% names(pop) && "P97.5" %in% names(pop)) {
-			# Round the CI values using the same logic as the main rounding
-			ci_rounded <- .round_num(pop[, c("P2.5", "P97.5")], roundDigits, rounding_method = roundingMethod)
-
-			# Since P2.5 and P97.5 are always both NA (never 92.5 =NA, 97.5 = value), just check one column
-			is_true_NA <- is.na(ci_rounded[["P2.5"]]) & !is.nan(ci_rounded[["P2.5"]])
-			# Combine CI columns into single column with format (P2.5; P97.5) except the entries with NA
-			pop[["CI_2.5_97.5"]] <- ifelse(is_true_NA, NA_character_, paste0("(", ci_rounded[["P2.5"]], "; ", ci_rounded[["P97.5"]], ")"))
-			pop <- pop[, !(names(pop) %in% c("P2.5", "P97.5"))]
-		}
 	}
 
 	if (include_RSE) {
@@ -520,12 +561,12 @@ tableParameterEstimates <- function(projectFile        = NULL,
 		if (include_RSE && "RSE" %in% names(pop)) {
 			names(pop)[names(pop) == "RSE"] <- "FE_RSE"
 		}
-		if (include_CI && "CI_2.5_97.5" %in% names(pop)) {
-			names(pop)[names(pop) == "CI_2.5_97.5"] <- "FE_CI"
+		if (include_CI && ci_col_name %in% names(pop)) {
+			names(pop)[names(pop) == ci_col_name] <- paste0("FE_",ci_col_name)
 		}
-		if (include_bootstrap && ci_col_name %in% names(pop)) {
-			names(pop)[names(pop) == ci_col_name] <- "Boot_CI"
-		}
+		# if (include_bootstrap && boot_ci_col_name %in% names(pop)) {
+		#   names(pop)[names(pop) == boot_ci_col_name] <- boot_ci_col_name # nothing to do
+		# }
 
 		pop_idx      <- grep("_pop", pop$Parameter)
 		omega_idx    <- grep("omega_", pop$Parameter)
@@ -551,15 +592,15 @@ tableParameterEstimates <- function(projectFile        = NULL,
 				pop[pop_idx, "IIV_CV"] <- pop[omega_cv_idx[match(pop_root, omega_root)], "FE_Estimate"]
 			}
 
+			if (include_CI && paste0("FE_",ci_col_name) %in% names(pop)) {
+				pop[[paste0("IIV_",ci_col_name)]] <- NA_character_
+				pop[pop_idx, paste0("IIV_",ci_col_name)] <- pop[omega_idx[match(pop_root, omega_root)], paste0("FE_",ci_col_name)]
+			}
 			if (include_RSE && "FE_RSE" %in% names(pop)) {
 				pop[["IIV_RSE"]] <- NA_real_
 				pop[pop_idx, "IIV_RSE"] <- pop[omega_idx[match(pop_root, omega_root)], "FE_RSE"]
 			}
 
-			if (include_CI && "FE_CI" %in% names(pop)) {
-				pop[["IIV_CI"]] <- NA_character_
-				pop[pop_idx, "IIV_CI"] <- pop[omega_idx[match(pop_root, omega_root)], "FE_CI"]
-			}
 			# Bootstrap IIV columns (same pattern/logic as regular IIV)
 			if (include_bootstrap) {
 				if ("Boot_Median" %in% names(pop)) {
@@ -567,9 +608,13 @@ tableParameterEstimates <- function(projectFile        = NULL,
 					pop[pop_idx, "Boot_IIV_Median"] <- pop[omega_idx[match(pop_root, omega_root)], "Boot_Median"]
 				}
 
-				if ("Boot_CI" %in% names(pop)) {
-					pop[["Boot_IIV_CI"]] <- NA_character_
-					pop[pop_idx, "Boot_IIV_CI"] <- pop[omega_idx[match(pop_root, omega_root)], "Boot_CI"]
+				# Dynamic Boot_IIV_CI column name based on boot_ci_col_name
+				if (!is.null(boot_ci_col_name) && boot_ci_col_name %in% names(pop)) {
+					# Replace "Boot_CI" with "Boot_IIV_CI" to preserve the confidence level
+					boot_iiv_ci_col <- sub("^Boot_CI", "Boot_IIV_CI", boot_ci_col_name)
+
+					pop[[boot_iiv_ci_col]] <- NA_character_
+					pop[pop_idx, boot_iiv_ci_col] <- pop[omega_idx[match(pop_root, omega_root)], boot_ci_col_name]
 				}
 
 				if ("Boot_RSE" %in% names(pop)) {
@@ -606,20 +651,24 @@ tableParameterEstimates <- function(projectFile        = NULL,
 				pop[pop_idx, "IOV_RSE"] <- pop[gamma_idx[match(pop_root, gamma_root)], "FE_RSE"]
 			}
 
-			if (include_CI && "FE_CI" %in% names(pop)) {
-				pop[["IOV_CI"]] <- NA_character_
-				pop[pop_idx, "IOV_CI"] <- pop[gamma_idx[match(pop_root, gamma_root)], "FE_CI"]
+			if (include_CI && paste0("FE_",ci_col_name) %in% names(pop)) {
+				pop[[paste0("IOV_",ci_col_name)]] <- NA_character_
+				pop[pop_idx, paste0("IOV_",ci_col_name)] <- pop[gamma_idx[match(pop_root, gamma_root)], paste0("FE_",ci_col_name)]
 			}
-			# Bootstrap IOV columns (same pattern as regular IOV)
+			# Bootstrap IOV columns (same as in bootstrap IIV)
 			if (include_bootstrap) {
 				if ("Boot_Median" %in% names(pop)) {
 					pop[["Boot_IOV_Median"]] <- NA_real_
 					pop[pop_idx, "Boot_IOV_Median"] <- pop[gamma_idx[match(pop_root, gamma_root)], "Boot_Median"]
 				}
 
-				if ("Boot_CI" %in% names(pop)) {
-					pop[["Boot_IOV_CI"]] <- NA_character_
-					pop[pop_idx, "Boot_IOV_CI"] <- pop[gamma_idx[match(pop_root, gamma_root)], "Boot_CI"]
+				# Dynamic Boot_IOV_CI column name based on boot_ci_col_name
+				if (!is.null(boot_ci_col_name) && boot_ci_col_name %in% names(pop)) {
+					# Replace "Boot_CI" with "Boot_IOV_CI" to preserve the confidence level
+					boot_iov_ci_col <- sub("^Boot_CI", "Boot_IOV_CI", boot_ci_col_name)
+
+					pop[[boot_iov_ci_col]] <- NA_character_
+					pop[pop_idx, boot_iov_ci_col] <- pop[gamma_idx[match(pop_root, gamma_root)], boot_ci_col_name]
 				}
 
 				if ("Boot_RSE" %in% names(pop)) {
@@ -627,9 +676,77 @@ tableParameterEstimates <- function(projectFile        = NULL,
 					pop[pop_idx, "Boot_IOV_RSE"] <- pop[gamma_idx[match(pop_root, gamma_root)], "Boot_RSE"]
 				}
 			}
+
+		}
+		#---------------------------------------------------------------------------
+		# Reorder columns: group Monolix estimates first, then Bootstrap estimates
+		col_order <- c("Section", "Parameter", "Label")
+
+		# SAEM FE columns: Estimate -> CI -> RSE
+		col_order <- c(col_order, "FE_Estimate")
+		if (include_CI && !is.null(ci_col_name)) {
+			fe_ci_col <- paste0("FE_", ci_col_name)
+			if (fe_ci_col %in% names(pop)) col_order <- c(col_order, fe_ci_col)
+		}
+		if (include_RSE && "FE_RSE" %in% names(pop)) {
+			col_order <- c(col_order, "FE_RSE")
 		}
 
-		# Remove omega and gamma rows from long format
+		# SAEM IIV columns: SD -> CV -> CI -> RSE
+		if (include_IIV && "IIV_SD" %in% names(pop)) {
+			col_order <- c(col_order, "IIV_SD")
+			if (include_CV && "IIV_CV" %in% names(pop)) col_order <- c(col_order, "IIV_CV")
+			if (include_CI && !is.null(ci_col_name)) {
+				iiv_ci_col <- paste0("IIV_", ci_col_name)
+				if (iiv_ci_col %in% names(pop)) col_order <- c(col_order, iiv_ci_col)
+			}
+			if (include_RSE && "IIV_RSE" %in% names(pop)) col_order <- c(col_order, "IIV_RSE")
+		}
+
+		# SAEM IOV columns: SD -> CV -> CI -> RSE
+		if (include_IOV && "IOV_SD" %in% names(pop)) {
+			col_order <- c(col_order, "IOV_SD")
+			if (include_CV && "IOV_CV" %in% names(pop)) col_order <- c(col_order, "IOV_CV")
+			if (include_CI && !is.null(ci_col_name)) {
+				iov_ci_col <- paste0("IOV_", ci_col_name)
+				if (iov_ci_col %in% names(pop)) col_order <- c(col_order, iov_ci_col)
+			}
+			if (include_RSE && "IOV_RSE" %in% names(pop)) col_order <- c(col_order, "IOV_RSE")
+		}
+
+		# Bootstrap FE columns: Median -> CI -> RSE
+		if (include_bootstrap && "Boot_Median" %in% names(pop)) {
+			col_order <- c(col_order, "Boot_Median")
+			if (!is.null(boot_ci_col_name) && boot_ci_col_name %in% names(pop)) {
+				col_order <- c(col_order, boot_ci_col_name)
+			}
+			if ("Boot_RSE" %in% names(pop)) col_order <- c(col_order, "Boot_RSE")
+		}
+
+		# Bootstrap IIV columns: Median -> CI -> RSE
+		if (include_bootstrap && include_IIV && "Boot_IIV_Median" %in% names(pop)) {
+			col_order <- c(col_order, "Boot_IIV_Median")
+			if (!is.null(boot_ci_col_name)) {
+				boot_iiv_ci_col <- sub("^Boot_CI", "Boot_IIV_CI", boot_ci_col_name)
+				if (boot_iiv_ci_col %in% names(pop)) col_order <- c(col_order, boot_iiv_ci_col)
+			}
+			if ("Boot_IIV_RSE" %in% names(pop)) col_order <- c(col_order, "Boot_IIV_RSE")
+		}
+
+		# Bootstrap IOV columns: Median -> CI -> RSE
+		if (include_bootstrap && include_IOV && "Boot_IOV_Median" %in% names(pop)) {
+			col_order <- c(col_order, "Boot_IOV_Median")
+			if (!is.null(boot_ci_col_name)) {
+				boot_iov_ci_col <- sub("^Boot_CI", "Boot_IOV_CI", boot_ci_col_name)
+				if (boot_iov_ci_col %in% names(pop)) col_order <- c(col_order, boot_iov_ci_col)
+			}
+			if ("Boot_IOV_RSE" %in% names(pop)) col_order <- c(col_order, "Boot_IOV_RSE")
+		}
+
+		# Apply column reordering
+		pop <- pop[, col_order]
+		#---------------------------------------------------------------------------
+		# Remove omega and gamma rows from long format  # <-- This is line 621
 		rows_to_remove <- c(omega_idx, omega_cv_idx, gamma_idx, gamma_cv_idx)
 		if (length(rows_to_remove) > 0) {
 			pop <- pop[-rows_to_remove, ]
@@ -715,6 +832,7 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	# 	set_header_labels(rse = "RSE(%)", label = "Parameter", parameter = "Monolix name", unit = "Unit") %>%
 	#
 	# return(ft_est)
+
 
 }
 
