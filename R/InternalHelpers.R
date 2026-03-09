@@ -274,6 +274,20 @@ utils::globalVariables(c("."))
 #'
 #' @return A data frame with column names converted to pretty, human-readable labels.
 .prettyLabels <- function(df) {
+	# Helper function to extract CI level from column name
+	extract_ci_level <- function(col_name) {
+		# Match pattern like CI_2.5_97.5 or IIV_CI_2.5_97.5
+		matches <- regmatches(col_name, regexec("_CI_([0-9.]+)_([0-9.]+)$", col_name))
+		if (length(matches[[1]]) == 3) {
+			lower_p <- as.numeric(matches[[1]][2])
+			upper_p <- as.numeric(matches[[1]][3])
+			ci_level <- round(upper_p - lower_p)
+			return(ci_level)
+		}
+		return(NULL)
+	}
+
+	# Static labels for exact matches
 	stat_labels <- c(
 		"parameter"           = "Parameter",
 		"mean"                = "Mean",
@@ -295,34 +309,85 @@ utils::globalVariables(c("."))
 		"P95"                 = "95th Percentile",
 		"N"                   = "N",
 		"Ntot"                = "N Total",
-		"Nobs"                = "N", # "N Observed"
+		"Nobs"                = "N",
 		"Nmiss"               = "N Missing",
 		"p.value"             = "p-value",
 		"RSE"                 = "RSE (%)",
 		"CI"                  = "Confidence \nInterval",
-		"CI_2.5_97.5"         = "95% CI", # or Confidence Interval\n(2.5%-97.5%)?
 		"FE_Estimate"         = "Fixed Effect \nEstimate",
 		"FE_RSE"              = "RSE (%)",
-		"FE_CI"               = "95% CI",
 		"IIV_SD"              = "IIV\nSD",
 		"IIV_CV"              = "IIV\nCV (%)",
 		"IIV_RSE"             = "IIV\nRSE (%)",
-		"IIV_CI"              = "IIV\n95% CI",
 		"IOV_SD"              = "IOV\nSD",
 		"IOV_CV"              = "IOV\nCV (%)",
 		"IOV_RSE"             = "IOV\nRSE (%)",
-		"IOV_CI"              = "IOV\n95% CI",
-		# "IIV %RSE"            = "IIV %RSE",
 		"Dosing.range"        = "Dosing Range",
 		"Point.estimate"      = "Point Estimate",
 		"Criteria.interval"   = "Criteria Interval",
-		"Confidence.interval" = "Confidence Interval")
+		"Confidence.interval" = "Confidence Interval"
+	)
 
-	# Replace column names where matches are found
+	# Process each column name
 	col_names <- names(df)
-	labelIdx <- match(col_names, names(stat_labels))
-	col_names[!is.na(labelIdx)] <- stat_labels[stats::na.omit(labelIdx)]
+	new_names <- sapply(col_names, function(col) {
+		# First check for dynamic CI columns (pattern matching for any confidence level)
+		if (grepl("_CI_[0-9.]+_[0-9.]+$", col)) {
+			ci_level <- extract_ci_level(col)
 
-	names(df) <- col_names
+			if (!is.null(ci_level)) {
+				# Determine prefix and format accordingly (check most specific first)
+				if (grepl("^Boot_IOV_CI", col)) {
+					return(paste0("Bootstrap IOV\n", ci_level, "% CI"))
+				} else if (grepl("^Boot_IIV_CI", col)) {
+					return(paste0("Bootstrap IIV\n", ci_level, "% CI"))
+				} else if (grepl("^Boot_CI", col)) {
+					return(paste0("Bootstrap\n", ci_level, "% CI"))
+				} else if (grepl("^IOV_CI", col)) {
+					return(paste0("IOV\n", ci_level, "% CI"))
+				} else if (grepl("^IIV_CI", col)) {
+					return(paste0("IIV\n", ci_level, "% CI"))
+				} else if (grepl("^FE_CI", col)) {
+					return(paste0(ci_level, "% CI"))
+				} else if (grepl("^CI_", col)) {
+					return(paste0(ci_level, "% CI"))
+				}
+			}
+		}
+
+		# Handle Bootstrap IOV columns (non-CI)
+		if (grepl("^Boot_IOV_", col)) {
+			suffix <- sub("^Boot_IOV_", "", col)
+			if (suffix == "Median") return("Bootstrap IOV\nMedian")
+			if (suffix == "RSE") return("Bootstrap IOV\nRSE (%)")
+			return(paste0("Bootstrap IOV\n", suffix))
+		}
+
+		# Handle Bootstrap IIV columns (non-CI)
+		if (grepl("^Boot_IIV_", col)) {
+			suffix <- sub("^Boot_IIV_", "", col)
+			if (suffix == "Median") return("Bootstrap IIV\nMedian")
+			if (suffix == "RSE") return("Bootstrap IIV\nRSE (%)")
+			return(paste0("Bootstrap IIV\n", suffix))
+		}
+
+		# Handle Bootstrap FE columns (non-CI)
+		if (grepl("^Boot_", col)) {
+			suffix <- sub("^Boot_", "", col)
+			if (suffix == "Median") return("Bootstrap\nMedian")
+			if (suffix == "RSE") return("Bootstrap\nRSE (%)")
+			return(paste0("Bootstrap\n", suffix))
+		}
+
+		# Check static labels for exact match
+		if (col %in% names(stat_labels)) {
+			return(unname(stat_labels[col]))
+		}
+
+		# Default: keep original name
+		return(col)
+	}, USE.NAMES = FALSE)
+
+	names(df) <- new_names
 	return(df)
 }

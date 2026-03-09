@@ -101,7 +101,7 @@
 		"IIV_RSE"             = "%RSE (IIV)",
 		"IOV_SD"              = "IOV (SD)",
 		"IOV_RSE"             = "%RSE (IOV)",
-		# "IIV %RSE"            = "IIV %RSE",
+		"Boot_Median"         = ""
 		"Dosing.range"        = "Dosing Range",
 		"Point.estimate"      = "Point Estimate",
 		"Criteria.interval"   = "Criteria Interval",
