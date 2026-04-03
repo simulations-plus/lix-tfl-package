@@ -40,6 +40,11 @@
 #'   same length as `covariates`. If `NULL` (default), the original covariate names are
 #'   used. These labels appear in column headers when `stratify_columns = TRUE`.
 #'
+#' @param include_id Logical. If `TRUE`, adds individual subject IDs and their
+#'   concentration values at each time point below the summary statistics. When
+#'   stratified by covariates, individual IDs are grouped by their covariate values.
+#'   Default is `FALSE`. Only applicable when `stratify_columns = FALSE`.
+#'
 #' @param roundDigits Integer specifying the number of decimal places for rounding
 #'   numeric values. Default is `3`.
 #'
@@ -86,12 +91,19 @@
 #' #   stratify_columns = TRUE
 #' # )
 #'
+#' # With individual concentrations included
+#' # tableNCAConcentration(
+#' #   include_id = TRUE,
+#' #   metrics = c("mean", "SD")
+#' # )
+#'
 tableNCAConcentration <- function(projectFile      = NULL,
 																	covariates       = NULL,
 																	useNominalTime   = TRUE,
 																	metrics          = NULL,
 																	stratify_columns = FALSE,
 																	covariate_labels = NULL,
+																	include_id       = FALSE,
 																	roundDigits      = 3,
 																	roundMethod      = c("monolix", "signif", "none"),
 																	prettyLabels     = TRUE) {
@@ -113,6 +125,11 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
 	covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
 
+	# Validate include_id parameter
+	if (include_id && stratify_columns) {
+		warning("include_id = TRUE is not compatible with stratify_columns = TRUE. Setting include_id to FALSE.")
+		include_id <- FALSE
+	}
 	# ==========================================================================
 	# Fetch Stratified Data (if covariates exist)
 	if (!is.null(covariates)) {
@@ -235,30 +252,89 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	}
 
 	# ==========================================================================
-	# 4. PRETTY LABELS & SORTING
-	if (isTRUE(prettyLabels)) {
-		final_df <- .prettyLabels(final_df)
+	# 4. ADD INDIVIDUAL IDs OR APPLY FORMATTING
+	if (include_id && !stratify_columns) {
+		# Pivot and add individual concentration data
+		final_df <- .addIndividualsNCAConcentration(
+			summary_stats  = final_df,
+			covariates     = covariates,
+			useNominalTime = useNominalTime,
+			roundDigits    = roundDigits,
+			roundMethod    = roundMethod)
 
-		# Apply pretty labels to "Statistic" content if it exists
-		if ("Statistic" %in% names(final_df)) {
-			curr_metrics <- unique(final_df$Statistic)
-			# Create dummy to map labels
-			dummy_df <- as.data.frame(matrix(NA, nrow = 1, ncol = length(curr_metrics)))
-			names(dummy_df) <- curr_metrics
-			dummy_df <- .prettyLabels(dummy_df)
-			metric_map <- setNames(names(dummy_df), curr_metrics)
+		# Apply pretty labels to the pivoted table (time columns + Statistic column)
+		if (isTRUE(prettyLabels)) {
+			# Get time columns (numeric column names)
+			time_cols <- setdiff(names(final_df), c("Statistic", "Section", covariates))
 
-			final_df$Statistic <- metric_map[final_df$Statistic]
+			# Apply pretty labels to time columns
+			if (length(time_cols) > 0) {
+				dummy_time        <- as.data.frame(matrix(NA, nrow = 1, ncol = length(time_cols)))
+				names(dummy_time) <- time_cols
+				dummy_time        <- .prettyLabels(dummy_time)
+				time_map          <- setNames(names(dummy_time), time_cols)
+				names(final_df)[names(final_df) %in% time_cols] <- time_map[names(final_df)[names(final_df) %in% time_cols]]
+			}
+
+			# Apply pretty labels to Statistic column (for metrics only, not IDs)
+			if ("Statistic" %in% names(final_df) && "Section" %in% names(final_df)) {
+				# Ensure Statistic is a character vector (not a list-column)
+				final_df$Statistic <- as.character(unlist(final_df$Statistic))
+
+				# Get unique metric names (from SUMMARY section only)
+				summary_metrics <- unique(final_df$Statistic[final_df$Section == "SUMMARY"])
+
+				# Create mapping for metrics
+				dummy_metrics        <- as.data.frame(matrix(NA, nrow = 1, ncol = length(summary_metrics)))
+				names(dummy_metrics) <- summary_metrics
+				dummy_metrics        <- .prettyLabels(dummy_metrics)
+				metric_map           <- setNames(names(dummy_metrics), summary_metrics)
+
+				# Apply only to SUMMARY rows
+				final_df$Statistic[final_df$Section == "SUMMARY"] <- metric_map[final_df$Statistic[final_df$Section == "SUMMARY"]]
+			}
+		}
+
+		# Set table attributes for print_table_flex
+		attr(final_df, "table_type") <- "concentration"
+		attr(final_df, "format")     <- "wide"
+
+	} else {
+		# No include_id: apply standard formatting and sorting
+
+		# Apply pretty labels
+		if (isTRUE(prettyLabels)) {
+			final_df <- .prettyLabels(final_df)
+
+			# Apply pretty labels to "Statistic" content if it exists
+			if ("Statistic" %in% names(final_df)) {
+				curr_metrics <- unique(final_df$Statistic)
+				# Create dummy to map labels
+				dummy_df <- as.data.frame(matrix(NA, nrow = 1, ncol = length(curr_metrics)))
+				names(dummy_df) <- curr_metrics
+				dummy_df <- .prettyLabels(dummy_df)
+				metric_map <- setNames(names(dummy_df), curr_metrics)
+
+				final_df$Statistic <- metric_map[final_df$Statistic]
+			}
+		}
+
+		# Sort by covariates (if present), then by Time
+		if (!is.null(covariates) && length(covariates) > 0) {
+			final_df <- final_df %>%
+				dplyr::arrange(dplyr::across(dplyr::all_of(covariates)),
+											 suppressWarnings(as.numeric(!!rlang::sym(time_col))))
+		} else {
+			# Sort by Time only if no covariates
+			if (time_col %in% names(final_df)) {
+				final_df <- final_df %>%
+					dplyr::arrange(suppressWarnings(as.numeric(!!rlang::sym(time_col))))
+			}
 		}
 	}
 
-	# Sort by Time numerically if possible
-	if (time_col %in% names(final_df)) {
-		final_df <- final_df %>%
-			dplyr::arrange(suppressWarnings(as.numeric(!!rlang::sym(time_col))))
-	}
-
 	return(as.data.frame(final_df))
+
 }
 
 

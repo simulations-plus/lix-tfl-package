@@ -1027,6 +1027,168 @@
 	return(final_result)
 }
 
+##################################################################################
+#' Internal helper to add individual concentration values
+#'
+#' @description
+#' Retrieves individual concentration data and appends them below summary statistics.
+#' Used by \code{tableNCAConcentration} when \code{include_id = TRUE}.
+#'
+#' When covariates are specified, individual IDs are grouped by their covariate values
+#' and listed after the corresponding summary metrics.
+#'
+#' @param summary_stats Data frame containing summary statistics with Time as a column
+#'   and metrics as other columns. Will be pivoted so time points become columns.
+#' @param covariates Character vector of covariate names used for stratification.
+#' @param useNominalTime Logical; whether nominal time should be used.
+#' @param roundDigits Integer specifying the number of decimal places for rounding.
+#' @param roundMethod Character string specifying the rounding method ("monolix", "signif", "none").
+#'
+#' @return A data frame combining summary statistics with individual concentration values,
+#'   with a "Section" column distinguishing "SUMMARY" from "INDIVIDUAL" rows.
+#'   Time points are columns, subjects/metrics are rows.
+#'
+#' @keywords internal
+#'
+.addIndividualsNCAConcentration <- function(summary_stats,
+																						covariates,
+																						useNominalTime,
+																						roundDigits,
+																						roundMethod) {
+
+	# ==========================================================================
+	# 1. PIVOT SUMMARY STATISTICS: Time as columns
+	# ==========================================================================
+	# Current format: Time | [Covariates] | Metric1 | Metric2 | ...
+	# Target format:  Statistic | [Covariates] | Time1 | Time2 | ...
+
+	# Identify columns
+	time_col <- "Time"
+	stat_cols <- setdiff(names(summary_stats), c(time_col, covariates))
+
+	# Convert all metric columns to character (handles mixed numeric/character like MeanSD)
+	summary_stats <- summary_stats %>%
+		dplyr::mutate(dplyr::across(dplyr::all_of(stat_cols), as.character))
+
+	# Pivot longer (stack metrics), then wider (time as columns)
+	summary_pivoted <- summary_stats %>%
+		tidyr::pivot_longer(
+			cols      = dplyr::all_of(stat_cols),
+			names_to  = "Statistic",
+			values_to = "Value"
+		) %>%
+		tidyr::pivot_wider(
+			names_from  = !!rlang::sym(time_col),
+			values_from = Value
+		)
+
+	# ==========================================================================
+	# 2. GET INDIVIDUAL CONCENTRATION DATA
+	# ==========================================================================
+	# reinitialize stratification connector
+	lixoftConnectors::setNCAResultsStratification()
+
+	# Set stratification
+	if (!is.null(covariates)) {
+		lixoftConnectors::setNCAResultsStratification(split = covariates)
+	}
+
+	indiv_data <- lixoftConnectors::getNCAConcentrations(displayIndividualProfiles = TRUE, useNominalTime = useNominalTime)
+
+	# Fix column swap bug if covariates present
+	if (!is.null(covariates) && length(covariates) > 0) {
+		indiv_data <- .fixNCAConcentrationsColumnSwap(indiv_data, covariates)
+	}
+
+	# ==========================================================================
+	# 3. FILTER OUT METRIC ROWS (keep only individuals)
+	# ==========================================================================
+	# Identify subject/metric column
+	stat_col <- if ("metric" %in% names(indiv_data)) "metric" else "subject"
+
+	# Get metric labels to filter out
+	metrics <- lixoftConnectors::getNCAConcentrations()$metric
+	metric_labels <- as.character(metrics[!is.na(metrics)])
+
+	# Keep only individual profiles
+	indiv_only <- indiv_data %>% dplyr::filter(!(!!rlang::sym(stat_col) %in% metric_labels))
+
+	# ==========================================================================
+	# 4. ROUND INDIVIDUAL VALUES
+	# ==========================================================================
+	# Get time columns (everything except ID and covariates)
+	time_cols <- setdiff(names(indiv_only), c(stat_col, covariates))
+
+	# Convert all time columns to character before pivoting (prevents list-column issues)
+	indiv_only <- indiv_only %>% dplyr::mutate(dplyr::across(dplyr::all_of(time_cols), as.character))
+
+	# Pivot to long for rounding
+	indiv_long <- indiv_only %>%
+		tidyr::pivot_longer(
+			cols      = dplyr::all_of(time_cols),
+			names_to  = "Time",
+			values_to = "Value") %>%
+		dplyr::filter(Value != "")  # Remove empty values
+
+	# Round values (preserve non-numeric values like <LLOQ)
+	indiv_long <- indiv_long %>%
+		dplyr::mutate(
+			.value_numeric = suppressWarnings(as.numeric(Value)),
+			Value = dplyr::case_when(
+				is.na(.value_numeric) ~ Value,  # Keep non-numeric values (e.g., <LLOQ)
+				TRUE ~ as.character(.round_num(.value_numeric,
+																			 digits = roundDigits,
+																			 rounding_method = roundMethod)))) %>%
+		dplyr::select(-.value_numeric)  # Remove helper column
+
+	# Pivot back to wide: time points as columns
+	indiv_wide <- indiv_long %>%
+		tidyr::pivot_wider(
+			names_from  = Time,
+			values_from = Value)
+
+	# ==========================================================================
+	# 5. ALIGN COLUMN NAMES AND ORDER
+	# ==========================================================================
+	# Rename subject column to "Statistic" to match summary format
+	indiv_wide <- indiv_wide %>% dplyr::rename(Statistic = !!rlang::sym(stat_col))
+
+	# Sort by Statistic (subject ID) - numeric if possible, otherwise character
+	indiv_wide <- indiv_wide %>%
+		dplyr::mutate(.stat_numeric = suppressWarnings(as.numeric(Statistic))) %>%
+		dplyr::arrange(
+			# Sort by numeric if possible, otherwise by character
+			dplyr::coalesce(.stat_numeric, Inf), # Numeric IDs first, sorted numerically
+			Statistic                             # Then by character (for non-numeric IDs)
+		) %>%
+		dplyr::select(-.stat_numeric)  # Remove helper column
+
+	# Ensure columns match summary_pivoted
+	summary_cols <- names(summary_pivoted)
+	cols_to_keep <- intersect(summary_cols, names(indiv_wide))
+
+	# Reorder columns to match
+	indiv_wide <- indiv_wide[, cols_to_keep, drop = FALSE]
+
+	# ==========================================================================
+	# 6. STACK WITH SECTION MARKERS AND SORT
+	# ==========================================================================
+	# Add Section column and stack (works with or without covariates)
+	summary_pivoted$Section <- "SUMMARY"
+	indiv_wide$Section      <- "INDIVIDUAL"
+	final_result            <- rbind(summary_pivoted, indiv_wide)
+
+	# Sort by covariates (if present), then by Section (SUMMARY before INDIVIDUAL)
+	if (!is.null(covariates) && length(covariates) > 0) {
+		final_result <- final_result %>%
+			dplyr::mutate(Section = factor(Section, levels = c("SUMMARY", "INDIVIDUAL"))) %>%
+			dplyr::arrange(dplyr::across(dplyr::all_of(covariates)), Section) %>%
+			dplyr::mutate(Section = as.character(Section))
+	}
+
+	return(as.data.frame(final_result))
+}
+
 
 ##################################################################################
 #' Internal helper to fetch and prepare NCA & Conecntration summary stats
