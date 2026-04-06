@@ -345,14 +345,14 @@ test_that("tableNCAParameters with column stratification and multiple metrics", 
 										all(grepl("Mean.*SD|Geometric.*CV", table$Statistic))))
 })
 
-test_that("tableNCAParameters vertical layout (horizontal = FALSE)", {
+test_that("tableNCAParameters vertical layout (use_wide_format = FALSE)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test vertical layout without stratification
 	table <- tableNCAParameters(
 		projectFile = pkx_project_1,
 		NCAparams   = c("AUCINF_obs", "AUClast", "Cmax"),
-		horizontal  = FALSE
+		use_wide_format  = FALSE
 	)
 
 	# Verify "Statistic" column exists in vertical layout
@@ -369,7 +369,7 @@ test_that("tableNCAParameters vertical layout with covariates", {
 		projectFile = pkx_project_1,
 		NCAparams   = c("AUCINF_obs", "AUClast", "Cmax"),
 		covariates  = "TINFCAT",
-		horizontal  = FALSE,
+		use_wide_format  = FALSE,
 		metrics     = c("min", "MeanSD", "median", "GeomCV", "max")
 	)
 
@@ -563,7 +563,7 @@ test_that("tableNCAParameters complex scenario", {
 		metrics          = c("GeomCV", "MeanSD", "Q3"),
 		NCAparams        = c("AUCINF_obs", "AUClast", "Cmax"),
 		covariates       = "TINFCAT",
-		horizontal       = FALSE,
+		use_wide_format       = FALSE,
 		stratify_columns = TRUE,
 		roundDigits      = 2,
 		roundMethod      = "signif",
@@ -652,7 +652,7 @@ test_that("tableNCAParameters all arguments combined", {
 		covariates       = "TINFCAT",
 		NCAparams        = c("AUCINF_obs", "AUClast", "Cmax"),
 		metrics          = c("min", "MeanSD", "median", "GeomCV", "max"),
-		horizontal       = FALSE,
+		use_wide_format       = FALSE,
 		stratify_columns = TRUE,
 		covariate_labels = "Infusion Category",
 		roundDigits      = 4,
@@ -675,7 +675,7 @@ test_that("tableNCAParameters with all flags FALSE", {
 	table <- tableNCAParameters(
 		projectFile      = pkx_project_1,
 		NCAparams        = c("Cmax"),
-		horizontal       = FALSE,
+		use_wide_format       = FALSE,
 		stratify_columns = FALSE,
 		units            = FALSE,
 		aliases          = FALSE,
@@ -695,8 +695,8 @@ test_that("tableNCAParameters with all flags TRUE", {
 		projectFile      = pkx_project_1,
 		NCAparams        = c("Cmax"),
 		covariates       = "TINFCAT",
-		horizontal       = TRUE,
-		stratify_columns = FALSE,  # Can't have both horizontal=TRUE and stratify_columns=TRUE
+		use_wide_format       = TRUE,
+		stratify_columns = FALSE,  # Can't have both use_wide_format=TRUE and stratify_columns=TRUE
 		units            = TRUE,
 		aliases          = TRUE,
 		prettyLabels     = TRUE
@@ -717,7 +717,7 @@ test_that("tableNCAParameters default values work correctly", {
 	# - All available NCAparams
 	# - No covariates
 	# - Default metrics
-	# - horizontal = TRUE
+	# - use_wide_format = TRUE
 	# - stratify_columns = FALSE
 	# - roundDigits = 3
 	# - roundMethod = "monolix"
@@ -807,7 +807,7 @@ test_that("tableNCAParameters with include_id basic (no covariates)", {
 	# Test basic include_id functionality without covariates
 	table <- tableNCAParameters(
 		projectFile  = pkx_project_1,
-		horizontal   = FALSE,
+		use_wide_format   = FALSE,
 		NCAparams    = c("Cmax", "AUClast", "Lambda_z"),
 		include_id   = TRUE,
 		prettyLabels = FALSE
@@ -837,7 +837,7 @@ test_that("tableNCAParameters with include_id and single covariate", {
 	# Test include_id with stratification by single covariate
 	table <- tableNCAParameters(
 		projectFile  = pkx_project_1,
-		horizontal   = FALSE,
+		use_wide_format   = FALSE,
 		covariates   = "TINFCAT",
 		NCAparams    = c("Cmax", "AUClast", "Lambda_z"),
 		metrics      = c("min", "MeanSD", "median", "GeomCV", "max"),
@@ -869,7 +869,7 @@ test_that("tableNCAParameters with include_id and multiple covariates", {
 	# Test include_id with multiple covariates
 	table <- tableNCAParameters(
 		projectFile  = pkx_project_3,
-		horizontal   = FALSE,
+		use_wide_format   = FALSE,
 		covariates   = c("DOSE_mg", "ROUTE"),
 		NCAparams    = c("Cmax", "AUClast"),
 		metrics      = c("MeanSD", "GeomCV"),
@@ -895,7 +895,7 @@ test_that("tableNCAParameters with include_id and prettyLabels = TRUE", {
 	# Test include_id with pretty labels enabled
 	table <- tableNCAParameters(
 		projectFile  = pkx_project_1,
-		horizontal   = FALSE,
+		use_wide_format   = FALSE,
 		NCAparams    = c("Cmax", "AUClast", "Lambda_z"),
 		include_id   = TRUE,
 		prettyLabels = TRUE,
@@ -914,18 +914,18 @@ test_that("tableNCAParameters with include_id and prettyLabels = TRUE", {
 	# but table should still be valid
 })
 
-test_that("tableNCAParameters with include_id validation: horizontal = TRUE", {
+test_that("tableNCAParameters with include_id validation: use_wide_format = TRUE", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	# Test that include_id = TRUE with horizontal = TRUE generates warning
+	# Test that include_id = TRUE with use_wide_format = TRUE generates warning
 	expect_warning(
 		table <- tableNCAParameters(
 			projectFile = pkx_project_1,
-			horizontal  = TRUE,  # This should trigger warning
+			use_wide_format  = TRUE,  # This should trigger warning
 			NCAparams   = c("Cmax"),
 			include_id  = TRUE
 		),
-		"include_id = TRUE only works with horizontal = FALSE"
+		"include_id = TRUE only works with use_wide_format = FALSE"
 	)
 
 	# Table should still be generated with include_id set to FALSE
@@ -939,7 +939,7 @@ test_that("tableNCAParameters with include_id validation: stratify_columns = TRU
 	expect_warning(
 		table <- tableNCAParameters(
 			projectFile      = pkx_project_1,
-			horizontal       = FALSE,
+			use_wide_format       = FALSE,
 			stratify_columns = TRUE,  # This should trigger warning
 			covariates       = "TINFCAT",
 			NCAparams        = c("Cmax"),
@@ -958,7 +958,7 @@ test_that("tableNCAParameters with include_id = FALSE (default behavior)", {
 	# Test that include_id = FALSE produces table without individual IDs
 	table <- tableNCAParameters(
 		projectFile  = pkx_project_1,
-		horizontal   = FALSE,
+		use_wide_format   = FALSE,
 		NCAparams    = c("Cmax", "AUClast"),
 		include_id   = FALSE,  # Explicitly FALSE
 		prettyLabels = FALSE
@@ -986,7 +986,7 @@ test_that("tableNCAParameters with include_id and different rounding settings", 
 	# Test include_id with different rounding methods
 	table_monolix <- tableNCAParameters(
 		projectFile = pkx_project_1,
-		horizontal  = FALSE,
+		use_wide_format  = FALSE,
 		NCAparams   = c("Cmax"),
 		include_id  = TRUE,
 		roundDigits = 2,
@@ -995,7 +995,7 @@ test_that("tableNCAParameters with include_id and different rounding settings", 
 
 	table_signif <- tableNCAParameters(
 		projectFile = pkx_project_1,
-		horizontal  = FALSE,
+		use_wide_format  = FALSE,
 		NCAparams   = c("Cmax"),
 		include_id  = TRUE,
 		roundDigits = 2,
@@ -1015,7 +1015,7 @@ test_that("tableNCAParameters with include_id and specific metrics", {
 	# Test include_id with specific metrics selected
 	table <- tableNCAParameters(
 		projectFile  = pkx_project_1,
-		horizontal   = FALSE,
+		use_wide_format   = FALSE,
 		NCAparams    = c("Cmax", "AUClast"),
 		metrics      = c("median", "GeomCV", "max"),
 		include_id   = TRUE,
@@ -1043,7 +1043,7 @@ test_that("tableNCAParameters with include_id comprehensive test", {
 		covariates   = "TINFCAT",
 		NCAparams    = c("Cmax", "AUClast", "Lambda_z"),
 		metrics      = c("min", "MeanSD", "median", "GeomCV", "max"),
-		horizontal   = FALSE,
+		use_wide_format   = FALSE,
 		include_id   = TRUE,
 		roundDigits  = 3,
 		roundMethod  = "monolix",
@@ -1066,7 +1066,7 @@ test_that("tableNCAParameters with include_id row count check", {
 	# Compare row counts: include_id = FALSE vs TRUE
 	table_no_ids <- tableNCAParameters(
 		projectFile  = pkx_project_1,
-		horizontal   = FALSE,
+		use_wide_format   = FALSE,
 		NCAparams    = c("Cmax"),
 		metrics      = c("median", "GeomCV"),
 		include_id   = FALSE,
@@ -1075,7 +1075,7 @@ test_that("tableNCAParameters with include_id row count check", {
 
 	table_with_ids <- tableNCAParameters(
 		projectFile  = pkx_project_1,
-		horizontal   = FALSE,
+		use_wide_format   = FALSE,
 		NCAparams    = c("Cmax"),
 		metrics      = c("median", "GeomCV"),
 		include_id   = TRUE,
@@ -1097,7 +1097,7 @@ test_that("tableNCAParameters with include_id and numeric categorical covariate"
 	# Using project_3 which has DOSE_mg covariate
 	table <- tableNCAParameters(
 		projectFile  = pkx_project_3,
-		horizontal   = FALSE,
+		use_wide_format   = FALSE,
 		covariates   = "DOSE_mg",
 		NCAparams    = c("Cmax", "AUClast"),
 		include_id   = TRUE,

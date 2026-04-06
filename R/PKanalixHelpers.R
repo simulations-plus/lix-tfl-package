@@ -362,7 +362,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   include: `"mean"`, `"SD"`, `"CV"`, `"geoMean"`, `"geoCV"`, `"geoSD"`, `"MeanSD"`,
 #'   `"GeomCV"`, `"GeomSD"`, `"median"`, `"min"`, `"max"`, `"P05"`, `"P95"`, `"Nobs"`.
 #'
-#' @param horizontal Logical. If `TRUE` (default), returns a "wide" table with
+#' @param use_wide_format Logical. If `TRUE` (default), returns a "wide" table with
 #'   one row per covariate level (or overall) and one column per statistic for
 #'   each parameter, i.e., PKanalix-like structure. If `FALSE`, returns a
 #'   "vertical" table where \code{Statistic} forms the first column and the
@@ -377,11 +377,11 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   same length as `covariates`. If `NULL` (default), the original covariate names are
 #'   used. These labels appear in column headers when `stratify_columns = TRUE`.
 #'
-#' @param include_id Logical. If `TRUE` and `horizontal = FALSE`, adds individual
+#' @param include_id Logical. If `TRUE` and `use_wide_format = FALSE`, adds individual
 #'   subject IDs and their parameter values below the summary statistics in the
 #'   "Statistic" column. When stratified by covariates, individual IDs are grouped
 #'   by their covariate values and listed after the corresponding summary metrics.
-#'   Default is `FALSE`. Only works when `horizontal = FALSE`.
+#'   Default is `FALSE`. Only works when `use_wide_format = FALSE`.
 #'
 #' @param roundDigits Integer specifying the number of decimal places for rounding
 #'   numeric values. Default is `3`.
@@ -413,12 +413,12 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #' #   covariates = "FORM",
 #' #   NCAparams  = c("AUCINF_obs", "AUClast", "Cmax"),
 #' #   roundDigits = 2,
-#' #   horizontal = FALSE
+#' #   use_wide_format = FALSE
 #' # )
 #'
 #' # Vertical layout with individual IDs included
 #' # tableNCAParameters(
-#' #   horizontal = FALSE,
+#' #   use_wide_format = FALSE,
 #' #   include_id = TRUE,
 #' #   NCAparams  = c("Cmax", "AUClast", "Lambda_z")
 #' # )
@@ -426,7 +426,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #' # Stratified with individual IDs
 #' # tableNCAParameters(
 #' #   covariates = "TREAT",
-#' #   horizontal = FALSE,
+#' #   use_wide_format = FALSE,
 #' #   include_id = TRUE
 #' # )
 #'
@@ -434,7 +434,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 															 covariates       = NULL,
 															 NCAparams        = NULL,
 															 metrics          = NULL,
-															 horizontal       = TRUE,
+															 use_wide_format  = TRUE,
 															 stratify_columns = FALSE,
 															 covariate_labels = NULL,
 															 include_id       = FALSE,
@@ -462,8 +462,8 @@ tableNCAParameters <- function(projectFile      = NULL,
 	# Validate set parameters
 	.validateNCAParametersSelection(NCAparams, ratio = FALSE)
 	# Validate include_id parameter
-	if (include_id && horizontal) {
-		warning("include_id = TRUE only works with horizontal = FALSE. Setting include_id to FALSE.")
+	if (include_id && use_wide_format) {
+		warning("include_id = TRUE only works with use_wide_format = FALSE. Setting include_id to FALSE.")
 		include_id <- FALSE
 	}
 
@@ -476,8 +476,8 @@ tableNCAParameters <- function(projectFile      = NULL,
 	# TABLE FORMATTING
 
 	if (stratify_columns) {
-		if (!horizontal) {
-			message("Note: stratify_columns=TRUE uses a different table format. The 'horizontal' argument is ignored.")
+		if (!use_wide_format) {
+			message("Note: stratify_columns=TRUE uses a different table format. The 'use_wide_format' argument is ignored.")
 		}
 
 		# Determine Metrics
@@ -527,7 +527,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 			param_col        = param_col,
 			covariate_labels = covariate_labels)
 	} else {
-		# Non-stratified or horizontal mode
+		# Non-stratified or use_wide_format mode
 		summary_stats <- .prepareNCASummaryStats(projectFile, NCAparams, covariates, roundDigits, roundMethod, units, aliases, by_time = FALSE, useNominalTime = FALSE)
 		if (is.null(summary_stats)) stop("No NCA results available.")
 
@@ -548,7 +548,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 		cols_to_keep  <- intersect(c(descriptor_cols, selected_metrics), names(summary_stats))
 		summary_stats <- summary_stats[, cols_to_keep, drop = FALSE]
 
-		if (!horizontal) {
+		if (!use_wide_format) {
 			# Use internal helper for vertical pivot
 			summary_stats <- .pivotToVertical(
 				summary_stats = summary_stats,
@@ -558,9 +558,9 @@ tableNCAParameters <- function(projectFile      = NULL,
 	}
 
 	# ==========================================================================
-	# ADD INDIVIDUAL IDs (if requested and horizontal = FALSE)
+	# ADD INDIVIDUAL IDs (if requested and use_wide_format = FALSE)
 
-	if (!horizontal && include_id) {
+	if (!use_wide_format && include_id) {
 		summary_stats <- .addIndividualsNCAParameters(
 			summary_stats = summary_stats,
 			covariates    = covariates,
@@ -574,7 +574,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 	# ==========================================================================
 	# SORT BY COVARIATES (for vertical tables with numeric-valued categorical covariates)
 
-	if (!horizontal && !stratify_columns && !is.null(covariates) && length(covariates) > 0) {
+	if (!use_wide_format && !stratify_columns && !is.null(covariates) && length(covariates) > 0) {
 		summary_stats <- summary_stats %>%
 			dplyr::arrange(dplyr::across(
 				dplyr::all_of(covariates),
@@ -628,7 +628,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 #'
 #' @param covariates character vector of column names to stratify by (must be in indivratio but not id/ratio columns).
 #' @param digits number of digits to round numeric statistics (default = 3).
-#' @param horizontal logical; if TRUE (default) results are wide; if FALSE, results are pivoted to long format.
+#' @param use_wide_format logical; if TRUE (default) results are wide; if FALSE, results are pivoted to long format.
 #'
 #' @return A data.frame with summary statistics for each ratio parameter, optionally stratified.
 #'
@@ -637,10 +637,10 @@ tableNCAParameters <- function(projectFile      = NULL,
 #' tableNCARatios()
 #'
 #' # Stratified by DOSE, results in wide format:
-#' tableNCARatios(covariates = "DOSE", horizontal = TRUE)
+#' tableNCARatios(covariates = "DOSE", use_wide_format = TRUE)
 #'
 #' # Stratified by DOSE and VISIT, results in long format:
-#' tableNCARatios(covariates = c("DOSE", "VISIT"), horizontal = FALSE)
+#' tableNCARatios(covariates = c("DOSE", "VISIT"), use_wide_format = FALSE)
 #'
 tableNCARatios <- function(projectFile      = NULL,
 													 covariates       = NULL,
@@ -648,7 +648,7 @@ tableNCARatios <- function(projectFile      = NULL,
 													 covariate_labels = NULL,
 													 ratioParams      = NULL,
 													 metrics          = NULL,
-													 horizontal       = TRUE,
+													 use_wide_format  = TRUE,
 													 roundDigits      = 3,
 													 roundMethod      = c("monolix", "signif", "none"),
 													 prettyLabels     = TRUE) {
@@ -701,8 +701,8 @@ tableNCARatios <- function(projectFile      = NULL,
 	if (stratify_columns && !is.null(covariates)) {
 		# -----------------------------------------------------------------------
 		# CASE: Stratified columns (covariates as column headers with Overall)
-		if (!horizontal) {
-			message("Note: stratify_columns=TRUE uses a different table format. The 'horizontal' argument is ignored.")
+		if (!use_wide_format) {
+			message("Note: stratify_columns=TRUE uses a different table format. The 'use_wide_format' argument is ignored.")
 		}
 
 		# Default to GeomCV for stratified tables if no metrics specified
@@ -814,7 +814,7 @@ tableNCARatios <- function(projectFile      = NULL,
 		summary_tbl <- summary_tbl[, c(descriptor_cols, selected_metrics), drop = FALSE]
 
 		# Pivot to vertical if requested
-		if (horizontal == FALSE) {
+		if (use_wide_format == FALSE) {
 			# Use helper function for vertical pivot
 			param_col   <- intersect(names(summary_tbl), c("parameter", "Parameter"))
 			summary_tbl <- .pivotToVertical(summary_tbl, param_col, covariates)
