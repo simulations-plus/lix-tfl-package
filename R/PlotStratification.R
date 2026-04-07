@@ -1,68 +1,3 @@
-# Split & stratify data
-.transformChartData <- function(data, ids = NULL, split = NULL, color = NULL,
-                                filter = NULL, removeFiltered = TRUE) {
-
-  data <- data[! names(data) %in% c("split", "color", "filter")]
-  data <- unique(data)
-
-  # rename id
-  data <- .renameColumns(data, "ID", "id")
-
-  # split and filter
-  covDataSplit <- .stratifyCovariates(split = split, filter = filter)
-  
-  # color
-  covDataColor <- .stratifyCovariates(split = color, filter = filter, splitbyid = TRUE)
-  covDataColor <- .renameColumns(covDataColor, "split", "color")
-  
-  covData <- merge(covDataSplit, covDataColor)
-  
-  # Ids filtering
-  if (!is.null(ids)) {
-    .checkIds(ids)
-    data <- data[data$id %in% ids,]
-    covData <- covData[covData$id %in% ids,]
-  }
-  
-  data$id = factor(data$id, levels = unique(data$id))
-
-  # add filter and split columns to data
-  data <- merge(data, covData)
-
-  # sort dataframe
-  for (h in intersect(names(data), c("rep", .getOccasions(), "censored"))) data[[h]] <- as.integer(data[[h]])
-  for (h in intersect(names(data), c("time"))) data[[h]] <- as.double(data[[h]])
-
-  tosort <- intersect(c("rep", .getSubjocc(), "time", "split"), names(data))
-  if (length(tosort)) {
-    if (length(tosort) == 1) {
-      data <- data[order(data[[tosort]]),]
-    } else {
-      data <- data[do.call(order, data[,tosort]),] 
-    }
-  }
-  data$split <- as.factor(data$split)
-  data$color <- as.factor(data$color)
-  data$filter <- as.integer(data$filter)
-  data$filter <- as.factor(data$filter)
-  
-  # reorder columns
-  data <- data[, c(setdiff(names(data), c("split", "color", "filter")), "split", "color", "filter")]
-
-  # filter dataframe on filter column
-  if (removeFiltered) {
-    data <- data[data$filter == 0,]
-  }
-  
-  if (nrow(data[data$filter == 0,]) == 0) {
-    warning("After applying filtering, there is no more data to display.", call. = FALSE)
-  }
-
-  row.names(data) <- NULL
-
-  return(data)
-}
-
 .stratifyCovariates <- function(split = NULL, filter = NULL, splitbyid = FALSE) {
   ## Get covariates information ------------------------------------------------
   covData <- getCovariateInformation()$covariate
@@ -192,27 +127,6 @@
   return(startifyDf)
 }
 
-# read dataset -----------------------------------------------------------------
-.readDataset <- function(filename, sheet = NULL) {
-  # check that file exists
-  filename <- .check_file(filename)
-
-  # check file extension
-  fileext <- utils::tail(strsplit(filename, "\\.")[[1]], n=1)
-  .check_in_vector(fileext, paste(filename, "extension"), c("txt", "csv"))
-
-  # get separator
-  sep <- .getDelimiter(filename)
-  if (is.null(sep)) {
-    stop(paste0("Cannot read file ", filename, "."))
-  }
-  
-  # read file
-  df <- utils::read.csv(filename, sep = sep, check.names=FALSE)
-
-  return(df)
-}
-
 .getIndividualParametersWithVariability <- function(variabilityLevel = NULL) {
   parameterVariability <- getIndividualParameterModel()$variability
 
@@ -223,58 +137,6 @@
   parameters <- unique(do.call(c, lapply(parameterVariability, function(l) names(l[l]))))
 
   return(parameters)
-}
-
-.getCensoredInterval <- function(obsName = NULL, subjoccs = NULL) {
-  cens <- .transformToNumeric(
-    getObservationInformation()[[obsName]],
-    headers = c("time", obsName, "censoredInterval_min", "censoredInterval_max")
-  )
-  cens <- cens[cens$censored == TRUE,]
-
-  # filter dataframe
-  if (! is.null(subjoccs)) {
-    cens <- merge(cens, subjoccs)
-  }
-  
-  intervalCensored <- NULL
-  rightCensored <- NULL
-  leftCensored <- NULL
-
-  if (! "censored" %in% names(cens)) {
-    return(leftCensored = leftCensored,
-           rightCensored = rightCensored,
-           intervalCensored = intervalCensored
-    )
-  }
-
-  # left censored interval
-  leftCensoredData <- cens[cens$censoredInterval_min != "-Infinity" & cens$censoredInterval_max == "Infinity",]
-  if (nrow(leftCensoredData)) {
-    leftCensored <- c(- Inf, max(leftCensoredData$censoredInterval_max))
-    leftCensored <- as.numeric(leftCensored)
-  }
-  
-  # right censored interval
-  rightCensoredData <- cens[cens$censoredInterval_min == "-Infinity" & cens$censoredInterval_max != "Infinity",]
-  if (nrow(rightCensoredData)) {
-    rightCensored <- c(min(rightCensoredData$censoredInterval_min), Inf)
-    rightCensored <- as.numeric(rightCensored)
-  }
-  
-  # interval censored interval
-  intervalCensoredData <- cens[cens$censoredInterval_min != "-Infinity" & cens$censoredInterval_max != "Infinity",]
-  if (nrow(intervalCensoredData)) {
-    intervalCensored <- c(min(intervalCensoredData$censoredInterval_min),
-                          max(intervalCensoredData$censoredInterval_max))
-    intervalCensored <- as.numeric(intervalCensored)
-  }
-
-  return(list(
-    leftCensored = leftCensored,
-    rightCensored = rightCensored,
-    intervalCensored = intervalCensored
-  ))
 }
 
 .getCovariates <- function(categorical = FALSE, continuous = FALSE, latent = FALSE) {

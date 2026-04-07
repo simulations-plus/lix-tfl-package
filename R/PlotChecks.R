@@ -195,3 +195,33 @@
   }
   return(filter)
 }
+
+# check if an argument contains allowed elements -------------------------------
+.check_in_vector <- function(arg, argname, allowed_args) {
+  if (is.null(arg)) {
+    return(arg)
+  }
+
+  if (is.null(arg)) {
+    return(invisible(TRUE))
+  }
+
+  if (! all(is.element(arg, allowed_args))) {
+    stop("Invalid ", argname, ": ", paste(setdiff(arg, allowed_args), collapse = ", "),
+         ". Available elements: '", 
+         paste(allowed_args, collapse="', '"), "'", call. = FALSE)
+  }
+  return(invisible(TRUE))
+}
+
+# check if a vector contains only doubles --------------------------------------
+.check_vector_of_double <- function(v, argname) {
+  if (is.null(v)) {
+    return(v)
+  }
+
+  if(!(is.double(v)||is.integer(v))) {
+    stop("Invalid ", argname, ". It must be a vector of doubles.", call. = F)
+  }
+  return(v)
+}
