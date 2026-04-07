@@ -1,3 +1,119 @@
+# Translate public stratify API to internal format for .stratifyCovariates
+#
+# @param stratify List with: groups, split, color, colors, filter,
+#   mergedSplits, individualSelection
+# @return List with: split_specs, color_specs, filter_specs, colors,
+#   mergedSplits, ids
+.parseStratify <- function(stratify) {
+  if (length(stratify) == 0) {
+    return(list(split_specs = NULL, color_specs = NULL, filter_specs = NULL,
+                colors = NULL, mergedSplits = FALSE, ids = NULL))
+  }
+
+  groups_defs <- stratify$groups
+
+  # Helper: build old-format spec from covariate name + groups definitions
+  .buildSpec <- function(cov_name) {
+    spec <- list(name = cov_name)
+    for (g in groups_defs) {
+      if (g$name == cov_name) {
+        defn <- g$definition
+        if (is.numeric(defn)) {
+          # Continuous: definition is breaks
+          spec$breaks <- defn
+        } else if (is.list(defn)) {
+          # Categorical: definition is list of category vectors
+          group_names <- sapply(defn, function(cats) paste(cats, collapse = " - "))
+          spec$groups <- stats::setNames(defn, group_names)
+        }
+        break
+      }
+    }
+    return(spec)
+  }
+
+  # Build split specs from vector of covariate names
+  split_specs <- NULL
+  if (!is.null(stratify$split)) {
+    split_specs <- lapply(stratify$split, .buildSpec)
+  }
+
+  # Build color specs from vector of covariate names
+  color_specs <- NULL
+  mergedSplits <- if (is.null(stratify$mergedSplits)) FALSE else stratify$mergedSplits
+
+  if (mergedSplits && !is.null(split_specs)) {
+    # mergedSplits: split groups become color groups on the same panel
+    color_specs <- split_specs
+    split_specs <- NULL
+  } else if (!is.null(stratify$color)) {
+    color_specs <- lapply(stratify$color, .buildSpec)
+  }
+
+  # Filter specs (list of pairs: list(cov_name, indices_or_categories))
+  # These are applied post-hoc after group assignment, not via .checkFilter
+  filter_specs <- stratify$filter
+
+  # Colors palette
+  colors <- stratify$colors
+
+  # Individual selection
+  ids <- NULL
+  if (!is.null(stratify$individualSelection)) {
+    ids <- stratify$individualSelection$ids
+  }
+
+  return(list(split_specs = split_specs, color_specs = color_specs,
+              filter_specs = filter_specs, colors = colors,
+              mergedSplits = mergedSplits, ids = ids))
+}
+
+# Apply filter by group index/category after stratification
+#
+# @param rand_eff_df Data frame with id column
+# @param filter_specs List of filter pairs, e.g. list(list("AGE", c(1,3)))
+# @param groups_defs Groups definitions from stratify$groups
+# @return Filtered rand_eff_df
+.applyStratifyFilter <- function(rand_eff_df, filter_specs, groups_defs) {
+  if (is.null(filter_specs) || length(filter_specs) == 0) return(rand_eff_df)
+
+  for (f in filter_specs) {
+    cov_name <- f[[1]]
+    keep     <- f[[2]]
+
+    # Build spec for this covariate and get per-id group assignment
+    spec <- list(name = cov_name)
+    for (g in groups_defs) {
+      if (g$name == cov_name) {
+        defn <- g$definition
+        if (is.numeric(defn)) {
+          spec$breaks <- defn
+        } else if (is.list(defn)) {
+          group_names <- sapply(defn, function(cats) paste(cats, collapse = " - "))
+          spec$groups <- stats::setNames(defn, group_names)
+        }
+        break
+      }
+    }
+
+    cov_strat <- .stratifyCovariates(split = list(spec), filter = NULL)
+    group_levels <- levels(as.factor(cov_strat$split))
+
+    if (is.numeric(keep)) {
+      # Numeric indices: keep groups at these positions
+      keep_groups <- group_levels[keep]
+    } else {
+      # Character categories: match against group labels
+      keep_groups <- group_levels[grepl(paste(keep, collapse = "|"), group_levels)]
+    }
+
+    keep_ids <- cov_strat$id[cov_strat$split %in% keep_groups]
+    rand_eff_df <- rand_eff_df[rand_eff_df$id %in% keep_ids, ]
+  }
+
+  return(rand_eff_df)
+}
+
 .stratifyCovariates <- function(split = NULL, filter = NULL, splitbyid = FALSE) {
   ## Get covariates information ------------------------------------------------
   covData <- getCovariateInformation()$covariate

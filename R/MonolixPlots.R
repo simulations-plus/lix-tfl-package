@@ -130,28 +130,38 @@
 	}
 
 	#-----------------------------------------------------------------------------
-	# Stratification: add split, color, filter columns per id
-	has_stratify <- length(stratify) > 0
-	if (has_stratify) {
-		strat_split  <- stratify$split
-		strat_color  <- stratify$color
-		strat_filter <- stratify$filter
+	# Stratification: parse new API, add split/color columns per id
+	parsed <- .parseStratify(stratify)
+	has_stratify <- !is.null(parsed$split_specs) || !is.null(parsed$color_specs) ||
+		!is.null(parsed$filter_specs) || !is.null(parsed$ids)
 
-		# Get split + filter per id
-		covDataSplit <- .stratifyCovariates(split = strat_split, filter = strat_filter)
+	if (has_stratify) {
+		# Apply filter by group index/category
+		if (!is.null(parsed$filter_specs)) {
+			rand_eff_df <- .applyStratifyFilter(
+				rand_eff_df, parsed$filter_specs, stratify$groups)
+		}
+
+		# Apply individual selection
+		if (!is.null(parsed$ids)) {
+			rand_eff_df <- rand_eff_df[rand_eff_df$id %in% parsed$ids, ]
+		}
+
+		# Get split per id
+		covDataSplit <- .stratifyCovariates(split = parsed$split_specs, filter = NULL)
 
 		# Get color per id
-		covDataColor <- .stratifyCovariates(split = strat_color, filter = strat_filter, splitbyid = TRUE)
+		covDataColor <- .stratifyCovariates(split = parsed$color_specs, filter = NULL, splitbyid = TRUE)
 		covDataColor <- .renameColumns(covDataColor, "split", "color")
 
 		covData <- merge(covDataSplit, covDataColor)
 
-		# Apply filter: remove subjects
-		filtered_ids <- covData$id[covData$filter == TRUE]
-		rand_eff_df <- rand_eff_df[!rand_eff_df$id %in% filtered_ids, ]
-
 		# Merge split and color onto rand_eff_df
 		rand_eff_df <- merge(rand_eff_df, covData[, c("id", "split", "color")], by = "id")
+
+		# Ensure factor and drop levels with no remaining observations (e.g. filtered-out groups)
+		rand_eff_df$split <- droplevels(factor(rand_eff_df$split))
+		rand_eff_df$color <- droplevels(factor(rand_eff_df$color))
 	} else {
 		rand_eff_df$split <- factor("All")
 		rand_eff_df$color <- factor("All")
@@ -251,15 +261,26 @@
 #'   - variabilityLevel: In case of IOV, specifies which level to plot
 #'     (default NULL = ID + Occasions)
 #'   - ncol: number of columns in facet layout (default 2)
-#' @param stratify List with optional elements for stratification:
-#'   \itemize{
-#'     \item \code{split}: list of stratifier specs for faceting,
-#'       e.g. \code{list(list(name = "SEX"))} or
-#'       \code{list(list(name = "WEIGHT", breaks = c(0, 50, 100)))}
-#'     \item \code{color}: list of stratifier specs for coloring points
-#'       within each QQ plot
-#'     \item \code{filter}: list of filter specs to exclude subjects
-#'       before computation
+#' @param stratify List with the stratification arguments:
+#'   \describe{
+#'     \item{groups}{List of custom group definitions. Each element is a list with:
+#'       \code{name} (covariate name) and \code{definition} (for continuous: vector
+#'       of break values, e.g. \code{c(35, 65)}; for categorical: list of category
+#'       vectors, e.g. \code{list(c("study101"), c("study201","study202"))})}
+#'     \item{split}{Character vector of covariate names used to facet the plot,
+#'       e.g. \code{c("FORM","AGE")}}
+#'     \item{color}{Character vector of covariate names used for coloring,
+#'       e.g. \code{c("SEX")}}
+#'     \item{colors}{Character vector of colors to use, e.g.
+#'       \code{c("#2BB9DB","#DD6BD2")}. Takes precedence over defaults.}
+#'     \item{mergedSplits}{Logical. When TRUE and \code{split} is used, split
+#'       groups are displayed on the same plot with different colors instead of
+#'       separate subplots. The \code{color} argument is ignored. Default FALSE.}
+#'     \item{filter}{List of pairs: covariate name and vector of group indices
+#'       (continuous) or category names (categorical) to keep,
+#'       e.g. \code{list(list("AGE", c(1,3)), list("FORM", "ref"))}}
+#'     \item{individualSelection}{List with \code{ids}: character vector of
+#'       individual ids to display, e.g. \code{list(ids = c("101-01","101-02"))}}
 #'   }
 #' @param preferences List of visual preferences:
 #'   - point: list(color = "#4682B4", size = 1.5)
@@ -473,7 +494,12 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 	}
 
 	if (has_color_strat) {
-		p <- p + scale_colour_discrete(name = NULL)
+		strat_colors <- stratify$colors
+		if (!is.null(strat_colors) && length(strat_colors) >= length(unique(plot_data$color))) {
+			p <- p + scale_colour_manual(values = strat_colors, name = NULL)
+		} else {
+			p <- p + scale_colour_discrete(name = NULL)
+		}
 	}
 
 	return(p)
