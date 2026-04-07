@@ -4,7 +4,7 @@
 #' @param settings List with indivEstimate, level, and variabilityLevel
 #' @return List with plot_data (list per parameter) and metadata
 #' @keywords internal
-.prepareQQDataStandardizedRandomEffects <- function(parameters, settings, stratify = list()) {
+.prepareQQDataStandardizedRandomEffects <- function(parameters, settings, stratify = list(), parsed = NULL) {
 
 	#-----------------------------------------------------------------------------
 	# Get all variability levels from the project
@@ -130,8 +130,8 @@
 	}
 
 	#-----------------------------------------------------------------------------
-	# Stratification: parse new API, add split/color columns per id
-	parsed <- .parseStratify(stratify)
+	# Stratification: add split/color columns per id
+	if (is.null(parsed)) parsed <- .parseStratify(stratify)
 	has_stratify <- !is.null(parsed$split_specs) || !is.null(parsed$color_specs) ||
 		!is.null(parsed$filter_specs) || !is.null(parsed$ids)
 
@@ -172,8 +172,18 @@
 	pop_params <- getEstimatedPopulationParameters()
 
 	alpha <- 1 - settings$level
-	split_levels <- levels(rand_eff_df$split)
-	if (is.null(split_levels)) split_levels <- unique(rand_eff_df$split)
+
+	# Determine grouping variable for QQ computation:
+	# mergedSplits -> group by color (per-group CIs on same panel)
+	# otherwise    -> group by split (separate panels)
+	mergedSplits <- parsed$mergedSplits
+	if (mergedSplits) {
+		qq_group_col <- "color"
+	} else {
+		qq_group_col <- "split"
+	}
+	qq_group_levels <- levels(rand_eff_df[[qq_group_col]])
+	if (is.null(qq_group_levels)) qq_group_levels <- unique(rand_eff_df[[qq_group_col]])
 
 	#-----------------------------------------------------------------------------
 	# Build data list (one data frame per parameter x split group)
@@ -200,23 +210,25 @@
 		omega  <- pop_params[omega_name]
 		std_re <- rand_eff_df[[param]] / sqrt(omega)
 
-		# Compute QQ statistics per split group
-		per_split <- lapply(split_levels, function(s) {
-			mask <- rand_eff_df$split == s
+		# Compute QQ statistics per group (split or color when mergedSplits)
+		per_group <- lapply(qq_group_levels, function(g) {
+			mask <- rand_eff_df[[qq_group_col]] == g
 			std_re_group <- std_re[mask]
+			split_group  <- rand_eff_df$split[mask]
 			color_group  <- rand_eff_df$color[mask]
 
 			n_group <- length(std_re_group)
 			if (n_group < 2) {
 				warning(sprintf(
-					"Split group '%s' for parameter '%s' has fewer than 2 observations. Skipping.",
-					s, param), call. = FALSE)
+					"Group '%s' for parameter '%s' has fewer than 2 observations. Skipping.",
+					g, param), call. = FALSE)
 				return(NULL)
 			}
 
-			# Sort and carry color through
+			# Sort and carry split/color through
 			ord          <- order(std_re_group)
 			sorted_re    <- std_re_group[ord]
+			sorted_split <- split_group[ord]
 			sorted_color <- color_group[ord]
 
 			# Blom plotting positions for this group's n
@@ -229,7 +241,7 @@
 
 			data.frame(
 				parameter     = param,
-				split         = s,
+				split         = sorted_split,
 				color         = sorted_color,
 				theoretical_q = theoretical_q,
 				observed_q    = sorted_re,
@@ -238,7 +250,7 @@
 				stringsAsFactors = FALSE)
 		})
 
-		do.call(rbind, per_split)
+		do.call(rbind, per_group)
 	})
 
 	names(plot_data_list) <- parameters
@@ -373,8 +385,11 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 	}
 
 	#-----------------------------------------------------------------------------
+	# Parse stratification arguments
+	parsed <- .parseStratify(stratify)
+
 	# Prepare data using internal helper
-	qq_data <- .prepareQQDataStandardizedRandomEffects(parameters, settings, stratify)
+	qq_data <- .prepareQQDataStandardizedRandomEffects(parameters, settings, stratify, parsed)
 
 	#-----------------------------------------------------------------------------
 	# Combine data from all parameters into single long data frame for faceting
@@ -462,15 +477,28 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 
 	# Add confidence interval lines
 	if (settings$confidenceInterval) {
-		p <- p +
-			geom_line(aes(y        = ci_lower,
-										linetype = preferences$confidenceInterval$label),
-								color     = preferences$confidenceInterval$color,
-								linewidth = preferences$confidenceInterval$linewidth) +
-			geom_line(aes(y        = ci_upper,
-										linetype = preferences$confidenceInterval$label),
-								color     = preferences$confidenceInterval$color,
-								linewidth = preferences$confidenceInterval$linewidth)
+		if (parsed$mergedSplits && has_color_strat) {
+			# mergedSplits: per-group CIs colored to match their group
+			p <- p +
+				geom_line(aes(y        = ci_lower,
+											colour   = color,
+											linetype = preferences$confidenceInterval$label),
+									linewidth = preferences$confidenceInterval$linewidth) +
+				geom_line(aes(y        = ci_upper,
+											colour   = color,
+											linetype = preferences$confidenceInterval$label),
+									linewidth = preferences$confidenceInterval$linewidth)
+		} else {
+			p <- p +
+				geom_line(aes(y        = ci_lower,
+											linetype = preferences$confidenceInterval$label),
+									color     = preferences$confidenceInterval$color,
+									linewidth = preferences$confidenceInterval$linewidth) +
+				geom_line(aes(y        = ci_upper,
+											linetype = preferences$confidenceInterval$label),
+									color     = preferences$confidenceInterval$color,
+									linewidth = preferences$confidenceInterval$linewidth)
+		}
 	}
 
 	# Apply scales
