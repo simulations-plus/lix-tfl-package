@@ -4,7 +4,7 @@
 #' @param settings List with indivEstimate, level, and variabilityLevel
 #' @return List with plot_data (list per parameter) and metadata
 #' @keywords internal
-.prepareQQDataStandardizedRandomEffects <- function(parameters, settings) {
+.prepareQQDataStandardizedRandomEffects <- function(parameters, settings, stratify = list()) {
 
 	#-----------------------------------------------------------------------------
 	# Get all variability levels from the project
@@ -130,25 +130,43 @@
 	}
 
 	#-----------------------------------------------------------------------------
+	# Stratification: add split, color, filter columns per id
+	has_stratify <- length(stratify) > 0
+	if (has_stratify) {
+		strat_split  <- stratify$split
+		strat_color  <- stratify$color
+		strat_filter <- stratify$filter
+
+		# Get split + filter per id
+		covDataSplit <- .stratifyCovariates(split = strat_split, filter = strat_filter)
+
+		# Get color per id
+		covDataColor <- .stratifyCovariates(split = strat_color, filter = strat_filter, splitbyid = TRUE)
+		covDataColor <- .renameColumns(covDataColor, "split", "color")
+
+		covData <- merge(covDataSplit, covDataColor)
+
+		# Apply filter: remove subjects
+		filtered_ids <- covData$id[covData$filter == TRUE]
+		rand_eff_df <- rand_eff_df[!rand_eff_df$id %in% filtered_ids, ]
+
+		# Merge split and color onto rand_eff_df
+		rand_eff_df <- merge(rand_eff_df, covData[, c("id", "split", "color")], by = "id")
+	} else {
+		rand_eff_df$split <- factor("All")
+		rand_eff_df$color <- factor("All")
+	}
+
+	#-----------------------------------------------------------------------------
 	# Retrieve population parameters omegas to standardize random effects
 	pop_params <- getEstimatedPopulationParameters()
 
-	#-----------------------------------------------------------------------------
-	# Compute shared CI (same n for all parameters)
-	n     <- nrow(rand_eff_df)
 	alpha <- 1 - settings$level
-
-	lower_beta <- qbeta(alpha / 2,     1:n, n:1)
-	upper_beta <- qbeta(1 - alpha / 2, 1:n, n:1)
-	ci_lower   <- qnorm(lower_beta)
-	ci_upper   <- qnorm(upper_beta)
-
-	# Blom plotting positions and theoretical quantiles (same for all parameters)
-	p             <- ((1:n) - (3 / 8)) / (n + (1 / 4))
-	theoretical_q <- qnorm(p)
+	split_levels <- levels(rand_eff_df$split)
+	if (is.null(split_levels)) split_levels <- unique(rand_eff_df$split)
 
 	#-----------------------------------------------------------------------------
-	# Build data list (one data frame per parameter)
+	# Build data list (one data frame per parameter x split group)
 	plot_data_list <- lapply(parameters, function(param) {
 
 		# omega parameter name convention: omega_<param_suffix>
@@ -169,16 +187,48 @@
 				"Could not find population variance parameter '%s' for random effect '%s'.",
 				omega_name, param))
 		}
-		omega      <- pop_params[omega_name]
-		std_re     <- rand_eff_df[[param]] / sqrt(omega)
-		sorted_res <- sort(std_re)
+		omega  <- pop_params[omega_name]
+		std_re <- rand_eff_df[[param]] / sqrt(omega)
 
-		data.frame(
-			parameter     = param,
-			theoretical_q = theoretical_q,
-			observed_q    = sorted_res,
-			ci_lower      = ci_lower,
-			ci_upper      = ci_upper)
+		# Compute QQ statistics per split group
+		per_split <- lapply(split_levels, function(s) {
+			mask <- rand_eff_df$split == s
+			std_re_group <- std_re[mask]
+			color_group  <- rand_eff_df$color[mask]
+
+			n_group <- length(std_re_group)
+			if (n_group < 2) {
+				warning(sprintf(
+					"Split group '%s' for parameter '%s' has fewer than 2 observations. Skipping.",
+					s, param), call. = FALSE)
+				return(NULL)
+			}
+
+			# Sort and carry color through
+			ord          <- order(std_re_group)
+			sorted_re    <- std_re_group[ord]
+			sorted_color <- color_group[ord]
+
+			# Blom plotting positions for this group's n
+			p_group       <- ((1:n_group) - (3 / 8)) / (n_group + (1 / 4))
+			theoretical_q <- qnorm(p_group)
+
+			# CI bounds for this group's n
+			lower_beta <- qbeta(alpha / 2,     1:n_group, n_group:1)
+			upper_beta <- qbeta(1 - alpha / 2, 1:n_group, n_group:1)
+
+			data.frame(
+				parameter     = param,
+				split         = s,
+				color         = sorted_color,
+				theoretical_q = theoretical_q,
+				observed_q    = sorted_re,
+				ci_lower      = qnorm(lower_beta),
+				ci_upper      = qnorm(upper_beta),
+				stringsAsFactors = FALSE)
+		})
+
+		do.call(rbind, per_split)
 	})
 
 	names(plot_data_list) <- parameters
@@ -201,7 +251,16 @@
 #'   - variabilityLevel: In case of IOV, specifies which level to plot
 #'     (default NULL = ID + Occasions)
 #'   - ncol: number of columns in facet layout (default 2)
-#' @param stratify List, placeholder for future stratification (not yet implemented)
+#' @param stratify List with optional elements for stratification:
+#'   \itemize{
+#'     \item \code{split}: list of stratifier specs for faceting,
+#'       e.g. \code{list(list(name = "SEX"))} or
+#'       \code{list(list(name = "WEIGHT", breaks = c(0, 50, 100)))}
+#'     \item \code{color}: list of stratifier specs for coloring points
+#'       within each QQ plot
+#'     \item \code{filter}: list of filter specs to exclude subjects
+#'       before computation
+#'   }
 #' @param preferences List of visual preferences:
 #'   - point: list(color = "#4682B4", size = 1.5)
 #'   - identityLine: list(color = "#000000", linewidth = 0.8)
@@ -235,11 +294,11 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 
 	preferences <- modifyList(eval(default_preferences), preferences)
 	preferences$point              <- modifyList(eval(default_preferences)$point,
-																							 preferences$point              %||% list())
+																							 if (is.null(preferences$point)) list() else preferences$point)
 	preferences$identityLine       <- modifyList(eval(default_preferences)$identityLine,
-																							 preferences$identityLine       %||% list())
+																							 if (is.null(preferences$identityLine)) list() else preferences$identityLine)
 	preferences$confidenceInterval <- modifyList(eval(default_preferences)$confidenceInterval,
-																							 preferences$confidenceInterval %||% list())
+																							 if (is.null(preferences$confidenceInterval)) list() else preferences$confidenceInterval)
 
 	# Debugging: Uncomment to test with fixed values
 	# parameters = c("Cl", "V")
@@ -294,23 +353,23 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 
 	#-----------------------------------------------------------------------------
 	# Prepare data using internal helper
-	qq_data <- .prepareQQDataStandardizedRandomEffects(parameters, settings)
+	qq_data <- .prepareQQDataStandardizedRandomEffects(parameters, settings, stratify)
 
 	#-----------------------------------------------------------------------------
 	# Combine data from all parameters into single long data frame for faceting
 	plot_data <- do.call(rbind, qq_data$plot_data_list)
 
+	has_split <- length(unique(plot_data$split)) > 1
+	has_color_strat <- length(unique(plot_data$color)) > 1
+
 	#-----------------------------------------------------------------------------
 	# Build legend configuration (only for visible elements)
-	legend_colors    <- c()
 	legend_linetypes <- c()
 
 	if (settings$identityLine) {
-		legend_colors[preferences$identityLine$label]    <- preferences$identityLine$color
 		legend_linetypes[preferences$identityLine$label] <- "solid"
 	}
 	if (settings$confidenceInterval) {
-		legend_colors[preferences$confidenceInterval$label]    <- preferences$confidenceInterval$color
 		legend_linetypes[preferences$confidenceInterval$label] <- preferences$confidenceInterval$linetype
 	}
 
@@ -330,18 +389,37 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 	}
 
 	#-----------------------------------------------------------------------------
-	# Create plot with facet_wrap
+	# Create plot
 	base_theme <- if (settings$grid) theme_minimal() else theme_classic()
 
-	p <- ggplot(plot_data, aes(x = theoretical_q, y = observed_q)) +
-		geom_point(aes(shape = "Empirical quantiles"),
-							 color = preferences$point$color,
-							 size  = preferences$point$size) +
-		facet_wrap(~ parameter, ncol = settings$ncol, scales = "free",
-							 strip.position = "bottom") +
+	p <- ggplot(plot_data, aes(x = theoretical_q, y = observed_q))
+
+	# Points: use color aesthetic when color stratification is active
+	if (has_color_strat) {
+		p <- p +
+			geom_point(aes(colour = color, shape = "Empirical quantiles"),
+								 size = preferences$point$size)
+	} else {
+		p <- p +
+			geom_point(aes(shape = "Empirical quantiles"),
+								 color = preferences$point$color,
+								 size  = preferences$point$size)
+	}
+
+	# Faceting: use facet_grid when split is active, otherwise facet_wrap by parameter
+	if (has_split) {
+		p <- p + facet_grid(split ~ parameter, scales = "free",
+												axes = "all", axis.labels = "all_y")
+	} else {
+		p <- p + facet_wrap(~ parameter, ncol = settings$ncol, scales = "free",
+												strip.position = "bottom",
+												axes = "all", axis.labels = "all_y")
+	}
+
+	p <- p +
 		labs(x        = "Theoretical quantiles",
 				 y        = "Emprirical quantiles of standardized random effects",
-				 color    = NULL,
+				 colour   = NULL,
 				 linetype = NULL,
 				 shape    = NULL) +
 		base_theme +
@@ -355,8 +433,8 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 	if (settings$identityLine) {
 		p <- p + geom_abline(
 			aes(intercept = 0, slope = 1,
-					color     = preferences$identityLine$label,
-					linetype  = preferences$identityLine$label),
+					linetype = preferences$identityLine$label),
+			color     = preferences$identityLine$color,
 			linewidth = preferences$identityLine$linewidth,
 			key_glyph = "path")
 	}
@@ -365,12 +443,12 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 	if (settings$confidenceInterval) {
 		p <- p +
 			geom_line(aes(y        = ci_lower,
-										color    = preferences$confidenceInterval$label,
 										linetype = preferences$confidenceInterval$label),
+								color     = preferences$confidenceInterval$color,
 								linewidth = preferences$confidenceInterval$linewidth) +
 			geom_line(aes(y        = ci_upper,
-										color    = preferences$confidenceInterval$label,
 										linetype = preferences$confidenceInterval$label),
+								color     = preferences$confidenceInterval$color,
 								linewidth = preferences$confidenceInterval$linewidth)
 	}
 
@@ -381,23 +459,21 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 			name   = NULL,
 			guide  = guide_legend(order = 1))
 
-	if (length(legend_colors) > 0) {
+	if (length(legend_linetypes) > 0) {
 		p <- p +
-			scale_color_manual(
-				values = legend_colors,
-				breaks = names(legend_colors),
-				name   = NULL) +
 			scale_linetype_manual(
 				values = legend_linetypes,
 				breaks = names(legend_linetypes),
 				name   = NULL,
-				guide  = "none") +
-			guides(
-				color = guide_legend(
+				guide  = guide_legend(
 					order = 2,
 					override.aes = list(
 						linewidth = unname(override_linewidths),
 						linetype  = unname(override_linetypes))))
+	}
+
+	if (has_color_strat) {
+		p <- p + scale_colour_discrete(name = NULL)
 	}
 
 	return(p)
