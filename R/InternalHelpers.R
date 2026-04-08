@@ -309,7 +309,7 @@ utils::globalVariables(c("."))
 		"P95"                 = "95th Percentile",
 		"N"                   = "N",
 		"Ntot"                = "N Total",
-		"Nobs"                = "N",
+		"Nobs"                = "n",
 		"Nmiss"               = "N Missing",
 		"p.value"             = "p-value",
 		"RSE"                 = "RSE (%)",

@@ -371,6 +371,97 @@
 }
 
 ##################################################################################
+#' Calculate Descriptive Statistics for Longitudinal Data
+#'
+#' @description
+#' A simple internal helper that calculates descriptive statistics from
+#' longitudinal data. Designed to be reusable across multiple table functions
+#' (tableNCAConcentration, tableNCAParameters, tableNCARatios, tableContinuousCovariateSummary).
+#'
+#' This function calculates raw numeric statistics only. Rounding and combined
+#' metrics (MeanSD, GeomCV, etc.) should be applied by the calling function.
+#'
+#' @param data Data frame in long format containing at minimum an ID column and a value column.
+#' @param value_col Character string specifying the name of the value column to summarize.
+#' @param id_col Character string specifying the name of the ID/subject column.
+#'   Used to calculate N (number of unique subjects) and SE (standard error).
+#' @param group_by Character vector or NULL specifying column names to group by.
+#'   Examples: `c("Time", "SEX")`, `c("Parameter")`, `NULL` for no grouping.
+#'
+#' @return A data frame with grouping columns (if any) and the following metrics:
+#'   N, Nobs, min, P05, Q1, mean, SD, SE, CV, median, Q3, P95, max,
+#'   geoMean, geoSD, geoCV, harmMean
+#'
+#' @keywords internal
+#'
+.calculateDescriptiveStats <- function(data,
+																			 value_col,
+																			 id_col,
+																			 group_by = NULL) {
+
+
+	# Validate inputs
+	if (!(value_col %in% names(data))) {
+		stop("Value column '", value_col, "' not found in input data.")
+	}
+	if (!is.null(id_col) && !(id_col %in% names(data))) {
+		stop("ID column '", id_col, "' not found in input data.")
+	}
+	if (!is.null(group_by)) {
+		missing_cols <- setdiff(group_by, names(data))
+		if (length(missing_cols) > 0) {
+			stop("Grouping columns not found in data: ", paste(missing_cols, collapse = ", "))
+		}
+	}
+
+	# Group and calculate all metrics
+	data %>%
+		dplyr::group_by(dplyr::across(dplyr::all_of(group_by))) %>%
+		dplyr::summarise(
+			N = if (!is.null(id_col)) dplyr::n_distinct(.data[[id_col]]) else dplyr::n(),
+			Nobs = dplyr::n(),
+			min = min(.data[[value_col]], na.rm = TRUE),
+			P05 = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE),
+			Q1 = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE),
+			mean = mean(.data[[value_col]], na.rm = TRUE),
+			SD = stats::sd(.data[[value_col]], na.rm = TRUE),
+			SE = if (!is.null(id_col)) {
+				sd_val <- stats::sd(.data[[value_col]], na.rm = TRUE)
+				n_subj <- dplyr::n_distinct(.data[[id_col]])
+				if (n_subj > 0 && !is.na(sd_val)) sd_val / sqrt(n_subj) else NA_real_
+			} else NA_real_,
+			CV = {
+				m <- mean(.data[[value_col]], na.rm = TRUE)
+				s <- stats::sd(.data[[value_col]], na.rm = TRUE)
+				if (!is.na(m) && m != 0 && !is.na(s)) 100 * s / m else NA_real_
+			},
+			median = stats::median(.data[[value_col]], na.rm = TRUE),
+			Q3 = stats::quantile(.data[[value_col]], 0.75, na.rm = TRUE),
+			P95 = stats::quantile(.data[[value_col]], 0.95, na.rm = TRUE),
+			max = max(.data[[value_col]], na.rm = TRUE),
+			geoMean = {
+				vals <- .data[[value_col]][.data[[value_col]] > 0 & is.finite(.data[[value_col]])]
+				if (length(vals) > 0) exp(mean(log(vals))) else NA_real_
+			},
+			geoSD = {
+				vals <- .data[[value_col]][.data[[value_col]] > 0 & is.finite(.data[[value_col]])]
+				if (length(vals) > 1) exp(stats::sd(log(vals))) else NA_real_
+			},
+			geoCV = {
+				vals <- .data[[value_col]][.data[[value_col]] > 0 & is.finite(.data[[value_col]])]
+				sdlog <- if (length(vals) > 1) stats::sd(log(vals)) else NA_real_
+				if (!is.na(sdlog)) 100 * sqrt(exp(sdlog^2) - 1) else NA_real_
+			},
+			harmMean = {
+				vals <- .data[[value_col]][.data[[value_col]] > 0 & is.finite(.data[[value_col]])]
+				if (length(vals) > 0) length(vals) / sum(1 / vals) else NA_real_
+			},
+			.groups = "drop"
+		) %>%
+		as.data.frame()
+}
+
+##################################################################################
 #' combinedStats
 #'
 #' Creates combined display metrics by concatenating mean with SD and geometric
@@ -1173,6 +1264,14 @@
 	# ==========================================================================
 	# 6. STACK WITH SECTION MARKERS AND SORT
 	# ==========================================================================
+	# Convert covariates to character to prevent list-column issues during rbind
+	if (!is.null(covariates) && length(covariates) > 0) {
+		summary_pivoted <- summary_pivoted %>%
+			dplyr::mutate(dplyr::across(dplyr::all_of(covariates), as.character))
+		indiv_wide <- indiv_wide %>%
+			dplyr::mutate(dplyr::across(dplyr::all_of(covariates), as.character))
+	}
+
 	# Add Section column and stack (works with or without covariates)
 	summary_pivoted$Section <- "SUMMARY"
 	indiv_wide$Section      <- "INDIVIDUAL"

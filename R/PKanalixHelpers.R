@@ -40,6 +40,14 @@
 #'   same length as `covariates`. If `NULL` (default), the original covariate names are
 #'   used. These labels appear in column headers when `stratify_columns = TRUE`.
 #'
+#' @param use_wide_format Logical. If `TRUE` (default), returns a "wide" table format where
+#'   time points appear as columns and statistics appear as rows (one row per statistic).
+#'   Layout: `Statistic | [Covariates] | Time_0 | Time_1 | Time_2 | ...`
+#'   If `FALSE`, returns a "long" table format where time points appear as rows and
+#'   statistics appear as columns (one column per statistic).
+#'   Layout: `Time | [Covariates] | mean | SD | median | ...`
+#'   Note: `stratify_columns = TRUE` is only compatible with `use_wide_format = FALSE`.
+#'
 #' @param include_id Logical. If `TRUE`, adds individual subject IDs and their
 #'   concentration values at each time point below the summary statistics. When
 #'   stratified by covariates, individual IDs are grouped by their covariate values.
@@ -94,7 +102,8 @@
 #' # With individual concentrations included
 #' # tableNCAConcentration(
 #' #   include_id = TRUE,
-#' #   metrics = c("mean", "SD")
+#' #   metrics = c("mean", "SD"),
+#' #   use_wide_format = FALSE
 #' # )
 #'
 tableNCAConcentration <- function(projectFile      = NULL,
@@ -103,16 +112,17 @@ tableNCAConcentration <- function(projectFile      = NULL,
 																	metrics          = NULL,
 																	stratify_columns = FALSE,
 																	covariate_labels = NULL,
+																	use_wide_format  = TRUE,
 																	include_id       = FALSE,
 																	roundDigits      = 3,
 																	roundMethod      = c("monolix", "signif", "none"),
 																	prettyLabels     = TRUE) {
 
+
 	roundMethod <- match.arg(roundMethod)
 
 	# ==========================================================================
-	# 1. VALIDATION & SETUP
-	# ==========================================================================
+	# VALIDATION & SETUP
 
 	.checkProjectFile(projectFile, "pkanalix")
 	.ensureProjectLoaded(projectFile)
@@ -125,134 +135,122 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
 	covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
 
+	# Validate: stratify_columns only works with long format
+	if (stratify_columns && use_wide_format) {
+		warning("stratify_columns = TRUE is only compatible with use_wide_format = FALSE (long format). Setting stratify_columns = FALSE")
+		stratify_columns <- FALSE
+	}
 	# Validate include_id parameter
 	if (include_id && stratify_columns) {
 		warning("include_id = TRUE is not compatible with stratify_columns = TRUE. Setting include_id to FALSE.")
 		include_id <- FALSE
 	}
-	# ==========================================================================
-	# Fetch Stratified Data (if covariates exist)
-	if (!is.null(covariates)) {
-		raw_strat <- .prepareNCASummaryStats(
-			project = projectFile, NCAparams = NULL, covariates = covariates, roundDigits = roundDigits, roundMethod = roundMethod,
-			units = FALSE, aliases = FALSE, by_time = TRUE, useNominalTime = useNominalTime)
-	} else {
-		raw_strat <- NULL
-	}
-
-	# Fetch Overall Data (Always needed if we want an Overall column or if no covariates exist)
-	raw_overall <- .prepareNCASummaryStats(
-		project = projectFile, NCAparams = NULL, covariates = NULL, roundDigits = roundDigits, roundMethod = roundMethod,
-		units = FALSE, aliases = FALSE, by_time = TRUE, useNominalTime = useNominalTime)
-
-	if (is.null(raw_overall) && is.null(raw_strat)) stop("No NCA results available.")
-
-	# Define Time Column
-	time_col <- "Time"
 
 	# ==========================================================================
-	# TABLE FORMATTING
+	# GET RAW INDIVIDUAL DATA
+
+	# Get individual concentration data using listingNCAConcentration
+	# Don't apply rounding yet (will be done after calculating stats)
+	raw_data <- listingNCAConcentration(
+		projectFile    = NULL, # project already loaded
+		covariates     = covariates,
+		useNominalTime = useNominalTime,
+		roundDigits    = NULL,
+		roundMethod    = "none")
+
+	# Determine which time column to use for grouping
+	time_col <- if ("NominalTime" %in% names(raw_data)) "NominalTime" else "ActualTime"
+
+	# ==========================================================================
+	# CALCULATE DESCRIPTIVE STATISTICS
+
+	# For stratified analysis, calculate stats separately by covariates
+	# For non-stratified, calculate overall stats (may still include covariates as grouping)
 	if (stratify_columns && !is.null(covariates)) {
-		# ----------------------------------------------------------------------
-		# CASE: Stratification (Vertical columns for covariates + Overall)
-		# ----------------------------------------------------------------------
+		# STRATIFIED CASE: Calculate stats for each covariate combination
+		group_by_vars <- c(time_col, covariates)
+
+		summary_stats <- .calculateDescriptiveStats(
+			data      = raw_data,
+			value_col = "UsedConc",  # Use the concentration values from getPointsIncludedForLambdaZ
+			id_col    = "id",
+			group_by  = group_by_vars)
+
+		# Apply rounding to summary_stats
+		summary_stats <- .round_num(
+			to_round        = summary_stats,
+			digits          = roundDigits,
+			rounding_method = roundMethod,
+			exclude         = c(time_col, covariates))
+
+		# Add combined metrics to summary_stats
+		summary_stats <- .combinedStats(summary_stats)
+
+		# Also calculate overall stats (no covariate grouping)
+		overall_stats <- .calculateDescriptiveStats(
+			data      = raw_data,
+			value_col = "UsedConc",
+			id_col    = "id",
+			group_by  = time_col)  # Only group by time
+
+		# Apply rounding to overall_stats
+		overall_stats <- .round_num(
+			to_round        = overall_stats,
+			digits          = roundDigits,
+			rounding_method = roundMethod,
+			exclude         = time_col)
+
+		# Add combined metrics to overall_stats
+		overall_stats <- .combinedStats(overall_stats)
 
 		# Validate Metrics existence
-		available_cols   <- names(raw_strat)
+		available_cols   <- names(summary_stats)
 		descriptor_cols  <- c(time_col, covariates, "Nobs")
 		selected_metrics <- .validateAndSelectMetrics(available_cols, metrics, descriptor_cols)
 
-		# Prepare Labels
-		if (is.null(covariate_labels)) labels <- covariates else labels <- covariate_labels
+		# Use internal helper to build stratified table
+		final_df <- .buildStratifiedTable(
+			summary_stats    = summary_stats,
+			overall_stats    = overall_stats,
+			covariates       = covariates,
+			selected_metrics = selected_metrics,
+			param_col        = time_col,
+			covariate_labels = covariate_labels)
 
-		# Process Stratified Data (Create Header)
-		# IMPORTANT: strictly select only what we need to avoid dupes
-		df_prepared <- raw_strat %>%
-			dplyr::select(dplyr::all_of(time_col), dplyr::all_of(covariates), dplyr::all_of(selected_metrics)) %>%
-			dplyr::rowwise() %>%
-			dplyr::mutate(header = {
-				values <- dplyr::c_across(dplyr::all_of(covariates))
-				# Logic: "Label=Value"
-				pieces <- paste0(labels, "=", as.character(values))
-				paste(pieces, collapse = "\n")
-			}) %>%
-			dplyr::ungroup()
-
-		# 4. Process Overall Data
-		df_overall_clean <- raw_overall %>%
-			dplyr::select(dplyr::all_of(time_col), dplyr::all_of(selected_metrics))
-
-
-		# 5. PIVOT LOGIC
-		#    Distinguish between Single Metric vs. Multiple Metrics
-
-		if (length(selected_metrics) > 1) {
-			# MULTIPLE METRICS:
-			# Target Format: Time | Statistic | Stratum1 | Stratum2 | ... | Overall
-
-			# Pivot Stratified
-			df_strat_wide <- df_prepared %>%
-				dplyr::select(dplyr::all_of(time_col), header, dplyr::all_of(selected_metrics)) %>%
-				dplyr::mutate(dplyr::across(dplyr::all_of(selected_metrics), as.character)) %>%
-				tidyr::pivot_longer(cols = dplyr::all_of(selected_metrics), names_to = "Statistic", values_to = "Value") %>%
-				tidyr::pivot_wider(names_from = header, values_from = Value)
-
-			# Pivot Overall
-			df_overall_long <- df_overall_clean %>%
-				dplyr::mutate(dplyr::across(dplyr::all_of(selected_metrics), as.character)) %>%
-				tidyr::pivot_longer(cols = dplyr::all_of(selected_metrics), names_to = "Statistic", values_to = "Overall")
-
-			# Join
-			final_df <- df_strat_wide %>%
-				dplyr::left_join(df_overall_long, by = c(time_col, "Statistic"))
-		} else {
-			# SINGLE METRIC:
-			# Target Format: Time | Stratum1 | Stratum2 | ... | Overall
-			# (No "Statistic" column needed, or kept implicitly if desired, but typically removed for single metric tables)
-
-			metric_name <- selected_metrics[1]
-
-			# Pivot Stratified
-			df_strat_wide <- df_prepared %>%
-				dplyr::select(dplyr::all_of(time_col), header, dplyr::all_of(metric_name)) %>%
-				tidyr::pivot_wider(names_from = header, values_from = dplyr::all_of(metric_name))
-
-			# Prepare Overall
-			df_overall_renamed <- df_overall_clean %>%
-				dplyr::rename(Overall = dplyr::all_of(metric_name))
-
-			# Join
-			final_df <- df_strat_wide %>%
-				dplyr::left_join(df_overall_renamed, by = time_col)
-		}
 	} else {
 		# ----------------------------------------------------------------------
 		# CASE: No Stratification (Just Overall / List by Time)
-		# ----------------------------------------------------------------------
 
-		# Use raw_strat if covariates present (but stratify=FALSE), else raw_overall
-		source_df <- if (!is.null(covariates)) raw_strat else raw_overall
+		# Calculate stats with covariates as columns (if present)
+		group_by_vars <- if (!is.null(covariates)) c(time_col, covariates) else time_col
 
-		descriptor_cols <- c(time_col, covariates) # Keep covariates as columns on the left
-		selected_metrics <- .validateAndSelectMetrics(names(source_df), metrics, descriptor_cols)
+		summary_stats <- .calculateDescriptiveStats(
+			data      = raw_data,
+			value_col = "UsedConc",
+			id_col    = "id",
+			group_by  = group_by_vars)
+
+		# Apply rounding to numeric columns (exclude time and covariates)
+		summary_stats <- .round_num(
+			to_round        = summary_stats,
+			digits          = roundDigits,
+			rounding_method = roundMethod,
+			exclude         = c(time_col, covariates))
+
+		# Add MeanSD, GeomCV, GeomSD columns
+		summary_stats <- .combinedStats(summary_stats)
+
+		# Validate and select metrics
+		descriptor_cols  <- c(time_col, covariates)
+		selected_metrics <- .validateAndSelectMetrics(names(summary_stats), metrics, descriptor_cols)
 
 		# Filter columns
-		cols_to_keep <- intersect(c(descriptor_cols, selected_metrics), names(source_df))
-		final_df <- source_df[, cols_to_keep, drop = FALSE]
-
-		# Optional: If multiple metrics requested but stratify=FALSE,
-		# data is usually wide (Metric1, Metric2 columns).
-		# If you want "Statistic" column stacking, add pivot here.
-		# Assuming standard behavior is wide for simple lists:
-		if (length(selected_metrics) > 1) {
-			# Optional: Pivot to long format "Statistic" if preferred for non-stratified too
-			# final_df <- final_df %>%
-			#   tidyr::pivot_longer(cols=dplyr::all_of(selected_metrics), names_to="Statistic", values_to="Value")
-		}
+		cols_to_keep <- intersect(c(descriptor_cols, selected_metrics), names(summary_stats))
+		final_df     <- summary_stats[, cols_to_keep, drop = FALSE]
 	}
 
 	# ==========================================================================
-	# 4. ADD INDIVIDUAL IDs OR APPLY FORMATTING
+	# ADD INDIVIDUAL IDs OR APPLY FORMATTING
 	if (include_id && !stratify_columns) {
 		# Pivot and add individual concentration data
 		final_df <- .addIndividualsNCAConcentration(
@@ -320,7 +318,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 		}
 
 		# Sort by covariates (if present), then by Time
-		if (!is.null(covariates) && length(covariates) > 0) {
+		if (!stratify_columns && !is.null(covariates) && length(covariates) > 0) {
 			final_df <- final_df %>%
 				dplyr::arrange(dplyr::across(dplyr::all_of(covariates)),
 											 suppressWarnings(as.numeric(!!rlang::sym(time_col))))
@@ -712,7 +710,8 @@ tableNCARatios <- function(projectFile      = NULL,
 		}
 
 		# Summarize stratified data
-		summary_stats <- .summarizeStats(
+		# summary_stats <- .summarizeStats(
+		summary_stats <- .calculateDescriptiveStats(
 			df         = long_df,
 			group_vars = c(covariates, "Parameter"),
 			value_col  = "Ratio",
@@ -742,7 +741,8 @@ tableNCARatios <- function(projectFile      = NULL,
 			descriptors    = descriptor_cols)
 
 		# Get overall stats
-		overall_stats <- .summarizeStats(
+		# overall_stats <- .summarizeStats(
+		overall_stats <- .calculateDescriptiveStats()
 			df         = long_df,
 			group_vars = "Parameter",
 			value_col  = "Ratio",
