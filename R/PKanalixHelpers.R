@@ -121,6 +121,17 @@ tableNCAConcentration <- function(projectFile      = NULL,
 
 	roundMethod <- match.arg(roundMethod)
 
+	# projectFile = prj2
+	# covariates = "TREAT"
+	# useNominalTime = TRUE
+	# metrics = c("mean", "geoMean")
+	# stratify_columns = FALSE
+	# covariate_labels = NULL
+	# use_wide_format  = TRUE
+	# include_id = TRUE
+	# roundDigits = 4
+	# roundMethod = "signif"
+
 	# ==========================================================================
 	# VALIDATION & SETUP
 
@@ -140,7 +151,12 @@ tableNCAConcentration <- function(projectFile      = NULL,
 		warning("stratify_columns = TRUE is only compatible with use_wide_format = FALSE (long format). Setting stratify_columns = FALSE")
 		stratify_columns <- FALSE
 	}
-	# Validate include_id parameter
+	# Validate combination of include_id and use_wide_format setting
+	if (include_id && !use_wide_format) {
+		warning("include_id = TRUE only works with use_wide_format = TRUE. Setting include_id to FALSE.")
+		include_id <- FALSE
+	}
+	# Validate include_id and stratify_columns setting
 	if (include_id && stratify_columns) {
 		warning("include_id = TRUE is not compatible with stratify_columns = TRUE. Setting include_id to FALSE.")
 		include_id <- FALSE
@@ -219,7 +235,8 @@ tableNCAConcentration <- function(projectFile      = NULL,
 
 	} else {
 		# ----------------------------------------------------------------------
-		# CASE: No Stratification (Just Overall / List by Time)
+		# CASE: No Stratification
+		# ----------------------------------------------------------------------
 
 		# Calculate stats with covariates as columns (if present)
 		group_by_vars <- if (!is.null(covariates)) c(time_col, covariates) else time_col
@@ -247,84 +264,112 @@ tableNCAConcentration <- function(projectFile      = NULL,
 		# Filter columns
 		cols_to_keep <- intersect(c(descriptor_cols, selected_metrics), names(summary_stats))
 		final_df     <- summary_stats[, cols_to_keep, drop = FALSE]
-	}
 
-	# ==========================================================================
-	# ADD INDIVIDUAL IDs OR APPLY FORMATTING
-	if (include_id && !stratify_columns) {
-		# Pivot and add individual concentration data
-		final_df <- .addIndividualsNCAConcentration(
-			summary_stats  = final_df,
-			covariates     = covariates,
-			useNominalTime = useNominalTime,
-			roundDigits    = roundDigits,
-			roundMethod    = roundMethod)
+		# ==========================================================================
+		# FORMAT: WIDE vs LONG
+		# ==========================================================================
 
-		# Apply pretty labels to the pivoted table (time columns + Statistic column)
-		if (isTRUE(prettyLabels)) {
-			# Get time columns (numeric column names)
-			time_cols <- setdiff(names(final_df), c("Statistic", "Section", covariates))
+		if (use_wide_format) {
+			# ======================================================================
+			# WIDE FORMAT: Statistic | [Covariates] | Time_0 | Time_1 | Time_2 | ...
+			# ======================================================================
 
-			# Apply pretty labels to time columns
-			if (length(time_cols) > 0) {
-				dummy_time        <- as.data.frame(matrix(NA, nrow = 1, ncol = length(time_cols)))
-				names(dummy_time) <- time_cols
-				dummy_time        <- .prettyLabels(dummy_time)
-				time_map          <- setNames(names(dummy_time), time_cols)
-				names(final_df)[names(final_df) %in% time_cols] <- time_map[names(final_df)[names(final_df) %in% time_cols]]
-			}
+			# Rename time column to "Time" for consistent handling
+			names(final_df)[names(final_df) == time_col] <- "Time"
+			time_col_name <- "Time"
 
-			# Apply pretty labels to Statistic column (for metrics only, not IDs)
-			if ("Statistic" %in% names(final_df) && "Section" %in% names(final_df)) {
-				# Ensure Statistic is a character vector (not a list-column)
-				final_df$Statistic <- as.character(unlist(final_df$Statistic))
+			# Identify metric columns (everything except Time and covariates)
+			stat_cols <- setdiff(names(final_df), c("Time", covariates))
 
-				# Get unique metric names (from SUMMARY section only)
-				summary_metrics <- unique(final_df$Statistic[final_df$Section == "SUMMARY"])
-
-				# Create mapping for metrics
-				dummy_metrics        <- as.data.frame(matrix(NA, nrow = 1, ncol = length(summary_metrics)))
-				names(dummy_metrics) <- summary_metrics
-				dummy_metrics        <- .prettyLabels(dummy_metrics)
-				metric_map           <- setNames(names(dummy_metrics), summary_metrics)
-
-				# Apply only to SUMMARY rows
-				final_df$Statistic[final_df$Section == "SUMMARY"] <- metric_map[final_df$Statistic[final_df$Section == "SUMMARY"]]
-			}
-		}
-
-		# Set table attributes for print_table_flex
-		attr(final_df, "table_type") <- "concentration"
-		attr(final_df, "format")     <- "wide"
-
-	} else {
-		# No include_id: apply standard formatting and sorting
-
-		# Apply pretty labels
-		if (isTRUE(prettyLabels)) {
-			final_df <- .prettyLabels(final_df)
-
-			# Apply pretty labels to "Statistic" content if it exists
-			if ("Statistic" %in% names(final_df)) {
-				curr_metrics <- unique(final_df$Statistic)
-				# Create dummy to map labels
-				dummy_df <- as.data.frame(matrix(NA, nrow = 1, ncol = length(curr_metrics)))
-				names(dummy_df) <- curr_metrics
-				dummy_df <- .prettyLabels(dummy_df)
-				metric_map <- setNames(names(dummy_df), curr_metrics)
-
-				final_df$Statistic <- metric_map[final_df$Statistic]
-			}
-		}
-
-		# Sort by covariates (if present), then by Time
-		if (!stratify_columns && !is.null(covariates) && length(covariates) > 0) {
+			# Convert all metric columns to character (handles mixed numeric/character like MeanSD)
 			final_df <- final_df %>%
-				dplyr::arrange(dplyr::across(dplyr::all_of(covariates)),
-											 suppressWarnings(as.numeric(!!rlang::sym(time_col))))
+				dplyr::mutate(dplyr::across(dplyr::all_of(stat_cols), as.character))
+
+			# Pivot longer (stack metrics), then wider (time as columns)
+			final_df <- final_df %>%
+				tidyr::pivot_longer(
+					cols      = dplyr::all_of(stat_cols),
+					names_to  = "Statistic",
+					values_to = "Value") %>%
+				dplyr::filter(!is.na(Time) & Time != "") %>%  # Remove empty time values
+				tidyr::pivot_wider(
+					names_from  = Time,
+					values_from = Value)
+
+			# ----------------------------------------------------------------------
+			# Add individual IDs if requested
+			# ----------------------------------------------------------------------
+			if (include_id) {
+				final_df <- .addIndividuals(
+					summary_stats  = final_df,
+					covariates     = covariates,
+					resultType     = "ncaConcentration",
+					params         = NULL,
+					roundDigits    = roundDigits,
+					roundMethod    = roundMethod,
+					useNominalTime = useNominalTime)
+			}
+
+			# ----------------------------------------------------------------------
+			# Apply pretty labels for wide format
+			# ----------------------------------------------------------------------
+			if (isTRUE(prettyLabels)) {
+				# Get time columns (numeric column names, excluding Statistic, Section, and covariates)
+				exclude_cols <- c("Statistic", "Section", covariates)
+				time_cols <- setdiff(names(final_df), exclude_cols)
+
+				# Apply "Time = " prefix to time columns
+				if (length(time_cols) > 0) {
+					time_map <- setNames(paste0("Time = ", time_cols), time_cols)
+					cols_to_rename <- intersect(time_cols, names(final_df))
+					names(final_df)[names(final_df) %in% cols_to_rename] <- time_map[cols_to_rename]
+				}
+
+				# Apply pretty labels to Statistic column content
+				if ("Statistic" %in% names(final_df)) {
+					# Only apply to metrics (SUMMARY section if Section exists), not to individual IDs
+					if ("Section" %in% names(final_df)) {
+						summary_metrics <- unique(final_df$Statistic[final_df$Section == "SUMMARY"])
+					} else {
+						summary_metrics <- unique(final_df$Statistic)
+					}
+
+					# Create mapping for metrics
+					dummy_df <- as.data.frame(matrix(NA, nrow = 1, ncol = length(summary_metrics)))
+					names(dummy_df) <- summary_metrics
+					dummy_df <- .prettyLabels(dummy_df)
+					metric_map <- setNames(names(dummy_df), summary_metrics)
+
+					# Apply to appropriate rows
+					if ("Section" %in% names(final_df)) {
+						final_df$Statistic[final_df$Section == "SUMMARY"] <-
+							metric_map[final_df$Statistic[final_df$Section == "SUMMARY"]]
+					} else {
+						final_df$Statistic <- metric_map[final_df$Statistic]
+					}
+				}
+			}
+
+			# Set table attributes for print_table_flex
+			attr(final_df, "table_type") <- "concentration"
+			attr(final_df, "format")     <- "wide"
+
 		} else {
-			# Sort by Time only if no covariates
-			if (time_col %in% names(final_df)) {
+			# ======================================================================
+			# LONG FORMAT: Time | [Covariates] | mean | SD | median | ...
+			# ======================================================================
+			# Data is already in long format, just apply pretty labels and sorting
+
+			if (isTRUE(prettyLabels)) {
+				final_df <- .prettyLabels(final_df)
+			}
+
+			# Sort by covariates (if present and not stratified), then by Time
+			if (!stratify_columns && !is.null(covariates) && length(covariates) > 0) {
+				final_df <- final_df %>%
+					dplyr::arrange(dplyr::across(dplyr::all_of(covariates)),
+												 suppressWarnings(as.numeric(!!rlang::sym(time_col))))
+			} else if (time_col %in% names(final_df)) {
 				final_df <- final_df %>%
 					dplyr::arrange(suppressWarnings(as.numeric(!!rlang::sym(time_col))))
 			}
@@ -332,6 +377,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	}
 
 	return(as.data.frame(final_df))
+
 
 }
 
@@ -459,14 +505,20 @@ tableNCAParameters <- function(projectFile      = NULL,
 	covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
 	# Validate set parameters
 	.validateNCAParametersSelection(NCAparams, ratio = FALSE)
-	# Validate include_id parameter
+
+	# Validate: stratify_columns only works with long format
+	if (stratify_columns && use_wide_format) {
+		warning("stratify_columns = TRUE is only compatible with use_wide_format = FALSE (long format). Setting stratify_columns = FALSE")
+		stratify_columns <- FALSE
+	}
+	# Validate combination of include_id and use_wide_format setting
 	if (include_id && use_wide_format) {
-		warning("include_id = TRUE only works with use_wide_format = FALSE. Setting include_id to FALSE.")
+		warning("include_id = TRUE only works with use_wide_format = TRUE. Setting include_id to FALSE.")
 		include_id <- FALSE
 	}
-
+	# Validate include_id and stratify_columns setting
 	if (include_id && stratify_columns) {
-		warning("include_id = TRUE is not yet supported with stratify_columns = TRUE. Setting include_id to FALSE.")
+		warning("include_id = TRUE is not compatible with stratify_columns = TRUE. Setting include_id to FALSE.")
 		include_id <- FALSE
 	}
 
@@ -559,10 +611,11 @@ tableNCAParameters <- function(projectFile      = NULL,
 	# ADD INDIVIDUAL IDs (if requested and use_wide_format = FALSE)
 
 	if (!use_wide_format && include_id) {
-		summary_stats <- .addIndividualsNCAParameters(
+		summary_stats <- .addIndividuals(
 			summary_stats = summary_stats,
 			covariates    = covariates,
-			NCAparams     = NCAparams,
+			resultType    = "ncaParameters",
+			params        = NCAparams,
 			roundDigits   = roundDigits,
 			roundMethod   = roundMethod,
 			units         = units,
@@ -573,14 +626,18 @@ tableNCAParameters <- function(projectFile      = NULL,
 	# SORT BY COVARIATES (for vertical tables with numeric-valued categorical covariates)
 
 	if (!use_wide_format && !stratify_columns && !is.null(covariates) && length(covariates) > 0) {
-		summary_stats <- summary_stats %>%
-			dplyr::arrange(dplyr::across(
-				dplyr::all_of(covariates),
-				~{
-					num <- suppressWarnings(as.numeric(.x))
-					if(all(is.na(num))) .x else num
-				}
-			))
+		# Only sort if Section doesn't exist
+		# (if Section exists, .addIndividualsNCAParameters() already set correct order)
+		if (!"Section" %in% names(summary_stats)) {
+			summary_stats <- summary_stats %>%
+				dplyr::arrange(dplyr::across(
+					dplyr::all_of(covariates),
+					~{
+						num <- suppressWarnings(as.numeric(.x))
+						if(all(is.na(num))) .x else num
+					}
+				))
+		}
 	}
 
 	# ==========================================================================
@@ -647,9 +704,11 @@ tableNCARatios <- function(projectFile      = NULL,
 													 ratioParams      = NULL,
 													 metrics          = NULL,
 													 use_wide_format  = TRUE,
+													 include_id       = FALSE,
 													 roundDigits      = 3,
 													 roundMethod      = c("monolix", "signif", "none"),
 													 prettyLabels     = TRUE) {
+
 	roundMethod <- match.arg(roundMethod)
 
 	# ==========================================================================
@@ -668,10 +727,26 @@ tableNCARatios <- function(projectFile      = NULL,
 	# Validate set parameters
 	.validateNCAParametersSelection(ratioParams, ratio = TRUE)  # Early validation
 
+	# Validate: stratify_columns only works with long format
+	if (stratify_columns && use_wide_format) {
+		warning("stratify_columns = TRUE is only compatible with use_wide_format = FALSE (long format). Setting stratify_columns = FALSE")
+		stratify_columns <- FALSE
+	}
+	# Validate combination of include_id and use_wide_format setting
+	if (include_id && use_wide_format) {
+		warning("include_id = TRUE only works with use_wide_format = FALSE. Setting include_id to FALSE.")
+		include_id <- FALSE
+	}
+	# Validate include_id and stratify_columns setting
+	if (include_id && stratify_columns) {
+		warning("include_id = TRUE is not compatible with stratify_columns = TRUE. Setting include_id to FALSE.")
+		include_id <- FALSE
+	}
+
 	ratio_info <- lixoftConnectors::getNCARatios()
 	ratio_cols <- names(ratio_info)
 
-	# Determine which ratio columns to pivot (ADD THIS BLOCK)
+	# Determine which ratio columns to pivot
 	if (!is.null(ratioParams)) {
 		# Pivot only requested parameters (already validated)
 		cols_to_pivot <- intersect(ratioParams, ratio_cols)
@@ -697,12 +772,6 @@ tableNCARatios <- function(projectFile      = NULL,
 	# SUMMARIZE & FORMAT
 
 	if (stratify_columns && !is.null(covariates)) {
-		# -----------------------------------------------------------------------
-		# CASE: Stratified columns (covariates as column headers with Overall)
-		if (!use_wide_format) {
-			message("Note: stratify_columns=TRUE uses a different table format. The 'use_wide_format' argument is ignored.")
-		}
-
 		# Default to GeomCV for stratified tables if no metrics specified
 		if (is.null(metrics)) {
 			metrics <- "GeomCV"
@@ -710,13 +779,11 @@ tableNCARatios <- function(projectFile      = NULL,
 		}
 
 		# Summarize stratified data
-		# summary_stats <- .summarizeStats(
 		summary_stats <- .calculateDescriptiveStats(
-			df         = long_df,
-			group_vars = c(covariates, "Parameter"),
-			value_col  = "Ratio",
-			id_col     = "id") %>%
-			dplyr::arrange(dplyr::across(dplyr::all_of(c(covariates, "Parameter"))))
+			data      = long_df,
+			value_col = "Ratio",
+			id_col    = "id",
+			group_by  = c(covariates, "Parameter"))
 
 		# Apply rounding
 		summary_stats <- .round_num(
@@ -741,13 +808,11 @@ tableNCARatios <- function(projectFile      = NULL,
 			descriptors    = descriptor_cols)
 
 		# Get overall stats
-		# overall_stats <- .summarizeStats(
-		overall_stats <- .calculateDescriptiveStats()
-			df         = long_df,
-			group_vars = "Parameter",
-			value_col  = "Ratio",
-			id_col     = "id") %>%
-			dplyr::arrange(Parameter)
+		overall_stats <- .calculateDescriptiveStats(
+			data      = long_df,
+			value_col = "Ratio",
+			id_col    = "id",
+			group_by  = "Parameter")
 
 		# Apply rounding to overall
 		overall_stats <- .round_num(
@@ -775,22 +840,22 @@ tableNCARatios <- function(projectFile      = NULL,
 
 	} else {
 		# -----------------------------------------------------------------------
-		# CASE: No stratification or regular row-based grouping
-		# Create summary table & summarise across subjects
+		# CASE: No stratification
+		# -----------------------------------------------------------------------
+
+		# Calculate summary stats
 		if (length(covariates) > 0) {
-			summary_tbl <- .summarizeStats(
-				df         = long_df,
-				group_vars = c(covariates, "Parameter"),
-				value_col  = "Ratio",
-				id_col     = "id") %>%
-				dplyr::arrange(dplyr::across(dplyr::all_of(c(covariates, "Parameter"))))
+			summary_tbl <- .calculateDescriptiveStats(
+				data      = long_df,
+				value_col = "Ratio",
+				id_col    = "id",
+				group_by  = c(covariates, "Parameter"))
 		} else {
-			summary_tbl <- .summarizeStats(
-				df         = long_df,
-				group_vars = "Parameter",
-				value_col  = "Ratio",
-				id_col     = "id") %>%
-				dplyr::arrange(Parameter)
+			summary_tbl <- .calculateDescriptiveStats(
+				data      = long_df,
+				value_col = "Ratio",
+				id_col    = "id",
+				group_by  = "Parameter")
 		}
 
 		# Apply rounding
@@ -803,8 +868,9 @@ tableNCARatios <- function(projectFile      = NULL,
 		# Add combined metrics
 		summary_tbl <- .combinedStats(summary_tbl)
 
-		# Filter to specific metrics (if requested)
-		descriptor_cols <- c("Parameter", covariates, "N")
+		# Validate & select metrics
+		# Note: .calculateDescriptiveStats() returns both N and Nobs
+		descriptor_cols <- c("Parameter", covariates, "Nobs")
 
 		selected_metrics <- .validateAndSelectMetrics(
 			available_cols = names(summary_tbl),
@@ -813,12 +879,25 @@ tableNCARatios <- function(projectFile      = NULL,
 
 		summary_tbl <- summary_tbl[, c(descriptor_cols, selected_metrics), drop = FALSE]
 
-		# Pivot to vertical if requested
+		# Pivot to vertical format if requested
 		if (use_wide_format == FALSE) {
 			# Use helper function for vertical pivot
 			param_col   <- intersect(names(summary_tbl), c("parameter", "Parameter"))
 			summary_tbl <- .pivotToVertical(summary_tbl, param_col, covariates)
 		}
+	}
+
+	# ==========================================================================
+	# ADD INDIVIDUAL IDs (if requested and use_wide_format = FALSE)
+
+	if (!use_wide_format && include_id && !stratify_columns) {
+		summary_tbl <- .addIndividuals(
+			summary_stats = summary_tbl,
+			covariates    = covariates,
+			resultType    = "ncaRatio",
+			params        = ratioParams,
+			roundDigits   = roundDigits,
+			roundMethod   = roundMethod)
 	}
 
 	# ==========================================================================
@@ -829,17 +908,45 @@ tableNCARatios <- function(projectFile      = NULL,
 
 		# Apply pretty labels to Statistic column content if it exists
 		if ("Statistic" %in% names(summary_tbl)) {
-			curr_metrics <- unique(summary_tbl$Statistic)
-			dummy_df <- as.data.frame(matrix(NA, nrow = 1, ncol = length(curr_metrics)))
-			names(dummy_df) <- curr_metrics
-			dummy_df <- .prettyLabels(dummy_df)
-			metric_map <- setNames(names(dummy_df), curr_metrics)
+			# Only apply to metrics (SUMMARY section), not to individual IDs
+			if ("Section" %in% names(summary_tbl)) {
+				summary_metrics <- unique(summary_tbl$Statistic[summary_tbl$Section == "SUMMARY"])
+			} else {
+				summary_metrics <- unique(summary_tbl$Statistic)
+			}
 
-			summary_tbl$Statistic <- metric_map[summary_tbl$Statistic]
+			# Create mapping for metrics
+			dummy_df <- as.data.frame(matrix(NA, nrow = 1, ncol = length(summary_metrics)))
+			names(dummy_df) <- summary_metrics
+			dummy_df <- .prettyLabels(dummy_df)
+			metric_map <- setNames(names(dummy_df), summary_metrics)
+
+			# Apply only to SUMMARY rows (not individual IDs)
+			if ("Section" %in% names(summary_tbl)) {
+				summary_tbl$Statistic[summary_tbl$Section == "SUMMARY"] <-
+					metric_map[summary_tbl$Statistic[summary_tbl$Section == "SUMMARY"]]
+			} else {
+				summary_tbl$Statistic <- metric_map[summary_tbl$Statistic]
+			}
+		}
+	}
+
+	# ==========================================================================
+	# SORTING
+
+	if (isTRUE(prettyLabels) && !stratify_columns) {
+		if (!is.null(covariates) && length(covariates) > 0) {
+			# Only sort if Section doesn't exist
+			# (if Section exists, .addIndividuals() already sorted correctly)
+			if (!"Section" %in% names(summary_tbl)) {
+				summary_tbl <- summary_tbl %>%
+					dplyr::arrange(dplyr::across(dplyr::all_of(covariates)))
+			}
 		}
 	}
 
 	return(as.data.frame(summary_tbl))
+
 }
 
 

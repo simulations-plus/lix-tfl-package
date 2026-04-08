@@ -989,303 +989,225 @@
 
 	return(invisible(NULL))
 }
-##################################################################################
-#' Internal helper to add individual NCA parameters
+################################################################################
+#' Add individual subject data to summary statistics table
 #'
-#' @description
-#' Retrieves individual NCA parameter values and appends them below summary statistics.
-#' Used by \code{tableNCAParameters} when \code{include_id = TRUE}.
+#' Unified helper to add individual subject IDs and their values (parameters, ratios, or concentrations)
+#' below summary statistics. Works for NCA parameters, ratios, and concentrations.
 #'
-#' When covariates are specified, individual IDs are grouped by their covariate values
-#' and listed after the corresponding summary metrics (metrics of modality 1, IDs of
-#' modality 1, metrics of modality 2, IDs of modality 2, etc.).
+#' @param summary_stats Summary statistics data frame (in vertical format with Statistic column for params/ratios,
+#'   or in wide format with time columns for concentrations)
+#' @param covariates Character vector of covariate names (optional)
+#' @param resultType Type of result: "ncaParameters", "ncaRatio", or "ncaConcentration"
+#' @param params Parameter names to include (NCAparams for parameters, ratioParams for ratios, NULL for all)
+#' @param roundDigits Number of decimal places for rounding
+#' @param roundMethod Rounding method ("monolix", "signif", or "none")
+#' @param units Logical; include units for parameter names (only for ncaParameters)
+#' @param aliases Logical; use parameter aliases (only for ncaParameters)
+#' @param useNominalTime Logical; use nominal time (only for ncaConcentration)
 #'
-#' @param summary_stats Data frame containing summary statistics in vertical format
-#'   (with "Statistic" column and parameter columns).
-#' @param covariates Character vector of covariate names used for stratification.
-#' @param NCAparams Character vector of NCA parameter names to include.
-#' @param roundDigits Integer specifying the number of decimal places for rounding.
-#' @param roundMethod Character string specifying the rounding method ("monolix", "signif", "none").
-#' @param units Logical; if TRUE, units are appended to parameter names.
-#' @param aliases Logical; if TRUE, parameter aliases (friendly names) are used.
-#'
-#' @return A data frame combining summary statistics with individual parameter values.
-#'
+#' @return Data frame with summary statistics and individual subject data combined
 #' @keywords internal
-#'
-.addIndividualsNCAParameters <- function(summary_stats,
-                                         covariates,
-                                         NCAparams,
-                                         roundDigits,
-                                         roundMethod,
-                                         units,
-                                         aliases) {
+#' @noRd
+.addIndividuals <- function(summary_stats,
+														covariates = NULL,
+														resultType = c("ncaParameters", "ncaRatio", "ncaConcentration"),
+														params = NULL,
+														roundDigits = 3,
+														roundMethod = "monolix",
+														units = TRUE,
+														aliases = TRUE,
+														useNominalTime = TRUE) {
 
-	# Get individual NCA parameters
-	indiv_data   <- lixoftConnectors::getNCAIndividualParameters()
-	indiv_params <- indiv_data$parameters
-	param_info   <- indiv_data$info
+	resultType <- match.arg(resultType)
 
-	# Convert rownames to a column for easier manipulation
-	param_info <- param_info %>% tibble::rownames_to_column(var = "name")
-
-	# Filter to requested parameters if specified (preserving covariates)
-	if (!is.null(NCAparams)) {
-		# Keep only requested parameters plus id and covariates
-		available_params <- intersect(names(indiv_params), param_info$name)
-		params_to_keep   <- intersect(NCAparams, available_params)
-		# Include covariates in cols_to_keep (they're already in indiv_params for occasion-level covariates)
-		cov_cols_present <- intersect(covariates, names(indiv_params))
-		cols_to_keep     <- c("id", cov_cols_present, params_to_keep)
-		indiv_params     <- indiv_params[, cols_to_keep, drop = FALSE]
-	}
-
-	# Round individual parameter values
-	indiv_params <- .round_num(
-		to_round        = indiv_params,
-		digits          = roundDigits,
-		rounding_method = roundMethod,
-		exclude         = c("id", covariates))
-
-	# Apply units and aliases to parameter column names
-	# Get parameter columns (exclude id and covariates)
-	param_cols <- setdiff(names(indiv_params), c("id", covariates))
-
-	if (length(param_cols) > 0) {
-		# temp dataframe for transformation
-		temp_df <- data.frame(parameter = param_cols, stringsAsFactors = FALSE)
-		temp_df <- .addUnitsAliases(temp_df, add_units = units, add_aliases = aliases)
-
-		# Create mapping: old name -> new name
-		name_mapping <- setNames(temp_df$parameter, param_cols)
-
-		# Rename columns in indiv_params (vectorized approach)
-		new_names  <- names(indiv_params)
-		rename_idx <- which(new_names %in% names(name_mapping))
-		new_names[rename_idx] <- name_mapping[new_names[rename_idx]]
-		names(indiv_params)   <- new_names
-	}
-
-	# Get parameter columns from summary_stats (excluding Statistic and covariates)
-	summary_param_cols <- setdiff(names(summary_stats), c("Statistic", covariates))
-
-	# Select only columns that match summary_stats
-	cols_to_keep <- c("id", covariates, intersect(names(indiv_params), summary_param_cols))
-	indiv_params <- indiv_params[, cols_to_keep, drop = FALSE]
-
-	# Rename id to Statistic
-	indiv_params <- indiv_params %>% dplyr::rename(Statistic = id)
-
-	# Convert parameter columns to character to match summary_stats format
-	param_cols <- setdiff(names(indiv_params), c("Statistic", covariates))
-	if (length(param_cols) > 0) {
-		indiv_params <- indiv_params %>% dplyr::mutate(dplyr::across(dplyr::all_of(param_cols), as.character))
-	}
-
-	# Combine with summary_stats
-	if (!is.null(covariates) && length(covariates) > 0) {
-		# Split both dataframes by covariate combinations
-		summary_groups <- summary_stats %>%
-			dplyr::group_by(dplyr::across(dplyr::all_of(covariates))) %>%
-			dplyr::group_split()
-
-		indiv_groups <- indiv_params %>%
-			dplyr::group_by(dplyr::across(dplyr::all_of(covariates))) %>%
-			dplyr::group_split()
-
-		# Add Section column to each group
-		summary_groups <- lapply(summary_groups, function(x) {
-			x$Section <- "SUMMARY"
-			x
-		})
-
-		indiv_groups <- lapply(indiv_groups, function(x) {
-			x$Section <- "INDIVIDUAL"
-			x
-		})
-
-		# Combine corresponding groups (metrics first, then individuals)
-		result_list <- purrr::map2(summary_groups, indiv_groups, rbind)
-
-		final_result <- do.call(rbind, result_list)
-	} else {
-		# No covariates: simple append
-		summary_stats$Section <- "SUMMARY"
-		indiv_params$Section  <- "INDIVIDUAL"
-		final_result          <- rbind(summary_stats, indiv_params)
-	}
-
-	return(final_result)
-}
-
-##################################################################################
-#' Internal helper to add individual concentration values
-#'
-#' @description
-#' Retrieves individual concentration data and appends them below summary statistics.
-#' Used by \code{tableNCAConcentration} when \code{include_id = TRUE}.
-#'
-#' When covariates are specified, individual IDs are grouped by their covariate values
-#' and listed after the corresponding summary metrics.
-#'
-#' @param summary_stats Data frame containing summary statistics with Time as a column
-#'   and metrics as other columns. Will be pivoted so time points become columns.
-#' @param covariates Character vector of covariate names used for stratification.
-#' @param useNominalTime Logical; whether nominal time should be used.
-#' @param roundDigits Integer specifying the number of decimal places for rounding.
-#' @param roundMethod Character string specifying the rounding method ("monolix", "signif", "none").
-#'
-#' @return A data frame combining summary statistics with individual concentration values,
-#'   with a "Section" column distinguishing "SUMMARY" from "INDIVIDUAL" rows.
-#'   Time points are columns, subjects/metrics are rows.
-#'
-#' @keywords internal
-#'
-.addIndividualsNCAConcentration <- function(summary_stats,
-																						covariates,
-																						useNominalTime,
-																						roundDigits,
-																						roundMethod) {
-
+	# summary_stats = summary_tbl
+	# covariates    = covariates
+	# resultType    = "ncaRatio"
+	# params        = ratioParams
+	# roundDigits   = roundDigits
+	# roundMethod   = roundMethod
 	# ==========================================================================
-	# 1. PIVOT SUMMARY STATISTICS: Time as columns
+	# BRANCH 1: NCA Parameters and Ratios (similar logic)
 	# ==========================================================================
-	# Current format: Time | [Covariates] | Metric1 | Metric2 | ...
-	# Target format:  Statistic | [Covariates] | Time1 | Time2 | ...
 
-	# Identify columns
-	time_col <- "Time"
-	stat_cols <- setdiff(names(summary_stats), c(time_col, covariates))
+	if (resultType %in% c("ncaParameters", "ncaRatio")) {
 
-	# Convert all metric columns to character (handles mixed numeric/character like MeanSD)
-	summary_stats <- summary_stats %>%
-		dplyr::mutate(dplyr::across(dplyr::all_of(stat_cols), as.character))
+		# Get individual data based on type
+		if (resultType == "ncaParameters") {
+			indiv_data <- lixoftConnectors::getNCAIndividualParameters()
 
-	# Pivot longer (stack metrics), then wider (time as columns)
-	summary_pivoted <- summary_stats %>%
-		tidyr::pivot_longer(
-			cols      = dplyr::all_of(stat_cols),
-			names_to  = "Statistic",
-			values_to = "Value"
-		) %>%
-		tidyr::pivot_wider(
-			names_from  = !!rlang::sym(time_col),
-			values_from = Value
-		)
+			# Apply units and aliases if requested
+			if (units || aliases) {
+				param_info <- lixoftConnectors::getNCAParameterNames()
+				if (units && !is.null(param_info$unit)) {
+					# Append units to parameter names
+					for (i in seq_len(nrow(param_info))) {
+						old_name <- param_info$name[i]
+						new_name <- if (!is.na(param_info$unit[i]) && param_info$unit[i] != "") {
+							paste0(old_name, " (", param_info$unit[i], ")")
+						} else {
+							old_name
+						}
+						if (old_name %in% names(indiv_data)) {
+							names(indiv_data)[names(indiv_data) == old_name] <- new_name
+						}
+					}
+				}
+				if (aliases && !is.null(param_info$alias)) {
+					# Use aliases
+					for (i in seq_len(nrow(param_info))) {
+						old_name <- param_info$name[i]
+						new_name <- if (!is.na(param_info$alias[i]) && param_info$alias[i] != "") {
+							param_info$alias[i]
+						} else {
+							old_name
+						}
+						if (old_name %in% names(indiv_data)) {
+							names(indiv_data)[names(indiv_data) == old_name] <- new_name
+						}
+					}
+				}
+			}
 
-	# ==========================================================================
-	# 2. GET INDIVIDUAL CONCENTRATION DATA
-	# ==========================================================================
-	# reinitialize stratification connector
-	lixoftConnectors::setNCAResultsStratification()
+			# Get parameter columns (after units/aliases applied)
+			param_cols <- setdiff(names(indiv_data), c("id", covariates))
 
-	# Set stratification
-	if (!is.null(covariates)) {
-		lixoftConnectors::setNCAResultsStratification(split = covariates)
-	}
+		} else {  # ncaRatio
+			indiv_data <- lixoftConnectors::getNCAIndividualRatios()
+			ratio_info <- lixoftConnectors::getNCARatios()
+			param_cols <- names(ratio_info)
+		}
 
-	indiv_data <- lixoftConnectors::getNCAConcentrations(displayIndividualProfiles = TRUE, useNominalTime = useNominalTime)
+		# Filter to requested parameters if specified
+		if (!is.null(params)) {
+			cols_to_keep <- intersect(params, param_cols)
+		} else {
+			cols_to_keep <- param_cols
+		}
 
-	# Fix column swap bug if covariates present
-	if (!is.null(covariates) && length(covariates) > 0) {
-		indiv_data <- .fixNCAConcentrationsColumnSwap(indiv_data, covariates)
-	}
+		# Get parameter order from summary_stats (parameters are columns, excluding Statistic and covariates)
+		param_order <- setdiff(names(summary_stats), c("Statistic", covariates))
 
-	# ==========================================================================
-	# 3. FILTER OUT METRIC ROWS (keep only individuals)
-	# ==========================================================================
-	# Identify subject/metric column
-	stat_col <- if ("metric" %in% names(indiv_data)) "metric" else "subject"
+		# Pivot individual data to long format
+		long_df <- indiv_data %>%
+			dplyr::select(id, dplyr::all_of(covariates), dplyr::all_of(cols_to_keep)) %>%
+			tidyr::pivot_longer(
+				cols      = dplyr::all_of(cols_to_keep),
+				names_to  = "Parameter",
+				values_to = "Value")
 
-	# Get metric labels to filter out
-	metrics <- lixoftConnectors::getNCAConcentrations()$metric
-	metric_labels <- as.character(metrics[!is.na(metrics)])
+		# Round individual values
+		long_df$Value <- .round_num(
+			to_round        = data.frame(val = long_df$Value),
+			digits          = roundDigits,
+			rounding_method = roundMethod,
+			exclude         = NULL)$val
 
-	# Keep only individual profiles
-	indiv_only <- indiv_data %>% dplyr::filter(!(!!rlang::sym(stat_col) %in% metric_labels))
+		# Pivot to wide format (parameters as columns, id as rows)
+		indiv_wide <- long_df %>%
+			tidyr::pivot_wider(
+				id_cols     = c(id, dplyr::all_of(covariates)),
+				names_from  = Parameter,
+				values_from = Value) %>%
+			dplyr::rename(Statistic = id) %>%
+			dplyr::mutate(Section = "INDIVIDUAL")
 
-	# ==========================================================================
-	# 4. ROUND INDIVIDUAL VALUES
-	# ==========================================================================
-	# Get time columns (everything except ID and covariates)
-	time_cols <- setdiff(names(indiv_only), c(stat_col, covariates))
-
-	# Convert all time columns to character before pivoting (prevents list-column issues)
-	indiv_only <- indiv_only %>% dplyr::mutate(dplyr::across(dplyr::all_of(time_cols), as.character))
-
-	# Pivot to long for rounding
-	indiv_long <- indiv_only %>%
-		tidyr::pivot_longer(
-			cols      = dplyr::all_of(time_cols),
-			names_to  = "Time",
-			values_to = "Value") %>%
-		dplyr::filter(Value != "")  # Remove empty values
-
-	# Round values (preserve non-numeric values like <LLOQ)
-	indiv_long <- indiv_long %>%
-		dplyr::mutate(
-			.value_numeric = suppressWarnings(as.numeric(Value)),
-			Value = dplyr::case_when(
-				is.na(.value_numeric) ~ Value,  # Keep non-numeric values (e.g., <LLOQ)
-				TRUE ~ as.character(.round_num(.value_numeric,
-																			 digits = roundDigits,
-																			 rounding_method = roundMethod)))) %>%
-		dplyr::select(-.value_numeric)  # Remove helper column
-
-	# Pivot back to wide: time points as columns
-	indiv_wide <- indiv_long %>%
-		tidyr::pivot_wider(
-			names_from  = Time,
-			values_from = Value)
-
-	# ==========================================================================
-	# 5. ALIGN COLUMN NAMES AND ORDER
-	# ==========================================================================
-	# Rename subject column to "Statistic" to match summary format
-	indiv_wide <- indiv_wide %>% dplyr::rename(Statistic = !!rlang::sym(stat_col))
-
-	# Sort by Statistic (subject ID) - numeric if possible, otherwise character
-	indiv_wide <- indiv_wide %>%
-		dplyr::mutate(.stat_numeric = suppressWarnings(as.numeric(Statistic))) %>%
-		dplyr::arrange(
-			# Sort by numeric if possible, otherwise by character
-			dplyr::coalesce(.stat_numeric, Inf), # Numeric IDs first, sorted numerically
-			Statistic                             # Then by character (for non-numeric IDs)
-		) %>%
-		dplyr::select(-.stat_numeric)  # Remove helper column
-
-	# Ensure columns match summary_pivoted
-	summary_cols <- names(summary_pivoted)
-	cols_to_keep <- intersect(summary_cols, names(indiv_wide))
-
-	# Reorder columns to match
-	indiv_wide <- indiv_wide[, cols_to_keep, drop = FALSE]
-
-	# ==========================================================================
-	# 6. STACK WITH SECTION MARKERS AND SORT
-	# ==========================================================================
-	# Convert covariates to character to prevent list-column issues during rbind
-	if (!is.null(covariates) && length(covariates) > 0) {
-		summary_pivoted <- summary_pivoted %>%
-			dplyr::mutate(dplyr::across(dplyr::all_of(covariates), as.character))
+		# Ensure column order matches summary_stats
 		indiv_wide <- indiv_wide %>%
-			dplyr::mutate(dplyr::across(dplyr::all_of(covariates), as.character))
+			dplyr::mutate(dplyr::across(dplyr::all_of(param_order), as.character)) %>%
+			dplyr::select(dplyr::all_of(c(covariates, "Statistic", param_order, "Section")))
+
+		# Add Section column to summary stats
+		summary_stats$Section <- "SUMMARY"
+
+		# Combine and sort
+		result <- dplyr::bind_rows(summary_stats, indiv_wide)
+
+		# Convert Section to factor to ensure SUMMARY appears before INDIVIDUAL
+		result$Section <- factor(result$Section, levels = c("SUMMARY", "INDIVIDUAL"))
+
+		# Sort by covariates (if present), then Section (SUMMARY before INDIVIDUAL)
+		if (!is.null(covariates) && length(covariates) > 0) {
+			result <- result %>%
+				dplyr::arrange(dplyr::across(dplyr::all_of(covariates)), Section)
+		} else {
+			result <- result %>%
+				dplyr::arrange(Section)
+		}
+
+		# Convert Section back to character for consistent output
+		result$Section <- as.character(result$Section)
+
+		# Reorder columns: covariates, Statistic, Section, then parameters
+		result <- result %>%
+			dplyr::select(dplyr::all_of(c(covariates, "Statistic", param_order, "Section")))
+
+		return(as.data.frame(result))
 	}
 
-	# Add Section column and stack (works with or without covariates)
-	summary_pivoted$Section <- "SUMMARY"
-	indiv_wide$Section      <- "INDIVIDUAL"
-	final_result            <- rbind(summary_pivoted, indiv_wide)
+	# ==========================================================================
+	# BRANCH 2: NCA Concentrations (different structure - time as columns)
+	# ==========================================================================
 
-	# Sort by covariates (if present), then by Section (SUMMARY before INDIVIDUAL)
-	if (!is.null(covariates) && length(covariates) > 0) {
-		final_result <- final_result %>%
-			dplyr::mutate(Section = factor(Section, levels = c("SUMMARY", "INDIVIDUAL"))) %>%
-			dplyr::arrange(dplyr::across(dplyr::all_of(covariates)), Section) %>%
-			dplyr::mutate(Section = as.character(Section))
+	if (resultType == "ncaConcentration") {
+
+		# Get individual concentration data
+		indiv_data <- listingNCAConcentration(
+			projectFile    = NULL,  # Already loaded
+			covariates     = covariates,
+			useNominalTime = useNominalTime,
+			roundDigits    = roundDigits,
+			roundMethod    = roundMethod)
+
+		# Determine time column
+		time_col <- if ("NominalTime" %in% names(indiv_data)) "NominalTime" else "ActualTime"
+
+		# Pivot individual data to wide format (time as columns)
+		indiv_wide <- indiv_data %>%
+			dplyr::select(id, dplyr::all_of(covariates), !!rlang::sym(time_col), UsedConc) %>%
+			tidyr::pivot_wider(
+				id_cols     = c(id, dplyr::all_of(covariates)),
+				names_from  = !!rlang::sym(time_col),
+				values_from = UsedConc) %>%
+			dplyr::rename(Statistic = id) %>%
+			dplyr::mutate(Section = "INDIVIDUAL")
+
+		# Get time points from summary_stats (columns excluding Statistic and covariates)
+		time_cols <- setdiff(names(indiv_wide), c("Statistic", covariates))
+
+		# Ensure column order matches summary_stats
+		indiv_wide <- indiv_wide %>%
+			dplyr::mutate(dplyr::across(dplyr::all_of(time_cols), as.character)) %>%
+			dplyr::select(dplyr::all_of(c(covariates, "Statistic", time_cols, "Section")))
+
+		# Add Section column to summary stats
+		summary_stats$Section <- "SUMMARY"
+
+		# Combine and sort
+		result <- dplyr::bind_rows(summary_stats, indiv_wide)
+
+		# Convert Section to factor to ensure SUMMARY appears before INDIVIDUAL
+		result$Section <- factor(result$Section, levels = c("SUMMARY", "INDIVIDUAL"))
+
+		# Sort by covariates (if present), then Section (SUMMARY before INDIVIDUAL)
+		if (!is.null(covariates) && length(covariates) > 0) {
+			result <- result %>%
+				dplyr::arrange(dplyr::across(dplyr::all_of(covariates)), Section)
+		} else {
+			result <- result %>%
+				dplyr::arrange(Section)
+		}
+
+		# Convert Section back to character for consistent output
+		result$Section <- as.character(result$Section)
+
+		# Reorder columns: covariates, Statistic, Section, then time points
+		result <- result %>%
+			dplyr::select(dplyr::all_of(c(covariates, "Statistic", time_cols, "Section")))
+
+		return(as.data.frame(result))
 	}
-
-	return(as.data.frame(final_result))
 }
 
 
