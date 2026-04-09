@@ -989,6 +989,85 @@
 
 	return(invisible(NULL))
 }
+
+################################################################################
+#' Filter Observations by Time Deviation
+#'
+#' Filters out observations where the percentage deviation between actual time
+#' and nominal time exceeds a specified threshold. Used internally by
+#' `tableNCAConcentration` to exclude observations with large time deviations
+#' from summary statistics.
+#'
+#' @param data A data frame containing concentration data with columns
+#'   `ActualTime` and `NominalTime`.
+#' @param threshold Numeric value specifying the maximum allowed percentage
+#'   deviation. Observations where `abs((ActualTime - NominalTime) / NominalTime) * 100`
+#'   exceeds this value are excluded.
+#'
+#' @details
+#' The percentage deviation is calculated as:
+#' \deqn{\frac{|ActualTime - NominalTime|}{NominalTime} \times 100}
+#'
+#' Observations at `NominalTime = 0` are always retained (excluded from filtering)
+#' since the percentage deviation is undefined at t=0.
+#'
+#' The function attaches the following attributes to the returned data frame
+#' for downstream footnote generation:
+#' \itemize{
+#'   \item `timeDeviationFiltered`: Logical flag indicating if any observations were excluded
+#'   \item `timeDeviationThreshold`: The threshold value used
+#'   \item `timeDeviationExcluded`: Data frame of excluded observations containing
+#'     subject ID, occasion columns (if present), ActualTime, NominalTime, and
+#'     the calculated percentage deviation
+#' }
+#'
+#' @return A filtered data frame with observations exceeding the threshold removed.
+#'   Attributes are attached for footnote generation (see Details).
+#'
+#' @keywords internal
+.filterByTimeDeviation <- function(data, threshold) {
+	# Calculate percentage deviation: abs((actual - nominal) / nominal) * 100
+	# t=0 observations are excluded from filtering (always kept)
+
+	data <- data %>%
+		dplyr::mutate(
+			.pct_deviation = dplyr::case_when(
+				NominalTime == 0 ~ NA_real_,
+				TRUE ~ abs((ActualTime - NominalTime) / NominalTime) * 100),
+			.exceeds_threshold = .pct_deviation > threshold)
+
+	# Capture excluded observations BEFORE filtering
+	excluded_obs <- data %>%
+		dplyr::filter(.exceeds_threshold == TRUE) %>%
+		dplyr::select(
+			dplyr::any_of(c("id", "OCC", "OCCASION")),  # subject + occasion cols if present
+			ActualTime,
+			NominalTime,
+			.pct_deviation)
+
+	n_excluded <- nrow(excluded_obs)
+
+	# Filter and clean up
+
+	filtered_data <- data %>%
+		dplyr::filter(!.exceeds_threshold | is.na(.exceeds_threshold)) %>%
+		dplyr::select(-.pct_deviation, -.exceeds_threshold)
+
+	# Attach attributes for footnote generation
+	if (n_excluded > 0) {
+		attr(filtered_data, "timeDeviationFiltered") <- TRUE
+		attr(filtered_data, "timeDeviationThreshold") <- threshold
+		attr(filtered_data, "timeDeviationExcluded") <- excluded_obs
+
+		message(sprintf("Excluded %d observations exceeding %g%% time deviation threshold.",
+										n_excluded, threshold))
+	} else {
+		attr(filtered_data, "timeDeviationFiltered") <- FALSE
+	}
+
+	return(filtered_data)
+}
+
 ################################################################################
 #' Add individual subject data to summary statistics table
 #'
