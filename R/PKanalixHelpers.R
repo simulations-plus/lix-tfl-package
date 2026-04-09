@@ -120,9 +120,9 @@ tableNCAConcentration <- function(projectFile      = NULL,
 
 
 	roundMethod <- match.arg(roundMethod)
-
-	# projectFile = prj2
-	# covariates = "TREAT"
+	# DEBUG EXAMPLE
+	# projectFile = prj1
+	# covariates = "ATRTNCA"
 	# useNominalTime = TRUE
 	# metrics = c("mean", "geoMean")
 	# stratify_columns = FALSE
@@ -307,7 +307,8 @@ tableNCAConcentration <- function(projectFile      = NULL,
 					params         = NULL,
 					roundDigits    = roundDigits,
 					roundMethod    = roundMethod,
-					useNominalTime = useNominalTime)
+					useNominalTime = useNominalTime,
+					indiv_data     = raw_data)  # Pass existing indiv conc data to avoid redundant fetch
 			}
 
 			# ----------------------------------------------------------------------
