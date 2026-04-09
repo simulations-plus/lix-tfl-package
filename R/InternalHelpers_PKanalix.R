@@ -1005,10 +1005,24 @@
 #' @param units Logical; include units for parameter names (only for ncaParameters)
 #' @param aliases Logical; use parameter aliases (only for ncaParameters)
 #' @param useNominalTime Logical; use nominal time (only for ncaConcentration)
+#' @param indiv_data Optional pre-fetched individual data frame (only for ncaConcentration).
+#'   If NULL, data is fetched via listingNCAConcentration(). Passing pre-fetched data avoids
+#'   redundant API calls when the calling function already has the data.
 #'
-#' @return Data frame with summary statistics and individual subject data combined
+#' @return Data frame with summary statistics and individual subject data combined.
+#'   Contains a "Section" column with values "SUMMARY" or "INDIVIDUAL" to distinguish rows.
+#'   SUMMARY rows appear before INDIVIDUAL rows within each covariate group.
+#'
+#' @details
+#' The function handles occasion columns automatically:
+#' - Detects occasion variables from the PKanalix project
+#' - If duplicate id-covariate combinations exist due to occasions, creates composite IDs
+#'   (e.g., "Subject1-Period1") using actual occasion values
+#' - For ncaParameters, applies units and aliases using .addUnitsAliases() helper
+#'
 #' @keywords internal
 #' @noRd
+################################################################################
 .addIndividuals <- function(summary_stats,
 														covariates = NULL,
 														resultType = c("ncaParameters", "ncaRatio", "ncaConcentration"),
@@ -1017,61 +1031,28 @@
 														roundMethod = "monolix",
 														units = TRUE,
 														aliases = TRUE,
-														useNominalTime = TRUE) {
+														useNominalTime = TRUE,
+														indiv_data = NULL) {
 
 	resultType <- match.arg(resultType)
 
-	# summary_stats = summary_tbl
-	# covariates    = covariates
-	# resultType    = "ncaRatio"
-	# params        = ratioParams
-	# roundDigits   = roundDigits
-	# roundMethod   = roundMethod
 	# ==========================================================================
 	# BRANCH 1: NCA Parameters and Ratios (similar logic)
 	# ==========================================================================
 
 	if (resultType %in% c("ncaParameters", "ncaRatio")) {
 
+		# Get ALL covariates from project (including occasions) to properly identify parameter columns
+		project_data <- lixoftConnectors::getData()
+		all_covariates <- project_data$header[project_data$headerTypes %in% c("catcov", "contcov", "occ")]
+		occ_vars <- project_data$header[project_data$headerTypes == "occ"]
+
 		# Get individual data based on type
 		if (resultType == "ncaParameters") {
-			indiv_data <- lixoftConnectors::getNCAIndividualParameters()
+			indiv_data <- lixoftConnectors::getNCAIndividualParameters()$parameters
 
-			# Apply units and aliases if requested
-			if (units || aliases) {
-				param_info <- lixoftConnectors::getNCAParameterNames()
-				if (units && !is.null(param_info$unit)) {
-					# Append units to parameter names
-					for (i in seq_len(nrow(param_info))) {
-						old_name <- param_info$name[i]
-						new_name <- if (!is.na(param_info$unit[i]) && param_info$unit[i] != "") {
-							paste0(old_name, " (", param_info$unit[i], ")")
-						} else {
-							old_name
-						}
-						if (old_name %in% names(indiv_data)) {
-							names(indiv_data)[names(indiv_data) == old_name] <- new_name
-						}
-					}
-				}
-				if (aliases && !is.null(param_info$alias)) {
-					# Use aliases
-					for (i in seq_len(nrow(param_info))) {
-						old_name <- param_info$name[i]
-						new_name <- if (!is.na(param_info$alias[i]) && param_info$alias[i] != "") {
-							param_info$alias[i]
-						} else {
-							old_name
-						}
-						if (old_name %in% names(indiv_data)) {
-							names(indiv_data)[names(indiv_data) == old_name] <- new_name
-						}
-					}
-				}
-			}
-
-			# Get parameter columns (after units/aliases applied)
-			param_cols <- setdiff(names(indiv_data), c("id", covariates))
+			# Get parameter columns (exclude id and ALL covariates including occasions)
+			param_cols <- setdiff(names(indiv_data), c("id", all_covariates))
 
 		} else {  # ncaRatio
 			indiv_data <- lixoftConnectors::getNCAIndividualRatios()
@@ -1086,16 +1067,47 @@
 			cols_to_keep <- param_cols
 		}
 
-		# Get parameter order from summary_stats (parameters are columns, excluding Statistic and covariates)
+		# Get parameter order from summary_stats (pretty names from tableNCAParameters)
 		param_order <- setdiff(names(summary_stats), c("Statistic", covariates))
 
-		# Pivot individual data to long format
+		# ==========================================================================
+		# Apply units/aliases FIRST to create mapping (before any pivoting)
+		# This ensures parameter names match param_order from summary_stats
+		# ==========================================================================
+		if (resultType == "ncaParameters" && (units || aliases)) {
+			temp_df <- data.frame(parameter = cols_to_keep, stringsAsFactors = FALSE)
+			temp_df_formatted <- .addUnitsAliases(temp_df, add_units = units, add_aliases = aliases)
+			name_mapping <- setNames(temp_df_formatted$parameter, cols_to_keep)
+		} else {
+			name_mapping <- setNames(cols_to_keep, cols_to_keep)  # identity mapping
+		}
+
+		# ==========================================================================
+		# Select only needed columns, pivot to long, check for occasions
+		# ==========================================================================
+
+		# Columns to keep: id, user covariates, occasion columns, selected parameters
+		cols_for_pivot <- c("id", covariates, occ_vars, cols_to_keep)
+		cols_for_pivot <- intersect(cols_for_pivot, names(indiv_data))
+
+		# Pivot to long format
 		long_df <- indiv_data %>%
-			dplyr::select(id, dplyr::all_of(covariates), dplyr::all_of(cols_to_keep)) %>%
+			dplyr::select(dplyr::all_of(cols_for_pivot)) %>%
 			tidyr::pivot_longer(
 				cols      = dplyr::all_of(cols_to_keep),
 				names_to  = "Parameter",
 				values_to = "Value")
+
+		# Apply name mapping to Parameter column
+		long_df$Parameter <- name_mapping[long_df$Parameter]
+
+		# Check for occasions (duplicate id-covariate combinations)
+		composite_result <- .createCompositeId(long_df, covariates)
+		long_df <- composite_result$data
+		use_composite_id <- composite_result$composite_id_created
+
+		# Determine which ID column to use
+		id_col <- if (use_composite_id) "composite_id" else "id"
 
 		# Round individual values
 		long_df$Value <- .round_num(
@@ -1104,13 +1116,17 @@
 			rounding_method = roundMethod,
 			exclude         = NULL)$val
 
-		# Pivot to wide format (parameters as columns, id as rows)
+		# ==========================================================================
+		# Pivot to wide format and combine with summary_stats
+		# ==========================================================================
+
+		# Pivot to wide (parameters as columns, id/composite_id as rows)
 		indiv_wide <- long_df %>%
 			tidyr::pivot_wider(
-				id_cols     = c(id, dplyr::all_of(covariates)),
+				id_cols     = c(!!rlang::sym(id_col), dplyr::all_of(covariates)),
 				names_from  = Parameter,
 				values_from = Value) %>%
-			dplyr::rename(Statistic = id) %>%
+			dplyr::rename(Statistic = !!rlang::sym(id_col)) %>%
 			dplyr::mutate(Section = "INDIVIDUAL")
 
 		# Ensure column order matches summary_stats
@@ -1152,29 +1168,48 @@
 
 	if (resultType == "ncaConcentration") {
 
-		# Get individual concentration data
-		indiv_data <- listingNCAConcentration(
-			projectFile    = NULL,  # Already loaded
-			covariates     = covariates,
-			useNominalTime = useNominalTime,
-			roundDigits    = roundDigits,
-			roundMethod    = roundMethod)
+		# Use provided indiv_data or fetch individual concentration data
+		if (is.null(indiv_data)) {
+			indiv_data <- listingNCAConcentration(
+				projectFile    = NULL,  # Already loaded
+				covariates     = covariates,
+				useNominalTime = useNominalTime,
+				roundDigits    = NULL,  # Don't round here, will round below
+				roundMethod    = "none")
+		}
 
 		# Determine time column
 		time_col <- if ("NominalTime" %in% names(indiv_data)) "NominalTime" else "ActualTime"
 
+		# Round concentration values (raw_data from tableNCAConcentration is unrounded)
+		indiv_data$UsedConc <- .round_num(
+			to_round        = data.frame(val = indiv_data$UsedConc),
+			digits          = roundDigits,
+			rounding_method = roundMethod,
+			exclude         = NULL)$val
+
+		# *** CHECK FOR OCCASIONS BEFORE PIVOTING TO WIDE ***
+		# Pass full indiv_data with all columns (including occasions) to detect duplicates correctly
+		composite_result <- .createCompositeId(indiv_data, covariates)
+		indiv_data_processed <- composite_result$data
+		use_composite_id <- composite_result$composite_id_created
+
+		# Determine which ID column to use
+		id_col <- if (use_composite_id) "composite_id" else "id"
+
 		# Pivot individual data to wide format (time as columns)
-		indiv_wide <- indiv_data %>%
-			dplyr::select(id, dplyr::all_of(covariates), !!rlang::sym(time_col), UsedConc) %>%
+		indiv_wide <- indiv_data_processed %>%
+			dplyr::select(!!rlang::sym(id_col), dplyr::all_of(covariates),
+										!!rlang::sym(time_col), UsedConc) %>%
 			tidyr::pivot_wider(
-				id_cols     = c(id, dplyr::all_of(covariates)),
+				id_cols     = c(!!rlang::sym(id_col), dplyr::all_of(covariates)),
 				names_from  = !!rlang::sym(time_col),
 				values_from = UsedConc) %>%
-			dplyr::rename(Statistic = id) %>%
+			dplyr::rename(Statistic = !!rlang::sym(id_col)) %>%
 			dplyr::mutate(Section = "INDIVIDUAL")
 
 		# Get time points from summary_stats (columns excluding Statistic and covariates)
-		time_cols <- setdiff(names(indiv_wide), c("Statistic", covariates))
+		time_cols <- setdiff(names(indiv_wide), c("Statistic", covariates, "Section"))
 
 		# Ensure column order matches summary_stats
 		indiv_wide <- indiv_wide %>%
@@ -1208,6 +1243,131 @@
 
 		return(as.data.frame(result))
 	}
+}
+
+
+################################################################################
+#' Create composite IDs for handling occasions in individual data
+#'
+#' Detects when duplicate id-covariate combinations exist due to occasions and
+#' creates composite IDs by combining subject ID with occasion values.
+#'
+#' @param data Data frame containing individual data with id column and potentially
+#'   occasion columns
+#' @param covariates Character vector of user-specified covariate names (may include
+#'   occasion columns, which will be excluded from grouping)
+#'
+#' @return A list with three elements:
+#'   \item{data}{The input data frame, potentially with a new "composite_id" column}
+#'   \item{composite_id_created}{Logical; TRUE if composite IDs were created}
+#'   \item{occasion_cols}{Character vector of occasion column names used for composite ID,
+#'     or NULL if no composite ID was needed}
+#'
+#' @details
+#' The function:
+#' 1. Gets occasion variables from the PKanalix project
+#' 2. Excludes occasions from user covariates to define grouping columns (id + covariates)
+#' 3. Checks if any id-covariate combination appears more than once (indicates occasions)
+#' 4. If duplicates exist, identifies which occasion columns vary within groups
+#' 5. Creates composite IDs using actual occasion values (e.g., "Subject1-Period1-Sequence2")
+#'
+#' This ensures unique identifiers when pivoting to wide format, while preserving
+#' the mapping to original subject ID and occasion values.
+#'
+#' @keywords internal
+#' @noRd
+################################################################################
+.createCompositeId <- function(data, covariates) {
+	# Get occasion variables directly from PKanalix project
+
+	project_data <- lixoftConnectors::getData()
+	occ_vars <- project_data$header[project_data$headerTypes == "occ"]
+
+	# Define grouping columns (id + user-specified covariates, excluding occasions)
+	user_covariates <- setdiff(covariates, occ_vars)
+	if (is.null(user_covariates) || length(user_covariates) == 0) {
+		grouping_cols <- "id"
+	} else {
+		grouping_cols <- c("id", user_covariates)
+	}
+
+	# Count occurrences of each id-covariate combination
+	dup_check <- data %>%
+		dplyr::group_by(dplyr::across(dplyr::all_of(grouping_cols))) %>%
+		dplyr::summarise(n_obs = dplyr::n(), .groups = "drop")
+
+	# If all combinations appear exactly once, no composite ID needed
+	if (all(dup_check$n_obs == 1)) {
+		return(list(
+			data = data,
+			composite_id_created = FALSE,
+			occasion_cols = NULL
+		))
+	}
+
+	# Duplicates exist! Identify which occasion columns vary within id-covariate groups
+	# Only use occasions that actually cause the duplication
+
+	# Find occasion columns that are present in the data
+	available_occ_cols <- intersect(occ_vars, names(data))
+
+	if (length(available_occ_cols) == 0) {
+		# No occasion columns in data - this indicates a problem with the data passed
+		stop("Duplicate id-covariate combinations detected but no occasion columns found in data. ",
+				 "This suggests occasion columns were filtered out before calling .createCompositeId(). ",
+				 "Please pass the full data including all occasion columns.")
+	}
+
+	# Check which occasion columns actually vary within id-covariate groups
+	varying_occ_cols <- c()
+	for (occ_col in available_occ_cols) {
+		max_unique <- data %>%
+			dplyr::group_by(dplyr::across(dplyr::all_of(grouping_cols))) %>%
+			dplyr::summarise(
+				n_unique = dplyr::n_distinct(!!rlang::sym(occ_col), na.rm = TRUE),
+				.groups = "drop"
+			) %>%
+			dplyr::pull(n_unique) %>%
+			max(na.rm = TRUE)
+
+		if (max_unique > 1) {
+			varying_occ_cols <- c(varying_occ_cols, occ_col)
+		}
+	}
+
+	# Use varying occasion columns for composite ID
+	if (length(varying_occ_cols) > 0) {
+		# Create composite ID by pasting id with actual occasion values
+		composite_parts <- list(rlang::sym("id"))
+		for (col in varying_occ_cols) {
+			composite_parts <- c(composite_parts, list(rlang::sym(col)))
+		}
+
+		data <- data %>%
+			dplyr::mutate(
+				composite_id = do.call(paste, c(composite_parts, list(sep = "-"))),
+				.before = 1
+			)
+
+		message("Created composite IDs using: id + ", paste(varying_occ_cols, collapse = " + "))
+	} else {
+		# All occasion columns are constant within groups
+		# This means occasions don't actually cause duplication - should not happen
+		warning("Duplicate id-covariate combinations detected but occasion columns don't vary. ",
+						"This should not occur. Keeping original id.")
+
+		return(list(
+			data = data,
+			composite_id_created = FALSE,
+			occasion_cols = NULL
+		))
+	}
+
+	return(list(
+		data = data,
+		composite_id_created = TRUE,
+		occasion_cols = varying_occ_cols
+	))
 }
 
 
