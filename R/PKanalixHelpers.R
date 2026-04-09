@@ -48,6 +48,16 @@
 #'   Layout: `Time | [Covariates] | mean | SD | median | ...`
 #'   Note: `stratify_columns = TRUE` is only compatible with `use_wide_format = FALSE`.
 #'
+#' @param maxTimeDeviation Numeric value specifying the maximum allowed percentage
+#'   deviation between actual time and nominal time. If `NULL` (default), no filtering
+#'   is applied. When set (e.g., `20` for 20%), observations where
+#'   `abs((ActualTime - NominalTime) / NominalTime) * 100` exceeds this threshold
+#'   are excluded from summary statistics. Only applies when `useNominalTime = TRUE`.
+#'   Observations at `NominalTime = 0` are always retained. Individual data (when
+#'   `include_id = TRUE`) is not affected by this filter. When observations are
+#'   excluded, attributes are attached to the output for footnote generation:
+#'   `timeDeviationFiltered`, `timeDeviationThreshold`, and `timeDeviationExcluded`.
+#'
 #' @param include_id Logical. If `TRUE`, adds individual subject IDs and their
 #'   concentration values at each time point below the summary statistics. When
 #'   stratified by covariates, individual IDs are grouped by their covariate values.
@@ -113,6 +123,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 																	stratify_columns = FALSE,
 																	covariate_labels = NULL,
 																	use_wide_format  = TRUE,
+																	maxTimeDeviation = NULL,
 																	include_id       = FALSE,
 																	roundDigits      = 3,
 																	roundMethod      = c("monolix", "signif", "none"),
@@ -120,7 +131,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 
 
 	roundMethod <- match.arg(roundMethod)
-	# DEBUG EXAMPLE
+	# # DEBUG EXAMPLE
 	# projectFile = prj1
 	# covariates = "ATRTNCA"
 	# useNominalTime = TRUE
@@ -128,6 +139,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	# stratify_columns = FALSE
 	# covariate_labels = NULL
 	# use_wide_format  = TRUE
+	# maxTimeDeviation = NULL
 	# include_id = TRUE
 	# roundDigits = 4
 	# roundMethod = "signif"
@@ -167,12 +179,31 @@ tableNCAConcentration <- function(projectFile      = NULL,
 
 	# Get individual concentration data using listingNCAConcentration
 	# Don't apply rounding yet (will be done after calculating stats)
-	raw_data <- listingNCAConcentration(
+	raw_data  <- listingNCAConcentration(
 		projectFile    = NULL, # project already loaded
 		covariates     = covariates,
 		useNominalTime = useNominalTime,
 		roundDigits    = NULL,
 		roundMethod    = "none")
+
+	# Keep full data for individual listing
+	raw_data_full <- raw_data
+
+	# Apply time deviation filter only when:
+	# 1. Grouping by NominalTime (useNominalTime = TRUE)
+	# 2. Threshold is set
+	if (useNominalTime && !is.null(maxTimeDeviation)) {
+		if (all(c("NominalTime", "ActualTime") %in% names(raw_data))) {
+			raw_data <- .filterByTimeDeviation(raw_data, maxTimeDeviation)
+			# Store attributes to attach to final output later
+			.time_dev_attrs <- list(
+				filtered  = attr(raw_data, "timeDeviationFiltered"),
+				threshold = attr(raw_data, "timeDeviationThreshold"),
+				excluded  = attr(raw_data, "timeDeviationExcluded"))
+		} else {
+			warning("Cannot apply time deviation filter: both NominalTime and ActualTime required.")
+		}
+	}
 
 	# Determine which time column to use for grouping
 	time_col <- if ("NominalTime" %in% names(raw_data)) "NominalTime" else "ActualTime"
@@ -308,7 +339,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 					roundDigits    = roundDigits,
 					roundMethod    = roundMethod,
 					useNominalTime = useNominalTime,
-					indiv_data     = raw_data)  # Pass existing indiv conc data to avoid redundant fetch
+					indiv_data     = raw_data_full)  # Pass existing indiv conc data to avoid redundant fetch (full dataset (before potential filtering))
 			}
 
 			# ----------------------------------------------------------------------
@@ -377,6 +408,12 @@ tableNCAConcentration <- function(projectFile      = NULL,
 		}
 	}
 
+	# Attach time deviation attributes if filtering was applied
+	if (exists(".time_dev_attrs") && isTRUE(.time_dev_attrs$filtered)) {
+		attr(final_df, "timeDeviationFiltered")  <- .time_dev_attrs$filtered
+		attr(final_df, "timeDeviationThreshold") <- .time_dev_attrs$threshold
+		attr(final_df, "timeDeviationExcluded")  <- .time_dev_attrs$excluded
+	}
 	return(as.data.frame(final_df))
 
 
