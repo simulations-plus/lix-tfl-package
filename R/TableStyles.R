@@ -25,6 +25,7 @@
   x[1] # take first element if someone passes a vector
 }
 
+################################################################################
 #' Soften hex color by blending with white
 #' Blends a hex color with white to create a softer, pastel version.
 #' Primarily used for docx/pptx output where softer colors are preferred.
@@ -38,6 +39,7 @@
   grDevices::rgb(new[1], new[2], new[3])
 }
 
+################################################################################
 #' Convert hex color to rgba format
 #' Converts a hex color code to rgba format with transparency.
 #' Primarily used for HTML output where rgba colors with alpha transparency
@@ -51,6 +53,7 @@
   sprintf("rgba(%d,%d,%d,%.2f)", rgb[1], rgb[2], rgb[3], alpha)
 }
 
+################################################################################
 #' Check if output format is HTML
 #' Detects whether the current knitr rendering context is HTML output.
 #' Used to determine whether to apply HTML-specific formatting (like rgba colors).
@@ -60,6 +63,7 @@
   tryCatch(knitr::is_html_output(), error = function(e) FALSE)
 }
 
+################################################################################
 #' .apply_alias_subscripts: Apply subscript formatting to flextables
 #'
 #' Processes [[sub:...]] markers in both body cells and column headers, converting
@@ -205,7 +209,7 @@
 	return(ft)
 }
 
-
+################################################################################
 #' .add_section_headers: Add section headers to parameter tables (population or NCA)
 #' For parameter tables (identified by `table_type` attribute = "pop" or "nca"),
 #' inserts section header rows to visually separate different sections.
@@ -522,6 +526,88 @@
 	))
 }
 
+################################################################################
+#' Generate automatic footnotes from data frame attributes
+#'
+#' Scans data frame attributes for known footnote triggers and generates
+#' appropriate footnote messages. Currently supports time deviation filtering
+#' attributes from `tableNCAConcentration`.
+#'
+#' @param attrs Named list of attributes (from `attributes(data.flex)`)
+#'
+#' @return Character vector of footnote messages (empty vector if none)
+#'
+#' @details
+#' Currently recognized attributes:
+#' \itemize{
+#'   \item `timeDeviationFiltered`: If `TRUE`, generates footnote about excluded
+#'     observations based on `timeDeviationThreshold` and `timeDeviationExcluded`
+#' }
+#'
+#' @keywords internal
+.generateAutoFootnotes <- function(attrs) {
+	footnotes <- character(0)
+
+	# Return early if attrs is NULL or empty
+
+	if (is.null(attrs) || length(attrs) == 0) {
+		return(footnotes)
+	}
+
+	# -------------------------------------------------------------------------
+	# Time deviation filtering footnote
+	# -------------------------------------------------------------------------
+	if (isTRUE(attrs$timeDeviationFiltered)) {
+		excluded  <- attrs$timeDeviationExcluded
+		threshold <- attrs$timeDeviationThreshold
+
+		if (!is.null(excluded) && nrow(excluded) > 0) {
+			# Dynamically detect occasion columns (everything except fixed columns)
+			fixed_cols <- c("id", "ActualTime", "NominalTime", ".pct_deviation")
+			occ_cols <- setdiff(names(excluded), fixed_cols)
+
+			# Build modular message from excluded observations
+			obs_parts <- apply(excluded, 1, function(row) {
+				parts <- paste0("Subject ", row["id"])
+
+				# Add occasion columns if present (dynamic detection)
+				if (length(occ_cols) > 0) {
+					occ_parts <- sapply(occ_cols, function(occ) {
+						if (!is.na(row[occ]) && row[occ] != "") {
+							paste0(occ, ": ", row[occ])
+						} else {
+							NULL
+						}
+					})
+					occ_parts <- occ_parts[!sapply(occ_parts, is.null)]
+					if (length(occ_parts) > 0) {
+						parts <- paste0(parts, " - ", paste(occ_parts, collapse = " - "))
+					}
+				}
+
+				# Add actual time
+				parts <- paste0(parts, " at t=", row["ActualTime"])
+				return(parts)
+			})
+
+			footnote_msg <- sprintf(
+				"Observations excluded from summary (>%g%% deviation from nominal time):\n%s",
+				threshold,
+				paste(obs_parts, collapse = "; ")
+			)
+			footnotes <- c(footnotes, footnote_msg)
+		}
+	}
+
+	# -------------------------------------------------------------------------
+	# Future: Add more auto-footnote detection here
+	# e.g., BLQ handling, missing data, etc.
+	# -------------------------------------------------------------------------
+
+	return(footnotes)
+}
+################################################################################
+
 #' Format and style data frames as flextables
 #'
 #' Converts a data frame into a styled flextable with support for multiple features:
@@ -593,17 +679,19 @@
 #'                  color = c("RSE"))
 #' }
 print_table_flex <- function(data.flex,
-                             grouping.columns = NULL,
-                             header_level1    = NULL,
-                             header_level2    = NULL,
-                             header_level3    = NULL,
-                             color            = NULL,     # e.g. c("BE","DP","PVAL","RSE")
-                             theme_fn         = theme_box,
-                             soften_amount    = 0.50,     # 0 = original, 1 = white
-                             html_alpha       = 0.18,     # only used for html rgba)
+														 grouping.columns = NULL,
+														 header_level1    = NULL,
+														 header_level2    = NULL,
+														 header_level3    = NULL,
+														 color            = NULL,     # e.g. c("BE","DP","PVAL","RSE")
+														 theme_fn         = theme_box,
+														 soften_amount    = 0.50,     # 0 = original, 1 = white
+														 html_alpha       = 0.18,     # only used for html rgba
 														 align_default    = "center", # global default alignment
 														 align_grouping   = NULL,     # alignment for grouping columns (NULL = use default)
-														 align_cols       = NULL)     # named vector for column-specific alignments
+														 align_cols       = NULL,     # named vector for column-specific alignments
+														 footnote         = NULL,     # manual footnote text
+														 autoFootnote     = TRUE)     # auto-detect footnotes from attributes
 {
 
 	color <- toupper(color) # optional but helpful
@@ -880,6 +968,33 @@ print_table_flex <- function(data.flex,
 			flextable::bg(i = ~ Conclusion == "Bioequivalent", j = ~Conclusion, bg = col_green, part = "body") %>%
 			flextable::bg(i = ~ Conclusion == "Not bioequivalent", j = ~Conclusion, bg = col_red, part = "body")
 	}
+
+	# ---------------------------------------------------------------------------
+	# Footnotes
+	# ---------------------------------------------------------------------------
+	all_footnotes <- character(0)
+
+	# Auto-detect footnotes from attributes
+	if (isTRUE(autoFootnote)) {
+		auto_notes <- .generateAutoFootnotes(saved_attrs)
+		all_footnotes <- c(all_footnotes, auto_notes)
+	}
+
+	# Add manual footnotes
+	if (!is.null(footnote)) {
+		all_footnotes <- c(all_footnotes, as.character(footnote))
+	}
+
+	# Apply footnotes to flextable
+	if (length(all_footnotes) > 0) {
+		for (fn in all_footnotes) {
+			ft <- flextable::add_footer_lines(ft, values = fn)
+		}
+		ft <- flextable::fontsize(ft, size = 7, part = "footer")
+		ft <- flextable::italic(ft, part = "footer")
+		ft <- flextable::align(ft, align = "left", part = "footer")
+	}
+
 	ft <- set_table_properties(ft, width = 1, layout = "autofit")
 	return(ft)
 }
