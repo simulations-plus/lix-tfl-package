@@ -1000,6 +1000,8 @@
 #'
 #' @param data A data frame containing concentration data with columns
 #'   `ActualTime` and `NominalTime`.
+#' @param occs A vector containing names of occasion varaibales
+#'
 #' @param threshold Numeric value specifying the maximum allowed percentage
 #'   deviation. Observations where `abs((ActualTime - NominalTime) / NominalTime) * 100`
 #'   exceeds this value are excluded.
@@ -1025,7 +1027,7 @@
 #'   Attributes are attached for footnote generation (see Details).
 #'
 #' @keywords internal
-.filterByTimeDeviation <- function(data, threshold) {
+.filterByTimeDeviation <- function(data, occs, threshold) {
 	# Calculate percentage deviation: abs((actual - nominal) / nominal) * 100
 	# t=0 observations are excluded from filtering (always kept)
 
@@ -1036,11 +1038,12 @@
 				TRUE ~ abs((ActualTime - NominalTime) / NominalTime) * 100),
 			.exceeds_threshold = .pct_deviation > threshold)
 
-	# Capture excluded observations BEFORE filtering
+	# Capture excluded observations (id + occasion columns + time info)
+	id_cols <- c("id", occs)
 	excluded_obs <- data %>%
 		dplyr::filter(.exceeds_threshold == TRUE) %>%
 		dplyr::select(
-			dplyr::any_of(c("id", "OCC", "OCCASION")),  # subject + occasion cols if present
+			dplyr::any_of(id_cols),
 			ActualTime,
 			NominalTime,
 			.pct_deviation)
@@ -1066,6 +1069,7 @@
 	}
 
 	return(filtered_data)
+
 }
 
 ################################################################################
