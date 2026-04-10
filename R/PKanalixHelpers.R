@@ -129,20 +129,20 @@ tableNCAConcentration <- function(projectFile      = NULL,
 																	roundMethod      = c("monolix", "signif", "none"),
 																	prettyLabels     = TRUE) {
 
-
 	roundMethod <- match.arg(roundMethod)
 	# # DEBUG EXAMPLE
-	# projectFile = prj1
-	# covariates = "ATRTNCA"
-	# useNominalTime = TRUE
-	# metrics = c("mean", "geoMean")
+	# projectFile      = NULL
+	# covariates       = "ATRTNCA"
+	# useNominalTime   = TRUE
+	# metrics = c("min", "MeanSD", "max")
 	# stratify_columns = FALSE
 	# covariate_labels = NULL
 	# use_wide_format  = TRUE
-	# maxTimeDeviation = NULL
-	# include_id = TRUE
-	# roundDigits = 4
-	# roundMethod = "signif"
+	# maxTimeDeviation = 20
+	# include_id       = FALSE
+	# roundDigits      = 3
+	# roundMethod      = "monolix"
+	# prettyLabels     = TRUE
 
 	# ==========================================================================
 	# VALIDATION & SETUP
@@ -157,6 +157,9 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	.validateCovariateSelection(covariates, ratio = FALSE)
 	stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
 	covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
+
+	# Initialize time deviation attributes container (for footnote generation)
+	.time_dev_attrs <- NULL
 
 	# Validate: stratify_columns only works with long format
 	if (stratify_columns && use_wide_format) {
@@ -189,12 +192,16 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	# Keep full data for individual listing
 	raw_data_full <- raw_data
 
+	# Detect occasion variables from project
+	project_data <- lixoftConnectors::getData()
+	occ_vars <- project_data$header[project_data$headerTypes == "occ"]
+
 	# Apply time deviation filter only when:
 	# 1. Grouping by NominalTime (useNominalTime = TRUE)
 	# 2. Threshold is set
 	if (useNominalTime && !is.null(maxTimeDeviation)) {
 		if (all(c("NominalTime", "ActualTime") %in% names(raw_data))) {
-			raw_data <- .filterByTimeDeviation(raw_data, maxTimeDeviation)
+			raw_data <- .filterByTimeDeviation(raw_data, occs = occ_vars, maxTimeDeviation)
 			# Store attributes to attach to final output later
 			.time_dev_attrs <- list(
 				filtered  = attr(raw_data, "timeDeviationFiltered"),
@@ -408,14 +415,26 @@ tableNCAConcentration <- function(projectFile      = NULL,
 		}
 	}
 
-	# Attach time deviation attributes if filtering was applied
-	if (exists(".time_dev_attrs") && isTRUE(.time_dev_attrs$filtered)) {
+	# ==========================================================================
+	# FINALIZE OUTPUT
+
+	# Convert to data.frame first
+	final_df <- as.data.frame(final_df)
+
+	# Attach time deviation attributes AFTER as.data.frame() conversion
+	if (!is.null(.time_dev_attrs) && isTRUE(.time_dev_attrs$filtered)) {
 		attr(final_df, "timeDeviationFiltered")  <- .time_dev_attrs$filtered
 		attr(final_df, "timeDeviationThreshold") <- .time_dev_attrs$threshold
 		attr(final_df, "timeDeviationExcluded")  <- .time_dev_attrs$excluded
 	}
-	return(as.data.frame(final_df))
-
+	# ==========================================================================
+	# SET ATTRIBUTES for print_table_flex
+	# To recognize this as NCA table with sections
+	if (include_id && "Section" %in% names(final_df)) {
+		attr(final_df, "table_type") <- "nca"
+		attr(final_df, "format")     <- "long"  # Always long when include_id=TRUE
+	}
+	return(final_df)
 
 }
 
