@@ -50,7 +50,66 @@
 		dplyr::mutate(!!"aliases" := vapply(.data[["aliases"]], convert_sub_and_sup, character(1)))
 }
 
-##################################################################################
+###############################################################################
+#' .formatUnits
+#'
+#' Transforms unit strings from PKanalix notation to publication-ready
+#' display format. Converts denominator notation (e.g., `^-1`) to fraction
+#' format and replaces multiplication separators with `*`.
+#'
+#' @param unit_string A character string representing a unit in PKanalix notation
+#'   (e.g., "h.ng.mL^-1", "ng.mL^-1").
+#'
+#' @return A character string with units formatted for display:
+#'   - Denominators (units with `^-1`) moved after `/`
+#'   - Multiplication shown as `*`
+#'   - Returns input unchanged if NA or empty
+#'
+#' @examples
+#' .formatUnits("h.ng.mL^-1")
+#' # Returns: "h*ng/mL"
+#'
+#' .formatUnits("ng.mL^-1")
+#' # Returns: "ng/mL"
+#'
+#' .formatUnits("mL^-1")
+#' # Returns: "1/mL"
+#'
+#' .formatUnits("h")
+#' # Returns: "h"
+#'
+#' @seealso \code{\link{.addUnitsAliases}} which uses this helper internally
+#'
+.formatUnits <- function(unit_string) {
+	if (is.na(unit_string) || unit_string == "") return(unit_string)
+
+	# Split by any multiplication separator (., *, middle dot)
+	units <- unlist(strsplit(unit_string, "[.\\*\u22c5]"))
+
+	# Separate into numerator and denominator - order independent
+	numerator <- c()
+	denominator <- c()
+
+	for (u in units) {
+		if (grepl("\\^-1$", u)) {
+			denominator <- c(denominator, sub("\\^-1$", "", u))
+		} else {
+			numerator <- c(numerator, u)
+		}
+	}
+
+	# Build result: all numerators together, then / , then all denominators
+	num_str <- if (length(numerator) == 0) "1" else paste(numerator, collapse = "*")
+
+	if (length(denominator) > 0) {
+		denom_str <- paste(denominator, collapse = "*")
+		return(paste0(num_str, "/", denom_str))
+	}
+
+	return(num_str)
+}
+
+###############################################################################
 #' .addUnitsAliases
 #'
 #' Enhances parameter data frames by adding units and aliases to create formatted
@@ -87,7 +146,8 @@
 		# extract units if active in project
 		if (isTRUE(lixoftConnectors::getDataSettings()$enableunits)) {
 			units_df <- NCAParamSummary_info %>%
-				dplyr::select(parameter, units)
+				dplyr::select(parameter, units) %>%
+				dplyr::mutate(units = sapply(units, .formatUnits))
 		} else {
 			# warning if units are requested but not enabled
 			warning("Units were requested (units=TRUE) but are not enabled in the current project. Skipping unit retrieval.")
@@ -148,9 +208,9 @@
 	# Build display name with proper fallback handling
 	df <- df %>%
 		dplyr::mutate(display_name = dplyr::case_when(
-			!is.na(aliases) & !is.na(units) & units != "" ~ paste0(aliases, " (", units, ")"),
+			!is.na(aliases) & !is.na(units) & units != "" ~ paste0(aliases, "\n(", units, ")"),
 			!is.na(aliases) ~ aliases,
-			is.na(aliases) & !is.na(units) & units != "" ~ paste0(parameter, " (", units, ")"),
+			is.na(aliases) & !is.na(units) & units != "" ~ paste0(parameter, "\n(", units, ")"),
 			TRUE ~ parameter
 		))
 
