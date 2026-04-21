@@ -766,6 +766,8 @@ tableNCARatios <- function(projectFile      = NULL,
 													 roundMethod      = c("monolix", "signif", "none"),
 													 prettyLabels     = TRUE) {
 
+
+
 	roundMethod <- match.arg(roundMethod)
 
 	# ==========================================================================
@@ -989,20 +991,33 @@ tableNCARatios <- function(projectFile      = NULL,
 	}
 
 	# ==========================================================================
-	# SORTING
+	# SORT BY COVARIATES (for vertical tables with numeric-valued categorical covariates)
 
-	if (isTRUE(prettyLabels) && !stratify_columns) {
-		if (!is.null(covariates) && length(covariates) > 0) {
-			# Only sort if Section doesn't exist
-			# (if Section exists, .addIndividuals() already sorted correctly)
-			if (!"Section" %in% names(summary_tbl)) {
-				summary_tbl <- summary_tbl %>%
-					dplyr::arrange(dplyr::across(dplyr::all_of(covariates)))
-			}
+	if (!use_wide_format && !stratify_columns && !is.null(covariates) && length(covariates) > 0) {
+		# Only sort if Section doesn't exist
+		# (if Section exists, .addIndividuals() already sorted correctly)
+		if (!"Section" %in% names(summary_tbl)) {
+			summary_tbl <- summary_tbl %>%
+				dplyr::arrange(dplyr::across(
+					dplyr::all_of(covariates),
+					~{
+						num <- suppressWarnings(as.numeric(.x))
+						if(all(is.na(num))) .x else num
+					}
+				))
 		}
 	}
 
+	# ==========================================================================
+	# SET ATTRIBUTES for print_table_flex
+	# To recognize this as NCA table with sections
+	if (include_id && "Section" %in% names(summary_tbl)) {
+		attr(summary_tbl, "table_type") <- "nca"
+		attr(summary_tbl, "format")     <- "long"  # Always long when include_id=TRUE
+	}
+
 	return(as.data.frame(summary_tbl))
+
 
 }
 
