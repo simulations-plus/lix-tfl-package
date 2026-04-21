@@ -211,14 +211,15 @@
 
 ################################################################################
 #' .add_section_headers: Add section headers to parameter tables (population or NCA)
-#' For parameter tables (identified by `table_type` attribute = "pop" or "nca"),
-#' inserts section header rows to visually separate different sections.
+#' For parameter tables (identified by `table_type` attribute), inserts section
+#' header rows to visually separate different sections.
 #'
 #' **Population tables:** Fixed effects, Random effects (IIV/IOV), Correlations, Residual error
-#' **NCA tables:** Summary statistics, Individual parameter values
+#' **NCA tables:** Summary statistics, Individual data (Parameters/Concentrations/Ratios)
 #'
 #' @param data.flex Data frame with parameter estimates. Must have:
-#'   - Attribute `table_type` set to "pop" or "nca"
+#'   - Attribute `table_type` set to "pop" or "nca_*" (nca_parameters,
+#'     nca_concentration, nca_ratio)
 #'   - Attribute `format` indicating "wide" or "long" format
 #'   - Column `Section` with section codes:
 #'     - Pop: FE, IIV, IOV, CORR, CORR_IIV, CORR_IOV, RES_ERR
@@ -244,8 +245,9 @@
 #' Correlations, Residual error). If IOV parameters are present, IIV and IOV get separate
 #' headers ("Random effects IIV" and "Random effects IOV").
 #'
-#' **NCA tables:** Adds section headers for "Summary Statistics" and "Individual Parameters"
-#' in long format only.
+#' **NCA tables:** Adds section headers for "Summary Statistics" and individual data
+#' ("Individual Parameters", "Individual Concentrations", or "Individual Ratios"
+#' depending on table type) in long format only.
 #'
 #' **Grouping columns (NCA only):** When grouping.columns is provided for NCA tables, section header
 #' rows preserve values in grouping columns (for vertical merging) and only span non-grouping columns.
@@ -255,7 +257,7 @@
 
 	table_type <- attr(data.flex, "table_type")
 	is_pop_table <- !is.null(table_type) && table_type == "pop"
-	is_nca_table <- !is.null(table_type) && table_type == "nca"
+	is_nca_table <- !is.null(table_type) && grepl("^nca_", table_type)
 	table_format <- attr(data.flex, "format")
 	is_wide <- !is.null(table_format) && table_format == "wide"
 
@@ -281,9 +283,16 @@
 	# ============================================================================
 	if (is_nca_table) {
 		# NCA tables only have long format with SUMMARY and INDIVIDUAL sections
+		# Determine individual section label based on specific table type
+		individual_label <- switch(table_type,
+			"nca_parameters"    = "Individual Parameters",
+			"nca_concentration" = "Individual Concentrations",
+			"nca_ratio"         = "Individual Ratios",
+			"Individual Data"   # fallback
+		)
 		section_labels <- c(
 			SUMMARY    = "Summary Statistics",
-			INDIVIDUAL = "Individual Parameters"
+			INDIVIDUAL = individual_label
 		)
 
 		# Convert factor columns to character to avoid issues when inserting header rows
@@ -744,7 +753,7 @@ print_table_flex <- function(data.flex,
 	# For parameter tables (population or NCA), add section header rows to
 	# visually separate different sections:
 	# - Population: Fixed effects, Random effects, Correlations, Residual error
-	# - NCA: Summary Statistics, Individual Parameters
+	# - NCA: Summary Statistics, Individual data (Parameters/Concentrations/Ratios)
 	# Wide format (pop only) uses a split header at top for FE/RE.
 	#-----------------------------------------------------------------------------
 	# Save table_type before calling .add_section_headers (it may be lost during processing)
@@ -845,7 +854,8 @@ print_table_flex <- function(data.flex,
 		} else {
 			# Long format: multiple section headers
 			# Check if this is an NCA table with grouping columns
-			is_nca_with_grouping <- !is.null(table_type_for_styling) && table_type_for_styling == "nca" &&
+			is_nca_with_grouping <- !is.null(table_type_for_styling) &&
+				grepl("^nca_", table_type_for_styling) &&
 				!is.null(grouping.columns) && length(grouping.columns) > 0
 
 			for (row_idx in section_header_rows) {
