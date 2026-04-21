@@ -429,9 +429,9 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	}
 	# ==========================================================================
 	# SET ATTRIBUTES for print_table_flex
-	# To recognize this as NCA table with sections
+	# To recognize this as NCA concentration table with sections
 	if (include_id && "Section" %in% names(final_df)) {
-		attr(final_df, "table_type") <- "nca"
+		attr(final_df, "table_type") <- "nca_concentration"
 		attr(final_df, "format")     <- "long"  # Always long when include_id=TRUE
 	}
 	return(final_df)
@@ -716,9 +716,9 @@ tableNCAParameters <- function(projectFile      = NULL,
 	}
 	# ==========================================================================
 	# SET ATTRIBUTES for print_table_flex
-	# To recognize this as NCA table with sections
+	# To recognize this as NCA parameters table with sections
 	if (include_id && "Section" %in% names(summary_stats)) {
-		attr(summary_stats, "table_type") <- "nca"
+		attr(summary_stats, "table_type") <- "nca_parameters"
 		attr(summary_stats, "format")     <- "long"  # Always long when include_id=TRUE
 	}
 	return(as.data.frame(summary_stats))
@@ -1010,9 +1010,9 @@ tableNCARatios <- function(projectFile      = NULL,
 
 	# ==========================================================================
 	# SET ATTRIBUTES for print_table_flex
-	# To recognize this as NCA table with sections
+	# To recognize this as NCA ratio table with sections
 	if (include_id && "Section" %in% names(summary_tbl)) {
-		attr(summary_tbl, "table_type") <- "nca"
+		attr(summary_tbl, "table_type") <- "nca_ratio"
 		attr(summary_tbl, "format")     <- "long"  # Always long when include_id=TRUE
 	}
 
