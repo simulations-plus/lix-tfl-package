@@ -1167,15 +1167,15 @@
 #' @noRd
 ################################################################################
 .addIndividuals <- function(summary_stats,
-														covariates = NULL,
-														resultType = c("ncaParameters", "ncaRatio", "ncaConcentration"),
-														params = NULL,
-														roundDigits = 3,
-														roundMethod = "monolix",
-														units = TRUE,
-														aliases = TRUE,
+														covariates     = NULL,
+														resultType     = c("ncaParameters", "ncaRatio", "ncaConcentration"),
+														params         = NULL,
+														roundDigits    = 3,
+														roundMethod    = "monolix",
+														units          = TRUE,
+														aliases        = TRUE,
 														useNominalTime = TRUE,
-														indiv_data = NULL) {
+														indiv_data     = NULL) {
 
 	resultType <- match.arg(resultType)
 
@@ -1201,6 +1201,10 @@
 			indiv_data <- lixoftConnectors::getNCAIndividualRatios()
 			ratio_info <- lixoftConnectors::getNCARatios()
 			param_cols <- names(ratio_info)
+
+			# Check for remaining occasions in ratio table
+			remaining_occs <- .getRemainingOccasionsInRatioTable(indiv_data)
+			occ_vars <- remaining_occs  # Only use REMAINING occasions, not all project occasions
 		}
 
 		# Filter to requested parameters if specified
@@ -1244,8 +1248,10 @@
 		# Apply name mapping to Parameter column
 		long_df$Parameter <- name_mapping[long_df$Parameter]
 
-		# Check for occasions (duplicate id-covariate combinations)
-		composite_result <- .createCompositeId(long_df, covariates)
+		# Check for occasions (duplicate id-covariate-parameter combinations)
+		# Pass occ_vars explicitly - differs between ncaParameters and ncaRatio
+		composite_result <- .createCompositeId(long_df, covariates, occ_vars = occ_vars,
+																					 value_group_col = "Parameter")
 		long_df <- composite_result$data
 		use_composite_id <- composite_result$composite_id_created
 
@@ -1311,6 +1317,10 @@
 
 	if (resultType == "ncaConcentration") {
 
+		# Get occasion variables from project settings (same as ncaParameters)
+		project_data <- lixoftConnectors::getData()
+		occ_vars <- project_data$header[project_data$headerTypes == "occ"]
+
 		# Use provided indiv_data or fetch individual concentration data
 		if (is.null(indiv_data)) {
 			indiv_data <- listingNCAConcentration(
@@ -1333,7 +1343,8 @@
 
 		# *** CHECK FOR OCCASIONS BEFORE PIVOTING TO WIDE ***
 		# Pass full indiv_data with all columns (including occasions) to detect duplicates correctly
-		composite_result <- .createCompositeId(indiv_data, covariates)
+		composite_result <- .createCompositeId(indiv_data, covariates, occ_vars = occ_vars,
+																					 value_group_col = time_col)
 		indiv_data_processed <- composite_result$data
 		use_composite_id <- composite_result$composite_id_created
 
@@ -1387,46 +1398,110 @@
 		return(as.data.frame(result))
 	}
 }
-
-
 ################################################################################
-#' Create composite IDs for handling occasions in individual data
+#' Get remaining occasion columns in NCA ratio table
 #'
-#' Detects when duplicate id-covariate combinations exist due to occasions and
-#' creates composite IDs by combining subject ID with occasion values.
+#' Identifies which occasion variables from the project are still present in
+#' the individual ratio table. Ratios are computed BETWEEN occasions (e.g.,
+#' OCC2/OCC1), so those occasions are consumed. However, other occasion
+#' variables may remain and cause non-unique subject identifiers.
 #'
-#' @param data Data frame containing individual data with id column and potentially
-#'   occasion columns
-#' @param covariates Character vector of user-specified covariate names (may include
-#'   occasion columns, which will be excluded from grouping)
+#' @param ratio_data Data frame from getNCAIndividualRatios(). If NULL,
+#'   fetches it automatically.
 #'
-#' @return A list with three elements:
-#'   \item{data}{The input data frame, potentially with a new "composite_id" column}
-#'   \item{composite_id_created}{Logical; TRUE if composite IDs were created}
-#'   \item{occasion_cols}{Character vector of occasion column names used for composite ID,
-#'     or NULL if no composite ID was needed}
+#' @return Character vector of occasion column names that remain in the ratio
+#'   table (may be empty if all occasions were used for ratio computation).
 #'
 #' @details
-#' The function:
-#' 1. Gets occasion variables from the PKanalix project
-#' 2. Excludes occasions from user covariates to define grouping columns (id + covariates)
-#' 3. Checks if any id-covariate combination appears more than once (indicates occasions)
-#' 4. If duplicates exist, identifies which occasion columns vary within groups
-#' 5. Creates composite IDs using actual occasion values (e.g., "Subject1-Period1-Sequence2")
+#' This function:
+#' 1. Gets all occasion variables defined in the project
+#' 2. Gets the ratio parameter columns from getNCARatios()
+#' 3. Identifies columns in ratio_data that are neither 'id' nor ratio params
+#' 4. Returns intersection with project occasions (remaining occasions)
 #'
-#' This ensures unique identifiers when pivoting to wide format, while preserving
-#' the mapping to original subject ID and occasion values.
+#' Used by .addIndividuals() to determine which occasions apply for ncaRatio,
+#' since ratio tables have different occasion handling than ncaParameters.
+#'
+#' @seealso \code{\link{.createCompositeId}} which uses this to determine
+#'   appropriate occasion variables for ratio data
 #'
 #' @keywords internal
 #' @noRd
 ################################################################################
-.createCompositeId <- function(data, covariates) {
-	# Get occasion variables directly from PKanalix project
+.getRemainingOccasionsInRatioTable <- function(ratio_data = NULL) {
+	# Fetch ratio data if not provided
+	if (is.null(ratio_data)) {
+		ratio_data <- lixoftConnectors::getNCAIndividualRatios()
+	}
 
+	# Get project occasion variables
 	project_data <- lixoftConnectors::getData()
 	occ_vars <- project_data$header[project_data$headerTypes == "occ"]
 
+	# Get ratio parameter columns
+	ratio_info <- lixoftConnectors::getNCARatios()
+	ratio_cols <- names(ratio_info)
+
+	# Find non-id, non-ratio columns
+	other_cols <- setdiff(names(ratio_data), c("id", ratio_cols))
+
+	# Which are occasion variables?
+	remaining_occs <- intersect(other_cols, occ_vars)
+
+	return(remaining_occs)
+}
+################################################################################
+#' Create composite IDs for handling occasions in individual data
+#'
+#' Detects when duplicate id-covariate-parameter combinations exist due to
+#' occasions and creates composite IDs by combining subject ID with occasion
+#' values. Handles long format data where each subject has multiple rows
+#' (one per parameter or time point).
+#'
+#' @param data Data frame containing individual data with id column and
+#'   potentially occasion columns. Expected to be in long format.
+#' @param covariates Character vector of user-specified covariate names (may
+#'   include occasion columns, which will be excluded from grouping).
+#' @param occ_vars Character vector of occasion variable names to check.
+#'   Must be provided by caller based on data type:
+#'   \itemize{
+#'     \item ncaParameters/ncaConcentration: from project settings
+#'     \item ncaRatio: from .getRemainingOccasionsInRatioTable() (only
+#'       remaining occasions, not those used to compute ratios)
+#'   }
+#' @param value_group_col Column name that causes expected row multiplication
+#'   in long format. Used to properly check uniqueness:
+#'   \itemize{
+#'     \item ncaParameters/ncaRatio: "Parameter"
+#'     \item ncaConcentration: time column (NominalTime or ActualTime)
+#'   }
+#'
+#' @return A list with three elements:
+#'   \item{data}{The input data frame, potentially with new "composite_id" column}
+#'   \item{composite_id_created}{Logical; TRUE if composite IDs were created}
+#'   \item{occasion_cols}{Character vector of occasion column names used for
+#'     composite ID, or NULL if no composite ID was needed}
+#'
+#' @details
+#' The function:
+#' 1. Excludes occasions from user covariates to define grouping columns
+#' 2. Includes value_group_col to account for long format (multiple rows per subject)
+#' 3. Checks if any (id, covariate, parameter/time) combination appears more than once
+#' 4. If duplicates exist, identifies which occasion columns vary within groups
+#' 5. Creates composite IDs using actual occasion values (e.g., "Subject1-Period1")
+#'
+#' This ensures unique identifiers when pivoting to wide format, while preserving
+#' the mapping to original subject ID and occasion values.
+#'
+#' @seealso \code{\link{.getRemainingOccasionsInRatioTable}} for determining
+#'   appropriate occ_vars for ratio data
+#'
+#' @keywords internal
+#' @noRd
+################################################################################
+.createCompositeId <- function(data, covariates, occ_vars, value_group_col) {
 	# Define grouping columns (id + user-specified covariates, excluding occasions)
+
 	user_covariates <- setdiff(covariates, occ_vars)
 	if (is.null(user_covariates) || length(user_covariates) == 0) {
 		grouping_cols <- "id"
@@ -1434,9 +1509,16 @@
 		grouping_cols <- c("id", user_covariates)
 	}
 
-	# Count occurrences of each id-covariate combination
+	# Include value_group_col in check (accounts for long format where each
+	# id-covariate has multiple rows - one per Parameter or time point)
+	check_cols <- grouping_cols
+	if (!is.null(value_group_col) && value_group_col %in% names(data)) {
+		check_cols <- c(check_cols, value_group_col)
+	}
+
+	# Count occurrences of each id-covariate-valueGroup combination
 	dup_check <- data %>%
-		dplyr::group_by(dplyr::across(dplyr::all_of(grouping_cols))) %>%
+		dplyr::group_by(dplyr::across(dplyr::all_of(check_cols))) %>%
 		dplyr::summarise(n_obs = dplyr::n(), .groups = "drop")
 
 	# If all combinations appear exactly once, no composite ID needed
@@ -1455,10 +1537,14 @@
 	available_occ_cols <- intersect(occ_vars, names(data))
 
 	if (length(available_occ_cols) == 0) {
-		# No occasion columns in data - this indicates a problem with the data passed
-		stop("Duplicate id-covariate combinations detected but no occasion columns found in data. ",
-				 "This suggests occasion columns were filtered out before calling .createCompositeId(). ",
-				 "Please pass the full data including all occasion columns.")
+		# No occasion columns found - cannot create composite IDs
+		warning("Duplicate id-covariate combinations detected but no occasion columns found. ",
+						"Cannot create composite IDs. Keeping original id.")
+		return(list(
+			data = data,
+			composite_id_created = FALSE,
+			occasion_cols = NULL
+		))
 	}
 
 	# Check which occasion columns actually vary within id-covariate groups
