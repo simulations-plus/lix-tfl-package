@@ -259,7 +259,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 
 		# Validate Metrics existence
 		available_cols   <- names(summary_stats)
-		descriptor_cols  <- c(time_col, covariates, "Nobs")
+		descriptor_cols  <- c(time_col, covariates)  # N/Nobs are optional metrics
 		selected_metrics <- .validateAndSelectMetrics(available_cols, metrics, descriptor_cols)
 
 		# Use internal helper to build stratified table
@@ -547,6 +547,21 @@ tableNCAParameters <- function(projectFile      = NULL,
 
 	roundMethod <- match.arg(roundMethod)
 
+	# DEBUG EXAMPLE
+	# projectFile      = NULL
+	# covariates       = c("ATRTNCA","AVISIT_OCC")
+	# NCAparams        = c("AUClast", "Cmax", "C0")
+	# metrics          = c("min", "MeanSD", "max")
+	# use_wide_format  = FALSE
+	# stratify_columns = FALSE
+	# covariate_labels = NULL
+	# include_id       = TRUE
+	# roundDigits      = 3
+	# roundMethod      = "monolix"
+	# units            = TRUE
+	# aliases          = TRUE
+	# prettyLabels     = TRUE
+
 	# ==========================================================================
 	# VALIDATION & SETUP
 
@@ -570,7 +585,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 	}
 	# Validate combination of include_id and use_wide_format setting
 	if (include_id && use_wide_format) {
-		warning("include_id = TRUE only works with use_wide_format = TRUE. Setting include_id to FALSE.")
+		warning("include_id = TRUE only works with use_wide_format = FALSE. Setting include_id to FALSE.")
 		include_id <- FALSE
 	}
 	# Validate include_id and stratify_columns setting
@@ -580,9 +595,49 @@ tableNCAParameters <- function(projectFile      = NULL,
 	}
 
 	# ==========================================================================
-	# TABLE FORMATTING
+	# GET INDIVIDUAL PARAMETERS DATA (fetch once, reuse for stats and include_id)
+
+	indiv_params <- lixoftConnectors::getNCAIndividualParameters()$parameters
+
+	# Get ALL covariates from project (catcov + contcov + occ) for column identification
+	project_data   <- lixoftConnectors::getData()
+	all_covariates <- project_data$header[project_data$headerTypes %in% c("catcov", "contcov", "occ")]
+	occ_vars       <- project_data$header[project_data$headerTypes == "occ"]
+
+	# Identify parameter columns (exclude id and ALL covariates including occasions)
+	param_cols <- setdiff(names(indiv_params), c("id", all_covariates))
+
+	# Filter to requested NCAparams if specified
+	if (!is.null(NCAparams)) {
+		param_cols <- intersect(NCAparams, param_cols)
+		if (length(param_cols) == 0) {
+			stop("None of the specified NCAparams found in the individual parameters data.")
+		}
+	}
+
+	# ==========================================================================
+	# PREPARE LONG-FORMAT DATA FOR STATS CALCULATION
+
+	# Select columns for pivoting: id, user covariates, occasion vars, and parameters
+	cols_to_select <- c("id", covariates, occ_vars, param_cols)
+	cols_to_select <- intersect(cols_to_select, names(indiv_params))
+
+	# Pivot to long format
+	indiv_long <- indiv_params %>%
+		dplyr::select(dplyr::all_of(cols_to_select)) %>%
+		tidyr::pivot_longer(
+			cols      = dplyr::all_of(param_cols),
+			names_to  = "parameter",
+			values_to = "value")
+
+	# ==========================================================================
+	# CALCULATE DESCRIPTIVE STATISTICS
 
 	if (stratify_columns) {
+		# ----------------------------------------------------------------------
+		# STRATIFIED CASE: Calculate stats for each covariate combination
+		# ----------------------------------------------------------------------
+
 		if (!use_wide_format) {
 			message("Note: stratify_columns=TRUE uses a different table format. The 'use_wide_format' argument is ignored.")
 		}
@@ -595,27 +650,60 @@ tableNCAParameters <- function(projectFile      = NULL,
 			user_metrics <- metrics
 		}
 
-		# Get stratified data
-		summary_stats <- .prepareNCASummaryStats(projectFile, NCAparams, covariates, roundDigits, roundMethod, units, aliases, by_time = FALSE, useNominalTime = FALSE)
+		# Calculate stratified stats (group by parameter + covariates)
+		group_by_vars <- c("parameter", covariates)
 
-		if (is.null(summary_stats)) stop("No NCA results available.")
+		summary_stats <- .calculateDescriptiveStats(
+			data      = indiv_long,
+			value_col = "value",
+			id_col    = "id",
+			group_by  = group_by_vars)
 
-		# Identify parameter column
-		param_col <- "parameter"
-		if (!(param_col %in% names(summary_stats))) {
-			param_col <- intersect(names(summary_stats), c("parameter", "Parameter"))[1]
+		# Apply rounding
+		summary_stats <- .round_num(
+			to_round        = summary_stats,
+			digits          = roundDigits,
+			rounding_method = roundMethod,
+			exclude         = c("parameter", covariates))
+
+		# Add combined metrics (MeanSD, GeomCV, GeomSD)
+		summary_stats <- .combinedStats(summary_stats)
+
+		# Apply units/aliases to parameter names
+		if (isTRUE(units) || isTRUE(aliases)) {
+			summary_stats <- .addUnitsAliases(summary_stats, add_units = units, add_aliases = aliases)
 		}
 
 		# Validate metrics
-		descriptor_cols  <- c(param_col, covariates, "Nobs")
+		param_col <- "parameter"
+		descriptor_cols  <- c(param_col, covariates)  # N/Nobs are optional metrics
 		selected_metrics <- .validateAndSelectMetrics(
 			available_cols = names(summary_stats),
 			user_metrics   = user_metrics,
 			descriptors    = descriptor_cols)
 
-		# Prepare overall stats if covariates provided
+		# Calculate overall stats (no covariate grouping) if covariates provided
 		if (!is.null(covariates)) {
-			overall_stats <- .prepareNCASummaryStats(projectFile, NCAparams, NULL, roundDigits, roundMethod, units, aliases, by_time = FALSE, useNominalTime = FALSE)
+			overall_stats <- .calculateDescriptiveStats(
+				data      = indiv_long,
+				value_col = "value",
+				id_col    = "id",
+				group_by  = "parameter")
+
+			# Apply rounding to overall_stats
+			overall_stats <- .round_num(
+				to_round        = overall_stats,
+				digits          = roundDigits,
+				rounding_method = roundMethod,
+				exclude         = "parameter")
+
+			# Add combined metrics
+			overall_stats <- .combinedStats(overall_stats)
+
+			# Apply units/aliases
+			if (isTRUE(units) || isTRUE(aliases)) {
+				overall_stats <- .addUnitsAliases(overall_stats, add_units = units, add_aliases = aliases)
+			}
 
 			# Safety check
 			if (!all(selected_metrics %in% names(overall_stats))) {
@@ -633,25 +721,50 @@ tableNCAParameters <- function(projectFile      = NULL,
 			selected_metrics = selected_metrics,
 			param_col        = param_col,
 			covariate_labels = covariate_labels)
-	} else {
-		# Non-stratified or use_wide_format mode
-		summary_stats <- .prepareNCASummaryStats(projectFile, NCAparams, covariates, roundDigits, roundMethod, units, aliases, by_time = FALSE, useNominalTime = FALSE)
-		if (is.null(summary_stats)) stop("No NCA results available.")
 
-		# Identify parameter column
+	} else {
+		# ----------------------------------------------------------------------
+		# NON-STRATIFIED CASE
+		# ----------------------------------------------------------------------
+
+		# Calculate stats with covariates as grouping (if present)
+		group_by_vars <- if (!is.null(covariates)) c("parameter", covariates) else "parameter"
+
+		summary_stats <- .calculateDescriptiveStats(
+			data      = indiv_long,
+			value_col = "value",
+			id_col    = "id",
+			group_by  = group_by_vars)
+
+		# Apply rounding
+		summary_stats <- .round_num(
+			to_round        = summary_stats,
+			digits          = roundDigits,
+			rounding_method = roundMethod,
+			exclude         = c("parameter", covariates))
+
+		# Add combined metrics (MeanSD, GeomCV, GeomSD)
+		summary_stats <- .combinedStats(summary_stats)
+
+		# Apply units/aliases to parameter names
+		if (isTRUE(units) || isTRUE(aliases)) {
+			summary_stats <- .addUnitsAliases(summary_stats, add_units = units, add_aliases = aliases)
+		}
+
+		# Identify parameter column (may have been renamed by .addUnitsAliases)
 		param_col <- "parameter"
 		if (!(param_col %in% names(summary_stats))) {
 			param_col <- intersect(names(summary_stats), c("parameter", "Parameter"))[1]
 		}
 
-		# Determine metrics
-		descriptor_cols  <- c(param_col, covariates, "Nobs")
+		# Validate and select metrics
+		descriptor_cols  <- c(param_col, covariates)  # N/Nobs are optional metrics
 		selected_metrics <- .validateAndSelectMetrics(
 			available_cols = names(summary_stats),
 			user_metrics   = metrics,
 			descriptors    = descriptor_cols)
 
-		# Filter dataframe
+		# Filter columns
 		cols_to_keep  <- intersect(c(descriptor_cols, selected_metrics), names(summary_stats))
 		summary_stats <- summary_stats[, cols_to_keep, drop = FALSE]
 
@@ -676,7 +789,9 @@ tableNCAParameters <- function(projectFile      = NULL,
 			roundDigits   = roundDigits,
 			roundMethod   = roundMethod,
 			units         = units,
-			aliases       = aliases)
+			aliases       = aliases,
+			indiv_data    = indiv_params  # Pass existing data to avoid re-fetching
+		)
 	}
 
 	# ==========================================================================
@@ -684,7 +799,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 
 	if (!use_wide_format && !stratify_columns && !is.null(covariates) && length(covariates) > 0) {
 		# Only sort if Section doesn't exist
-		# (if Section exists, .addIndividualsNCAParameters() already set correct order)
+		# (if Section exists, .addIndividuals() already set correct order)
 		if (!"Section" %in% names(summary_stats)) {
 			summary_stats <- summary_stats %>%
 				dplyr::arrange(dplyr::across(
@@ -714,6 +829,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 			summary_stats$Statistic <- metric_map[summary_stats$Statistic]
 		}
 	}
+
 	# ==========================================================================
 	# SET ATTRIBUTES for print_table_flex
 	# To recognize this as NCA parameters table with sections
@@ -721,8 +837,10 @@ tableNCAParameters <- function(projectFile      = NULL,
 		attr(summary_stats, "table_type") <- "nca_parameters"
 		attr(summary_stats, "format")     <- "long"  # Always long when include_id=TRUE
 	}
+
 	return(as.data.frame(summary_stats))
 }
+
 
 
 #-------------------------------------------------------------------------------
@@ -860,7 +978,7 @@ tableNCARatios <- function(projectFile      = NULL,
 		}
 
 		# Validate metrics
-		descriptor_cols <- c("Parameter", covariates, "Nobs")
+		descriptor_cols <- c("Parameter", covariates)  # N/Nobs are optional metrics
 		selected_metrics <- .validateAndSelectMetrics(
 			available_cols = names(summary_stats),
 			user_metrics   = metrics,
@@ -928,8 +1046,8 @@ tableNCARatios <- function(projectFile      = NULL,
 		summary_tbl <- .combinedStats(summary_tbl)
 
 		# Validate & select metrics
-		# Note: .calculateDescriptiveStats() returns both N and Nobs
-		descriptor_cols <- c("Parameter", covariates, "Nobs")
+		# Note: .calculateDescriptiveStats() returns both N and Nobs (both are optional metrics)
+		descriptor_cols <- c("Parameter", covariates)
 
 		selected_metrics <- .validateAndSelectMetrics(
 			available_cols = names(summary_tbl),
