@@ -7,15 +7,34 @@ pkx_project_5  ="test-projects/pkanalix/project_repeated_4periods_multipleRatios
 ################################################################################
 # tableNCAConcentration
 
-test_that("tableNCAConcentration basic (no stratification)", {
+test_that("tableNCAConcentration basic wide format (default)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	# Test basic functionality with no covariates
+	# Test basic functionality with no covariates - default is wide format
 	table <- tableNCAConcentration(projectFile = pkx_project_1)
 
 	# Verify structure
 	expect_true(is.data.frame(table))
-	expect_true("Time" %in% names(table))
+	expect_gt(nrow(table), 0)
+
+	# In wide format, time values become column headers like "Time = 1.5"
+	# Verify Statistic column exists (metrics are rows in wide format)
+	expect_true("Statistic" %in% names(table))
+
+	# Verify time columns exist (columns with "Time = " prefix)
+	time_cols <- grep("^Time\\s*=", names(table), value = TRUE)
+	expect_gt(length(time_cols), 0)
+})
+
+test_that("tableNCAConcentration basic long format (use_wide_format = FALSE)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# Test long format
+	table <- tableNCAConcentration(projectFile = pkx_project_1, use_wide_format = FALSE)
+
+	# Verify structure
+	expect_true(is.data.frame(table))
+	expect_true("ActualTime" %in% names(table))
 	expect_gt(nrow(table), 0)
 
 	# Verify metrics columns exist (at least some standard ones)
@@ -25,18 +44,19 @@ test_that("tableNCAConcentration basic (no stratification)", {
 	expect_true(all(diff(suppressWarnings(as.numeric(table$Time))) >= 0, na.rm = TRUE))
 })
 
-test_that("tableNCAConcentration with stratification (stratify_columns = FALSE)", {
+test_that("tableNCAConcentration with covariates (stratify_columns = FALSE)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	# Test with covariates but no column stratification
+	# Test with covariates but no column stratification - use long format to get Time column
 	table <- tableNCAConcentration(
 		projectFile      = pkx_project_1,
 		covariates       = "TINFCAT",
-		stratify_columns = FALSE)
+		stratify_columns = FALSE,
+		use_wide_format  = FALSE)
 
 	# Verify covariate column exists
 	expect_true("TINFCAT" %in% names(table))
-	expect_true("Time" %in% names(table))
+	expect_true("ActualTime" %in% names(table))
 
 	# Verify structure
 	expect_true(is.data.frame(table))
@@ -47,14 +67,19 @@ test_that("tableNCAConcentration with column stratification (stratify_columns = 
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with covariates and column stratification
+	# Note: stratify_columns = TRUE requires use_wide_format = FALSE
 	table <- tableNCAConcentration(
 		projectFile      = pkx_project_1,
 		covariates       = "TINFCAT",
-		stratify_columns = TRUE)
+		stratify_columns = TRUE,
+		use_wide_format  = FALSE)
 
 	# Verify structure
 	expect_true(is.data.frame(table))
-	expect_true("Time" %in% names(table))
+
+	# With stratify_columns = TRUE, covariate values become column headers
+	# Time column should exist in long format
+	expect_true("ActualTime" %in% names(table))
 
 	# Verify "Overall" column exists (always included in stratified layout)
 	expect_true(any(grepl("Overall", names(table), ignore.case = TRUE)))
@@ -75,11 +100,12 @@ test_that("tableNCAConcentration with specific metrics (single metric)", {
 		projectFile      = pkx_project_1,
 		covariates       = "TINFCAT",
 		stratify_columns = TRUE,
+		use_wide_format  = FALSE,
 		metrics          = "MeanSD")
 
 	# Verify "Statistic" column does NOT exist for single metric
 	expect_false("Statistic" %in% names(table))
-	expect_true("Time" %in% names(table))
+	expect_true(any(grepl("^(Actual)?Time$", names(table))))  # Time or ActualTime
 	expect_true(any(grepl("Overall", names(table), ignore.case = TRUE)))
 })
 
@@ -88,14 +114,15 @@ test_that("tableNCAConcentration with specific metrics (multiple metrics)", {
 
 	# Test with multiple metrics
 	table <- tableNCAConcentration(
-		projectFile = pkx_project_1,
-		covariates = "TINFCAT",
+		projectFile      = pkx_project_1,
+		covariates       = "TINFCAT",
 		stratify_columns = TRUE,
-		metrics = c("MeanSD", "GeomCV"))
+		use_wide_format  = FALSE,
+		metrics          = c("MeanSD", "GeomCV"))
 
 	# Verify "Statistic" column EXISTS for multiple metrics
 	expect_true("Statistic" %in% names(table))
-	expect_true("Time" %in% names(table))
+	expect_true(any(grepl("^(Actual)?Time$", names(table))))  # Time or ActualTime
 
 	# Verify statistics are as requested
 	expect_true(all(c("MeanSD", "GeomCV") %in% table$Statistic |
@@ -108,12 +135,13 @@ test_that("tableNCAConcentration with useNominalTime", {
 	# Test with nominal time (project_occasions2 likely has nominal time)
 	# If no nominal time available, should fall back to actual time
 	table <- tableNCAConcentration(
-		projectFile    = pkx_project_2,
-		useNominalTime = TRUE)
+		projectFile     = pkx_project_2,
+		useNominalTime  = TRUE,
+		use_wide_format = FALSE)
 
 	# Verify structure
 	expect_true(is.data.frame(table))
-	expect_true("Time" %in% names(table))
+	expect_true("ActualTime" %in% names(table))
 	expect_gt(nrow(table), 0)
 })
 
@@ -125,7 +153,8 @@ test_that("tableNCAConcentration with covariate_labels", {
 		projectFile      = pkx_project_1,
 		covariates       = "TINFCAT",
 		covariate_labels = "Infusion Category",
-		stratify_columns = TRUE)
+		stratify_columns = TRUE,
+		use_wide_format  = FALSE)
 
 	# Verify custom labels appear in column headers
 	header_names <- names(table)
@@ -166,14 +195,12 @@ test_that("tableNCAConcentration prettyLabels", {
 	# Test with pretty labels enabled
 	table_pretty <- tableNCAConcentration(
 		projectFile = pkx_project_1,
-		prettyLabels = TRUE
-	)
+		prettyLabels = TRUE)
 
 	# Test with pretty labels disabled
 	table_raw <- tableNCAConcentration(
 		projectFile = pkx_project_1,
-		prettyLabels = FALSE
-	)
+		prettyLabels = FALSE)
 
 	# Verify both tables are valid
 	expect_true(is.data.frame(table_pretty))
@@ -191,10 +218,8 @@ test_that("tableNCAConcentration errors", {
 	expect_error(
 		tableNCAConcentration(
 			projectFile = pkx_project_1,
-			metrics = c("InvalidMetric1", "InvalidMetric2")
-		),
-		"metric"
-	)
+			metrics = c("InvalidMetric1", "InvalidMetric2")),
+		"metric")
 
 	# Test with invalid covariates (this should error or warn)
 	expect_error(
@@ -219,7 +244,7 @@ test_that("tableNCAParameters basic (no stratification)", {
 	expect_gt(nrow(table), 0)
 
 	# Verify metrics columns exist (at least some standard ones)
-	expect_true(any(c("mean", "SD", "CV", "geoMean", "geoCV", "median", "Nobs") %in% names(table)))
+	expect_true(any(c("Mean", "SD", "CV (%)", "geoMean", "geoCV", "Median", "N") %in% names(table)))
 })
 
 test_that("tableNCAParameters with specific NCAparams", {
@@ -230,8 +255,7 @@ test_that("tableNCAParameters with specific NCAparams", {
 		projectFile = pkx_project_1,
 		NCAparams   = c("AUCINF_obs", "AUClast", "Cmax"),
 		units       = FALSE,
-		aliases     = FALSE
-	)
+		aliases     = FALSE)
 
 	# Verify structure
 	expect_true(is.data.frame(table))
@@ -253,8 +277,7 @@ test_that("tableNCAParameters with specific metrics", {
 	table <- tableNCAParameters(
 		projectFile = pkx_project_1,
 		NCAparams   = c("AUCINF_obs", "AUClast", "Cmax"),
-		metrics     = c("min", "MeanSD", "median", "GeomCV", "max")
-	)
+		metrics     = c("min", "MeanSD", "median", "GeomCV", "max"))
 
 	# Verify structure
 	expect_true(is.data.frame(table))
@@ -273,8 +296,7 @@ test_that("tableNCAParameters with stratification (stratify_columns = FALSE)", {
 		projectFile      = pkx_project_1,
 		covariates       = "TINFCAT",
 		NCAparams        = c("AUCINF_obs", "AUClast", "Cmax"),
-		stratify_columns = FALSE
-	)
+		stratify_columns = FALSE)
 
 	# Verify covariate column exists
 	expect_true("TINFCAT" %in% names(table))
@@ -292,8 +314,8 @@ test_that("tableNCAParameters with column stratification (stratify_columns = TRU
 		projectFile      = pkx_project_1,
 		covariates       = "TINFCAT",
 		NCAparams        = c("AUCINF_obs", "AUClast", "Cmax"),
-		stratify_columns = TRUE
-	)
+		stratify_columns = TRUE,
+		use_wide_format = FALSE)
 
 	# Verify structure
 	expect_true(is.data.frame(table))
@@ -317,8 +339,8 @@ test_that("tableNCAParameters with column stratification and specific metric", {
 		covariates       = "TINFCAT",
 		NCAparams        = c("AUCINF_obs", "AUClast", "Cmax"),
 		stratify_columns = TRUE,
-		metrics          = "GeomCV"
-	)
+		metrics          = "GeomCV",
+		use_wide_format  = FALSE)
 
 	# Verify structure
 	expect_true(is.data.frame(table))
@@ -334,8 +356,8 @@ test_that("tableNCAParameters with column stratification and multiple metrics", 
 		covariates       = "TINFCAT",
 		NCAparams        = c("AUCINF_obs", "AUClast", "Cmax"),
 		stratify_columns = TRUE,
-		metrics          = c("MeanSD", "GeomCV")
-	)
+		use_wide_format  = FALSE,
+		metrics          = c("MeanSD", "GeomCV"))
 
 	# Verify "Statistic" column EXISTS for multiple metrics
 	expect_true("Statistic" %in% names(table))
@@ -352,8 +374,7 @@ test_that("tableNCAParameters vertical layout (use_wide_format = FALSE)", {
 	table <- tableNCAParameters(
 		projectFile = pkx_project_1,
 		NCAparams   = c("AUCINF_obs", "AUClast", "Cmax"),
-		use_wide_format  = FALSE
-	)
+		use_wide_format  = FALSE)
 
 	# Verify "Statistic" column exists in vertical layout
 	expect_true("Statistic" %in% names(table))
@@ -370,8 +391,7 @@ test_that("tableNCAParameters vertical layout with covariates", {
 		NCAparams   = c("AUCINF_obs", "AUClast", "Cmax"),
 		covariates  = "TINFCAT",
 		use_wide_format  = FALSE,
-		metrics     = c("min", "MeanSD", "median", "GeomCV", "max")
-	)
+		metrics     = c("min", "MeanSD", "median", "GeomCV", "max"))
 
 	# Verify structure
 	expect_true("Statistic" %in% names(table))
@@ -389,8 +409,8 @@ test_that("tableNCAParameters with multiple covariates", {
 		NCAparams        = c("AUCINF_obs", "Cmax"),
 		covariates       = c("DOSE_mg", "ROUTE"),
 		stratify_columns = TRUE,
-		metrics          = c("MeanSD", "GeomCV")
-	)
+		use_wide_format  = FALSE,
+		metrics          = c("MeanSD", "GeomCV"))
 
 	# Verify structure
 	expect_true(is.data.frame(table))
@@ -407,8 +427,8 @@ test_that("tableNCAParameters with covariate_labels", {
 		covariates       = "TINFCAT",
 		covariate_labels = "Infusion Category",
 		NCAparams        = c("AUCINF_obs", "Cmax"),
-		stratify_columns = TRUE
-	)
+		stratify_columns = TRUE,
+		use_wide_format  = FALSE)
 
 	# Verify custom labels appear in column headers
 	header_names <- names(table)
@@ -425,8 +445,8 @@ test_that("tableNCAParameters with multiple covariate_labels", {
 		covariates       = c("DOSE_mg", "ROUTE"),  # Changed from "DOSE" to "DOSE_mg"
 		covariate_labels = c("Dose Level", "Route of Administration"),
 		stratify_columns = TRUE,
-		metrics          = "GeomCV"
-	)
+		use_wide_format  = FALSE,
+		metrics          = "GeomCV")
 
 	# Verify custom labels appear
 	header_names <- names(table)
@@ -441,8 +461,7 @@ test_that("tableNCAParameters rounding methods", {
 		projectFile = pkx_project_1,
 		NCAparams   = c("Cmax"),
 		roundDigits = 2,
-		roundMethod = "monolix"
-	)
+		roundMethod = "monolix")
 
 	table_signif <- tableNCAParameters(
 		projectFile = pkx_project_1,
@@ -475,24 +494,21 @@ test_that("tableNCAParameters units and aliases", {
 		projectFile = pkx_project_1,
 		NCAparams   = c("AUCINF_obs", "AUClast", "Cmax"),
 		units       = TRUE,
-		aliases     = FALSE
-	)
+		aliases     = FALSE)
 
 	# Test with units disabled, aliases enabled
 	table_no_units_alias <- tableNCAParameters(
 		projectFile = pkx_project_1,
 		NCAparams   = c("AUCINF_obs", "AUClast", "Cmax"),
 		units       = FALSE,
-		aliases     = TRUE
-	)
+		aliases     = TRUE)
 
 	# Test with both disabled
 	table_both_off <- tableNCAParameters(
 		projectFile = pkx_project_1,
 		NCAparams   = c("AUCINF_obs", "AUClast", "Cmax"),
 		units       = FALSE,
-		aliases     = FALSE
-	)
+		aliases     = FALSE)
 
 	# Verify all tables are valid
 	expect_true(is.data.frame(table_units_no_alias))
@@ -507,15 +523,13 @@ test_that("tableNCAParameters prettyLabels", {
 	table_pretty <- tableNCAParameters(
 		projectFile  = pkx_project_1,
 		NCAparams    = c("Cmax"),
-		prettyLabels = TRUE
-	)
+		prettyLabels = TRUE)
 
 	# Test with pretty labels disabled
 	table_raw <- tableNCAParameters(
 		projectFile  = pkx_project_1,
 		NCAparams    = c("Cmax"),
-		prettyLabels = FALSE
-	)
+		prettyLabels = FALSE)
 
 	# Verify both tables are valid
 	expect_true(is.data.frame(table_pretty))
@@ -532,26 +546,20 @@ test_that("tableNCAParameters errors", {
 	expect_error(
 		tableNCAParameters(
 			projectFile = pkx_project_1,
-			metrics     = c("InvalidMetric1", "InvalidMetric2")
-		),
-		"metric"
-	)
+			metrics     = c("InvalidMetric1", "InvalidMetric2")),
+		"metric")
 
 	# Test with invalid covariates
 	expect_error(
 		tableNCAParameters(
 			projectFile = pkx_project_1,
-			covariates  = "NONEXISTENT_COVARIATE"
-		)
-	)
+			covariates  = "NONEXISTENT_COVARIATE"))
 
 	# Test with invalid NCA parameters
 	expect_error(
 		tableNCAParameters(
 			projectFile = pkx_project_1,
-			NCAparams   = c("INVALID_PARAM")
-		)
-	)
+			NCAparams   = c("INVALID_PARAM")))
 })
 
 test_that("tableNCAParameters complex scenario", {
@@ -585,8 +593,7 @@ test_that("tableNCAParameters with projectFile = NULL (uses loaded project)", {
 	# Call without projectFile argument (should use currently loaded project)
 	table <- tableNCAParameters(
 		projectFile = NULL,
-		NCAparams   = c("Cmax")
-	)
+		NCAparams   = c("Cmax"))
 
 	# Verify it works
 	expect_true(is.data.frame(table))
@@ -601,16 +608,14 @@ test_that("tableNCAParameters with different roundDigits values", {
 		projectFile = pkx_project_1,
 		NCAparams   = c("Cmax"),
 		roundDigits = 1,
-		roundMethod = "monolix"
-	)
+		roundMethod = "monolix")
 
 	# Test with roundDigits = 5
 	table_5 <- tableNCAParameters(
 		projectFile = pkx_project_1,
 		NCAparams   = c("Cmax"),
 		roundDigits = 5,
-		roundMethod = "monolix"
-	)
+		roundMethod = "monolix")
 
 	# Both should be valid
 	expect_true(is.data.frame(table_1))
@@ -631,10 +636,10 @@ test_that("tableNCAParameters roundMethod with stratification", {
 			NCAparams        = c("Cmax"),
 			covariates       = "TINFCAT",
 			stratify_columns = TRUE,
+			use_wide_format  = FALSE,
 			roundDigits      = 3,
 			roundMethod      = method,
-			metrics          = "GeomCV"
-		)
+			metrics          = "GeomCV")
 
 		expect_true(is.data.frame(table),
 								label = paste("Failed with roundMethod:", method))
@@ -675,12 +680,11 @@ test_that("tableNCAParameters with all flags FALSE", {
 	table <- tableNCAParameters(
 		projectFile      = pkx_project_1,
 		NCAparams        = c("Cmax"),
-		use_wide_format       = FALSE,
+		use_wide_format  = FALSE,
 		stratify_columns = FALSE,
 		units            = FALSE,
 		aliases          = FALSE,
-		prettyLabels     = FALSE
-	)
+		prettyLabels     = FALSE)
 
 	# Should still produce valid output
 	expect_true(is.data.frame(table))
@@ -695,12 +699,11 @@ test_that("tableNCAParameters with all flags TRUE", {
 		projectFile      = pkx_project_1,
 		NCAparams        = c("Cmax"),
 		covariates       = "TINFCAT",
-		use_wide_format       = TRUE,
+		use_wide_format  = TRUE,
 		stratify_columns = FALSE,  # Can't have both use_wide_format=TRUE and stratify_columns=TRUE
 		units            = TRUE,
 		aliases          = TRUE,
-		prettyLabels     = TRUE
-	)
+		prettyLabels     = TRUE)
 
 	# Should still produce valid output
 	expect_true(is.data.frame(table))
@@ -760,6 +763,7 @@ test_that("tableNCAParameters with metrics = NULL (default metrics)", {
 		NCAparams        = c("Cmax"),
 		covariates       = "TINFCAT",
 		stratify_columns = TRUE,
+		use_wide_format  = FALSE,
 		metrics          = NULL  # Should use default metric
 	)
 
@@ -844,8 +848,7 @@ test_that("tableNCAParameters with include_id and single covariate", {
 		include_id   = TRUE,
 		prettyLabels = FALSE,
 		units        = FALSE,
-		aliases      = FALSE
-	)
+		aliases      = FALSE)
 
 	# Verify structure
 	expect_true(is.data.frame(table))
@@ -874,8 +877,7 @@ test_that("tableNCAParameters with include_id and multiple covariates", {
 		NCAparams    = c("Cmax", "AUClast"),
 		metrics      = c("MeanSD", "GeomCV"),
 		include_id   = TRUE,
-		prettyLabels = FALSE
-	)
+		prettyLabels = FALSE)
 
 	# Verify structure
 	expect_true(is.data.frame(table))
@@ -920,13 +922,11 @@ test_that("tableNCAParameters with include_id validation: use_wide_format = TRUE
 	# Test that include_id = TRUE with use_wide_format = TRUE generates warning
 	expect_warning(
 		table <- tableNCAParameters(
-			projectFile = pkx_project_1,
+			projectFile      = pkx_project_1,
 			use_wide_format  = TRUE,  # This should trigger warning
-			NCAparams   = c("Cmax"),
-			include_id  = TRUE
-		),
-		"include_id = TRUE only works with use_wide_format = FALSE"
-	)
+			NCAparams        = c("Cmax"),
+			include_id       = TRUE),
+		"include_id = TRUE only works with use_wide_format = FALSE")
 
 	# Table should still be generated with include_id set to FALSE
 	expect_true(is.data.frame(table))
@@ -939,14 +939,12 @@ test_that("tableNCAParameters with include_id validation: stratify_columns = TRU
 	expect_warning(
 		table <- tableNCAParameters(
 			projectFile      = pkx_project_1,
-			use_wide_format       = FALSE,
+			use_wide_format  = FALSE,
 			stratify_columns = TRUE,  # This should trigger warning
 			covariates       = "TINFCAT",
 			NCAparams        = c("Cmax"),
-			include_id       = TRUE
-		),
-		"include_id = TRUE is not yet supported with stratify_columns = TRUE"
-	)
+			include_id       = TRUE),
+		"include_id = TRUE is not compatible with stratify_columns = TRUE. Setting include_id to FALSE.")
 
 	# Table should still be generated with include_id set to FALSE
 	expect_true(is.data.frame(table))
@@ -1087,7 +1085,7 @@ test_that("tableNCAParameters with include_id row count check", {
 	          label = "Table with include_id=TRUE should have more rows than include_id=FALSE")
 
 	# Both should have same number of columns
-	expect_equal(ncol(table_with_ids), ncol(table_no_ids))
+	expect_equal(ncol(table_with_ids), ncol(table_no_ids)+1)
 })
 
 test_that("tableNCAParameters with include_id and numeric categorical covariate", {
@@ -1789,6 +1787,1213 @@ test_that("listingNCARatios handles projects without NCA", {
 		"No NCA ratios available"
 	)
 })
+
+################################################################################
+################################################################################
+# Tests for tableNCARatios -----------------------------------------------------
+
+test_that("tableNCARatios basic (no stratification)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Test basic functionality with no covariates
+	table <- tableNCARatios(projectFile = pkx_project_5)
+
+	# Verify structure
+	expect_true(is.data.frame(table))
+	expect_true("Parameter" %in% names(table) || "parameter" %in% names(table))
+	expect_gt(nrow(table), 0)
+
+	# Verify metrics columns exist (at least some standard ones)
+	expect_true(any(c("mean", "SD", "CV", "geoMean", "geoCV", "median", "Nobs") %in% names(table)))
+})
+
+test_that("tableNCARatios with specific ratioParams", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Get available ratio parameters first
+	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
+
+	if (length(available_ratios) >= 2) {
+		selected_ratios <- available_ratios[1:2]
+
+		table <- tableNCARatios(
+			projectFile = pkx_project_5,
+			ratioParams = selected_ratios
+		)
+
+		# Verify structure
+		expect_true(is.data.frame(table))
+		expect_gt(nrow(table), 0)
+
+		# Verify only requested parameters are included
+		param_col <- if ("parameter" %in% names(table)) "parameter" else "Parameter"
+		unique_params <- unique(table[[param_col]])
+		expect_equal(length(unique_params), 2)
+	}
+})
+
+test_that("tableNCARatios with specific metrics", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Test with specific metrics
+	table <- tableNCARatios(
+		projectFile = pkx_project_5,
+		metrics     = c("min", "MeanSD", "median", "GeomCV", "max")
+	)
+
+	# Verify structure
+	expect_true(is.data.frame(table))
+	expect_gt(nrow(table), 0)
+
+	# Verify requested metrics are present
+	param_col <- if ("parameter" %in% names(table)) "parameter" else "Parameter"
+	metric_cols <- setdiff(names(table), c("parameter", "Parameter", "Nobs"))
+	expect_true(length(metric_cols) > 0)
+})
+
+test_that("tableNCARatios with stratification (stratify_columns = FALSE)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Test with covariates but no column stratification
+	table <- tableNCARatios(
+		projectFile      = pkx_project_5,
+		covariates       = "SEQ",
+		stratify_columns = FALSE
+	)
+
+	# Verify covariate column exists
+	expect_true("SEQ" %in% names(table))
+
+	# Verify structure
+	expect_true(is.data.frame(table))
+	expect_gt(nrow(table), 0)
+})
+
+test_that("tableNCARatios with column stratification (stratify_columns = TRUE)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Test with covariates and column stratification
+	table <- tableNCARatios(
+		projectFile      = pkx_project_5,
+		covariates       = "SEQ",
+		stratify_columns = TRUE,
+		use_wide_format  = FALSE)
+
+	# Verify structure
+	expect_true(is.data.frame(table))
+
+	# Verify "Overall" column exists (always included in stratified layout)
+	expect_true(any(grepl("Overall", names(table), ignore.case = TRUE)))
+
+	# Verify no SEQ column (covariates become headers when stratify_columns=TRUE)
+	expect_false("SEQ" %in% names(table))
+})
+
+test_that("tableNCARatios with column stratification and single metric", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Test with single metric (should suppress Statistic column)
+	table <- tableNCARatios(
+		projectFile      = pkx_project_5,
+		covariates       = "SEQ",
+		stratify_columns = TRUE,
+		use_wide_format  = FALSE,
+		metrics          = "GeomCV"
+	)
+
+	# Verify "Statistic" column does NOT exist for single metric
+	expect_false("Statistic" %in% names(table))
+	expect_true(any(grepl("Overall", names(table), ignore.case = TRUE)))
+})
+
+test_that("tableNCARatios with column stratification and multiple metrics", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Test with multiple metrics
+	table <- tableNCARatios(
+		projectFile      = pkx_project_5,
+		covariates       = "SEQ",
+		stratify_columns = TRUE,
+		use_wide_format  = FALSE,
+		metrics          = c("MeanSD", "GeomCV")
+	)
+
+	# Verify "Statistic" column EXISTS for multiple metrics
+	expect_true("Statistic" %in% names(table))
+})
+
+test_that("tableNCARatios vertical layout (use_wide_format = FALSE)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Test vertical layout without stratification
+	table <- tableNCARatios(
+		projectFile     = pkx_project_5,
+		use_wide_format = FALSE
+	)
+
+	# Verify "Statistic" column exists in vertical layout
+	expect_true("Statistic" %in% names(table))
+	expect_true(is.data.frame(table))
+	expect_gt(nrow(table), 0)
+})
+
+test_that("tableNCARatios vertical layout with covariates", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Test vertical layout with covariates
+	table <- tableNCARatios(
+		projectFile     = pkx_project_5,
+		covariates      = "SEQ",
+		use_wide_format = FALSE,
+		metrics         = c("min", "MeanSD", "median", "GeomCV", "max")
+	)
+
+	# Verify structure
+	expect_true("Statistic" %in% names(table))
+	expect_true("SEQ" %in% names(table))
+	expect_true(is.data.frame(table))
+	expect_gt(nrow(table), 0)
+})
+
+test_that("tableNCARatios rounding methods", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Test different rounding methods
+	table_monolix <- tableNCARatios(
+		projectFile = pkx_project_5,
+		roundDigits = 2,
+		roundMethod = "monolix"
+	)
+
+	table_signif <- tableNCARatios(
+		projectFile = pkx_project_5,
+		roundDigits = 2,
+		roundMethod = "signif"
+	)
+
+	table_none <- tableNCARatios(
+		projectFile = pkx_project_5,
+		roundMethod = "none"
+	)
+
+	# Verify all tables are valid
+	expect_true(is.data.frame(table_monolix))
+	expect_true(is.data.frame(table_signif))
+	expect_true(is.data.frame(table_none))
+
+	# Verify they have the same structure
+	expect_equal(nrow(table_monolix), nrow(table_signif))
+	expect_equal(nrow(table_monolix), nrow(table_none))
+})
+
+test_that("tableNCARatios with covariate_labels", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Test with custom covariate labels
+	table <- tableNCARatios(
+		projectFile      = pkx_project_5,
+		covariates       = "SEQ",
+		covariate_labels = "Sequence",
+		stratify_columns = TRUE,
+		use_wide_format  = FALSE
+	)
+
+	# Verify custom labels appear in column headers
+	header_names <- names(table)
+	expect_true(any(grepl("Sequence", header_names)))
+})
+
+test_that("tableNCARatios prettyLabels", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Test with pretty labels enabled
+	table_pretty <- tableNCARatios(
+		projectFile  = pkx_project_5,
+		prettyLabels = TRUE
+	)
+
+	# Test with pretty labels disabled
+	table_raw <- tableNCARatios(
+		projectFile  = pkx_project_5,
+		prettyLabels = FALSE
+	)
+
+	# Verify both tables are valid
+	expect_true(is.data.frame(table_pretty))
+	expect_true(is.data.frame(table_raw))
+
+	# Both should have same number of rows
+	expect_equal(nrow(table_pretty), nrow(table_raw))
+})
+
+test_that("tableNCARatios errors", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Test with invalid metrics
+	expect_error(
+		tableNCARatios(
+			projectFile = pkx_project_5,
+			metrics     = c("InvalidMetric1", "InvalidMetric2")
+		),
+		"metric"
+	)
+
+	# Test with invalid covariates
+	expect_error(
+		tableNCARatios(
+			projectFile = pkx_project_5,
+			covariates  = "NONEXISTENT_COVARIATE"
+		)
+	)
+
+	# Test with invalid ratio parameters
+	expect_error(
+		tableNCARatios(
+			projectFile = pkx_project_5,
+			ratioParams = c("INVALID_RATIO")
+		)
+	)
+})
+
+test_that("tableNCARatios validates NCA ratios availability", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# project_remifentanil_excl has NCA but likely no ratios configured
+	expect_error(
+		tableNCARatios(projectFile = pkx_project_1),
+		"No NCA.*ratio"
+	)
+})
+
+test_that("tableNCARatios default values work correctly", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Test with only projectFile specified (all other defaults)
+	table <- tableNCARatios(projectFile = pkx_project_5)
+
+	expect_true(is.data.frame(table))
+	expect_gt(nrow(table), 0)
+	expect_gt(ncol(table), 2)  # Should have parameter column + metrics
+})
+
+test_that("tableNCARatios edge case: single parameter, single metric", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Get one valid ratio parameter
+	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	valid_ratio <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))[1]
+
+	# Minimal case
+	table <- tableNCARatios(
+		projectFile = pkx_project_5,
+		ratioParams = valid_ratio,
+		metrics     = "mean"
+	)
+
+	expect_true(is.data.frame(table))
+	expect_equal(nrow(table), 1)  # Should have exactly one row
+})
+
+################################################################################
+# tableNCARatios with include_id feature
+
+test_that("tableNCARatios with include_id basic (no covariates)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Get available ratio parameters
+	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
+
+	if (length(available_ratios) >= 2) {
+		selected_ratios <- available_ratios[1:2]
+
+		# Test basic include_id functionality without covariates
+		table <- tableNCARatios(
+			projectFile     = pkx_project_5,
+			use_wide_format = FALSE,
+			ratioParams     = selected_ratios,
+			include_id      = TRUE,
+			prettyLabels    = FALSE
+		)
+
+		# Verify structure
+		expect_true(is.data.frame(table))
+		expect_true("Statistic" %in% names(table))
+		expect_gt(nrow(table), 0)
+
+		# Verify that table contains both summary statistics and individual IDs
+		statistic_values <- table$Statistic
+
+		# Check for summary statistics (should have at least some)
+		summary_stats <- c("mean", "SD", "CV", "median", "min", "max")
+		expect_true(any(summary_stats %in% statistic_values))
+
+		# Check for individual IDs (should be numeric or character IDs)
+		has_ids <- any(!statistic_values %in% summary_stats)
+		expect_true(has_ids, label = "Table should contain individual IDs in addition to summary statistics")
+	}
+})
+
+test_that("tableNCARatios with include_id and single covariate", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Get available ratio parameters
+	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
+
+	if (length(available_ratios) >= 2) {
+		selected_ratios <- available_ratios[1:2]
+
+		# Test include_id with stratification by single covariate
+		table <- tableNCARatios(
+			projectFile     = pkx_project_5,
+			use_wide_format = FALSE,
+			covariates      = "SEQ",
+			ratioParams     = selected_ratios,
+			metrics         = c("min", "MeanSD", "median", "GeomCV", "max"),
+			include_id      = TRUE,
+			prettyLabels    = FALSE
+		)
+
+		# Verify structure
+		expect_true(is.data.frame(table))
+		expect_true("Statistic" %in% names(table))
+		expect_true("SEQ" %in% names(table))
+		expect_gt(nrow(table), 0)
+	}
+})
+
+test_that("tableNCARatios with include_id validation: use_wide_format = TRUE", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Test that include_id = TRUE with use_wide_format = TRUE generates warning
+	expect_warning(
+		table <- tableNCARatios(
+			projectFile     = pkx_project_5,
+			use_wide_format = TRUE,  # This should trigger warning
+			include_id      = TRUE
+		),
+		"include_id = TRUE only works with use_wide_format = FALSE"
+	)
+
+	# Table should still be generated with include_id set to FALSE
+	expect_true(is.data.frame(table))
+})
+
+test_that("tableNCARatios with include_id validation: stratify_columns = TRUE", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Test that include_id = TRUE with stratify_columns = TRUE generates warning
+	expect_warning(
+		table <- tableNCARatios(
+			projectFile      = pkx_project_5,
+			use_wide_format  = FALSE,
+			stratify_columns = TRUE,  # This should trigger warning
+			covariates       = "SEQ",
+			include_id       = TRUE
+		),
+		"include_id = TRUE is not compatible with stratify_columns = TRUE"
+	)
+
+	# Table should still be generated with include_id set to FALSE
+	expect_true(is.data.frame(table))
+})
+
+test_that("tableNCARatios with include_id = FALSE (default behavior)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Get available ratio parameters
+	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
+
+	if (length(available_ratios) >= 1) {
+		selected_ratio <- available_ratios[1]
+
+		# Test that include_id = FALSE produces table without individual IDs
+		table <- tableNCARatios(
+			projectFile     = pkx_project_5,
+			use_wide_format = FALSE,
+			ratioParams     = selected_ratio,
+			include_id      = FALSE,  # Explicitly FALSE
+			prettyLabels    = FALSE
+		)
+
+		# Verify structure
+		expect_true(is.data.frame(table))
+		expect_true("Statistic" %in% names(table))
+
+		# All Statistic values should be summary statistics, no individual IDs
+		statistic_values <- table$Statistic
+		summary_stats <- c("mean", "SD", "CV", "SE", "geoMean", "geoCV", "geoSD", "geoSE",
+		                   "median", "min", "max", "Q1", "Q3", "N", "Nobs", "Ntot", "Nmiss",
+		                   "P05", "P95", "MeanSD", "MeanSE", "GeomCV", "GeomSD", "GeomSE", "harmMean")
+
+		# All statistic values should be recognized summary statistics
+		expect_true(all(statistic_values %in% summary_stats),
+		            label = paste("Unexpected statistic values:",
+		                         paste(setdiff(statistic_values, summary_stats), collapse = ", ")))
+	}
+})
+
+test_that("tableNCARatios with include_id row count check", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Get available ratio parameters
+	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
+
+	if (length(available_ratios) >= 1) {
+		selected_ratio <- available_ratios[1]
+
+		# Compare row counts: include_id = FALSE vs TRUE
+		table_no_ids <- tableNCARatios(
+			projectFile     = pkx_project_5,
+			use_wide_format = FALSE,
+			ratioParams     = selected_ratio,
+			metrics         = c("median", "GeomCV"),
+			include_id      = FALSE,
+			prettyLabels    = FALSE
+		)
+
+		table_with_ids <- tableNCARatios(
+			projectFile     = pkx_project_5,
+			use_wide_format = FALSE,
+			ratioParams     = selected_ratio,
+			metrics         = c("median", "GeomCV"),
+			include_id      = TRUE,
+			prettyLabels    = FALSE
+		)
+
+		# Table with IDs should have more rows than without IDs
+		expect_gt(nrow(table_with_ids), nrow(table_no_ids),
+		          label = "Table with include_id=TRUE should have more rows than include_id=FALSE")
+
+		# Both should have same number of columns
+		expect_equal(ncol(table_with_ids), ncol(table_no_ids) + 1)  # Section column added
+	}
+})
+
+test_that("tableNCARatios all arguments combined", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Get available ratio parameters
+	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
+
+	if (length(available_ratios) >= 2) {
+		selected_ratios <- available_ratios[1:2]
+
+		# Test with all arguments specified (comprehensive test)
+		table <- tableNCARatios(
+			projectFile      = pkx_project_5,
+			covariates       = "SEQ",
+			ratioParams      = selected_ratios,
+			metrics          = c("min", "MeanSD", "median", "GeomCV", "max"),
+			use_wide_format  = FALSE,
+			include_id       = TRUE,
+			roundDigits      = 4,
+			roundMethod      = "signif",
+			prettyLabels     = TRUE
+		)
+
+		# Verify structure
+		expect_true(is.data.frame(table))
+		expect_gt(nrow(table), 0)
+		expect_true("Statistic" %in% names(table))
+		expect_true("SEQ" %in% names(table))
+	}
+})
+
+################################################################################
+################################################################################
+# Tests for covariate_filter and id_filter -------------------------------------
+
+# --- tableNCAConcentration filter tests ---
+
+test_that("tableNCAConcentration with covariate_filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Get unique TINFCAT values first
+	listing <- listingNCAConcentration(projectFile = pkx_project_1, covariates = "TINFCAT")
+	tinfcat_values <- unique(listing$TINFCAT)
+
+	if (length(tinfcat_values) >= 2) {
+		filter_value <- tinfcat_values[1]
+
+		# Test with covariate filter
+		table_filtered <- tableNCAConcentration(
+			projectFile      = pkx_project_1,
+			covariates       = "TINFCAT",
+			covariate_filter = list(TINFCAT = filter_value)
+		)
+
+		table_unfiltered <- tableNCAConcentration(
+			projectFile = pkx_project_1,
+			covariates  = "TINFCAT"
+		)
+
+		# Filtered table should have fewer or equal rows
+		expect_lte(nrow(table_filtered), nrow(table_unfiltered))
+		expect_true(is.data.frame(table_filtered))
+
+		# Only the filtered covariate value should be present
+		expect_true(all(table_filtered$TINFCAT == filter_value))
+	}
+})
+
+test_that("tableNCAConcentration with id_filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Get available IDs first
+	listing <- listingNCAConcentration(projectFile = pkx_project_1)
+	available_ids <- unique(listing$id)
+
+	if (length(available_ids) >= 3) {
+		selected_ids <- available_ids[1:3]
+
+		# Test with ID filter
+		table_filtered <- tableNCAConcentration(
+			projectFile = pkx_project_1,
+			id_filter   = selected_ids
+		)
+
+		table_unfiltered <- tableNCAConcentration(
+			projectFile = pkx_project_1
+		)
+
+		# Filtered table should exist and be valid
+		expect_true(is.data.frame(table_filtered))
+		expect_gt(nrow(table_filtered), 0)
+	}
+})
+
+test_that("tableNCAConcentration with combined covariate_filter and id_filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Get data to find valid filter combinations
+	listing <- listingNCAConcentration(projectFile = pkx_project_1, covariates = "TINFCAT")
+	tinfcat_values <- unique(listing$TINFCAT)
+	available_ids <- unique(listing$id)
+
+	if (length(tinfcat_values) >= 1 && length(available_ids) >= 2) {
+		filter_value <- tinfcat_values[1]
+		selected_ids <- available_ids[1:2]
+
+		# Test with both filters
+		table <- tableNCAConcentration(
+			projectFile      = pkx_project_1,
+			covariates       = "TINFCAT",
+			covariate_filter = list(TINFCAT = filter_value),
+			id_filter        = selected_ids
+		)
+
+		expect_true(is.data.frame(table))
+	}
+})
+
+test_that("tableNCAConcentration covariate_filter validation errors", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Test with non-existent covariate in filter
+	expect_error(
+		tableNCAConcentration(
+			projectFile      = pkx_project_1,
+			covariate_filter = list(NONEXISTENT = "value")
+		),
+		"Invalid covariate"
+	)
+
+	# Test with non-list covariate_filter
+	expect_error(
+		tableNCAConcentration(
+			projectFile      = pkx_project_1,
+			covariate_filter = "TINFCAT"
+		),
+		"must be a named list"
+	)
+})
+
+# --- tableNCAParameters filter tests ---
+
+test_that("tableNCAParameters with covariate_filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Get unique TINFCAT values first
+	listing <- listingNCAParameters(projectFile = pkx_project_1, covariates = "TINFCAT")
+	tinfcat_values <- unique(listing$TINFCAT)
+
+	if (length(tinfcat_values) >= 2) {
+		filter_value <- tinfcat_values[1]
+
+		# Test with covariate filter
+		table_filtered <- tableNCAParameters(
+			projectFile      = pkx_project_1,
+			covariates       = "TINFCAT",
+			NCAparams        = c("Cmax"),
+			covariate_filter = list(TINFCAT = filter_value)
+		)
+
+		table_unfiltered <- tableNCAParameters(
+			projectFile = pkx_project_1,
+			covariates  = "TINFCAT",
+			NCAparams   = c("Cmax")
+		)
+
+		# Filtered table should have fewer or equal rows
+		expect_lte(nrow(table_filtered), nrow(table_unfiltered))
+		expect_true(is.data.frame(table_filtered))
+
+		# Only the filtered covariate value should be present
+		expect_true(all(table_filtered$TINFCAT == filter_value))
+	}
+})
+
+test_that("tableNCAParameters with id_filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Get available IDs first
+	listing <- listingNCAParameters(projectFile = pkx_project_1)
+	available_ids <- unique(listing$id)
+
+	if (length(available_ids) >= 3) {
+		selected_ids <- available_ids[1:3]
+
+		# Test with ID filter
+		table_filtered <- tableNCAParameters(
+			projectFile = pkx_project_1,
+			NCAparams   = c("Cmax"),
+			id_filter   = selected_ids
+		)
+
+		# Filtered table should exist and be valid
+		expect_true(is.data.frame(table_filtered))
+		expect_gt(nrow(table_filtered), 0)
+	}
+})
+
+test_that("tableNCAParameters with covariate_filter and include_id", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Get unique TINFCAT values first
+	listing <- listingNCAParameters(projectFile = pkx_project_1, covariates = "TINFCAT")
+	tinfcat_values <- unique(listing$TINFCAT)
+
+	if (length(tinfcat_values) >= 2) {
+		filter_value <- tinfcat_values[1]
+
+		# Test with covariate filter and include_id
+		table <- tableNCAParameters(
+			projectFile      = pkx_project_1,
+			use_wide_format  = FALSE,
+			covariates       = "TINFCAT",
+			NCAparams        = c("Cmax"),
+			covariate_filter = list(TINFCAT = filter_value),
+			include_id       = TRUE,
+			prettyLabels     = FALSE)
+
+		expect_true(is.data.frame(table))
+		expect_true("Statistic" %in% names(table))
+		# Only filtered covariate value should appear
+		expect_true(all(table$TINFCAT == filter_value))
+	}
+})
+
+# --- tableNCARatios filter tests ---
+
+test_that("tableNCARatios with covariate_filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Get unique SEQ values first
+	listing <- listingNCARatios(projectFile = pkx_project_5, covariates = "SEQ")
+	seq_values <- unique(listing$SEQ)
+
+	if (length(seq_values) >= 2) {
+		filter_value <- seq_values[1]
+
+		# Test with covariate filter
+		table_filtered <- tableNCARatios(
+			projectFile      = pkx_project_5,
+			covariates       = "SEQ",
+			covariate_filter = list(SEQ = filter_value)
+		)
+
+		table_unfiltered <- tableNCARatios(
+			projectFile = pkx_project_5,
+			covariates  = "SEQ"
+		)
+
+		# Filtered table should have fewer or equal rows
+		expect_lte(nrow(table_filtered), nrow(table_unfiltered))
+		expect_true(is.data.frame(table_filtered))
+
+		# Only the filtered covariate value should be present
+		expect_true(all(table_filtered$SEQ == filter_value))
+	}
+})
+
+test_that("tableNCARatios with id_filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Get available IDs first
+	listing <- listingNCARatios(projectFile = pkx_project_5)
+	available_ids <- unique(listing$id)
+
+	if (length(available_ids) >= 3) {
+		selected_ids <- available_ids[1:3]
+
+		# Test with ID filter
+		table_filtered <- tableNCARatios(
+			projectFile = pkx_project_5,
+			id_filter   = selected_ids
+		)
+
+		# Filtered table should exist and be valid
+		expect_true(is.data.frame(table_filtered))
+		expect_gt(nrow(table_filtered), 0)
+	}
+})
+
+# --- listingNCAConcentration filter tests ---
+
+test_that("listingNCAConcentration with covariate_filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	# Get unique FOOD values first
+	listing_all <- listingNCAConcentration(projectFile = pkx_project_2, covariates = "FOOD")
+	food_values <- unique(listing_all$FOOD)
+
+	if (length(food_values) >= 2) {
+		filter_value <- food_values[1]
+
+		# Test with covariate filter
+		listing_filtered <- listingNCAConcentration(
+			projectFile      = pkx_project_2,
+			covariates       = "FOOD",
+			covariate_filter = list(FOOD = filter_value)
+		)
+
+		# Filtered listing should have fewer rows
+		expect_lt(nrow(listing_filtered), nrow(listing_all))
+		expect_true(is.data.frame(listing_filtered))
+
+		# Only the filtered covariate value should be present
+		expect_true(all(listing_filtered$FOOD == filter_value))
+	}
+})
+
+test_that("listingNCAConcentration with id_filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	# Get available IDs first
+	listing_all <- listingNCAConcentration(projectFile = pkx_project_2)
+	available_ids <- unique(listing_all$id)
+
+	if (length(available_ids) >= 3) {
+		selected_ids <- available_ids[1:3]
+
+		# Test with ID filter
+		listing_filtered <- listingNCAConcentration(
+			projectFile = pkx_project_2,
+			id_filter   = selected_ids
+		)
+
+		# Filtered listing should have fewer rows
+		expect_lt(nrow(listing_filtered), nrow(listing_all))
+		expect_true(is.data.frame(listing_filtered))
+
+		# Only selected IDs should be present
+		expect_true(all(listing_filtered$id %in% selected_ids))
+	}
+})
+
+# --- listingNCAParameters filter tests ---
+
+test_that("listingNCAParameters with covariate_filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Get unique TINFCAT values first
+	listing_all <- listingNCAParameters(projectFile = pkx_project_1, covariates = "TINFCAT")
+	tinfcat_values <- unique(listing_all$TINFCAT)
+
+	if (length(tinfcat_values) >= 2) {
+		filter_value <- tinfcat_values[1]
+
+		# Test with covariate filter
+		listing_filtered <- listingNCAParameters(
+			projectFile      = pkx_project_1,
+			covariates       = "TINFCAT",
+			covariate_filter = list(TINFCAT = filter_value)
+		)
+
+		# Filtered listing should have fewer rows
+		expect_lt(nrow(listing_filtered), nrow(listing_all))
+		expect_true(is.data.frame(listing_filtered))
+
+		# Only the filtered covariate value should be present
+		expect_true(all(listing_filtered$TINFCAT == filter_value))
+	}
+})
+
+test_that("listingNCAParameters with id_filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Get available IDs first
+	listing_all <- listingNCAParameters(projectFile = pkx_project_1)
+	available_ids <- unique(listing_all$id)
+
+	if (length(available_ids) >= 3) {
+		selected_ids <- available_ids[1:3]
+
+		# Test with ID filter
+		listing_filtered <- listingNCAParameters(
+			projectFile = pkx_project_1,
+			id_filter   = selected_ids
+		)
+
+		# Filtered listing should have fewer rows
+		expect_lt(nrow(listing_filtered), nrow(listing_all))
+		expect_true(is.data.frame(listing_filtered))
+
+		# Only selected IDs should be present
+		expect_true(all(listing_filtered$id %in% selected_ids))
+	}
+})
+
+test_that("listingNCAParameters with combined filters", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Get data to find valid filter combinations
+	listing_all <- listingNCAParameters(projectFile = pkx_project_1, covariates = "TINFCAT")
+	tinfcat_values <- unique(listing_all$TINFCAT)
+	available_ids <- unique(listing_all$id)
+
+	if (length(tinfcat_values) >= 1 && length(available_ids) >= 2) {
+		filter_value <- tinfcat_values[1]
+		selected_ids <- available_ids[1:2]
+
+		# Test with both filters
+		listing_filtered <- listingNCAParameters(
+			projectFile      = pkx_project_1,
+			covariates       = "TINFCAT",
+			covariate_filter = list(TINFCAT = filter_value),
+			id_filter        = selected_ids
+		)
+
+		expect_true(is.data.frame(listing_filtered))
+		# Both filters should be applied
+		if (nrow(listing_filtered) > 0) {
+			expect_true(all(listing_filtered$TINFCAT == filter_value))
+			expect_true(all(listing_filtered$id %in% selected_ids))
+		}
+	}
+})
+
+# --- listingNCARatios filter tests ---
+
+test_that("listingNCARatios with covariate_filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Get unique SEQ values first
+	listing_all <- listingNCARatios(projectFile = pkx_project_5, covariates = "SEQ")
+	seq_values <- unique(listing_all$SEQ)
+
+	if (length(seq_values) >= 2) {
+		filter_value <- seq_values[1]
+
+		# Test with covariate filter
+		listing_filtered <- listingNCARatios(
+			projectFile      = pkx_project_5,
+			covariates       = "SEQ",
+			covariate_filter = list(SEQ = filter_value)
+		)
+
+		# Filtered listing should have fewer rows
+		expect_lt(nrow(listing_filtered), nrow(listing_all))
+		expect_true(is.data.frame(listing_filtered))
+
+		# Only the filtered covariate value should be present
+		expect_true(all(listing_filtered$SEQ == filter_value))
+	}
+})
+
+test_that("listingNCARatios with id_filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Get available IDs first
+	listing_all <- listingNCARatios(projectFile = pkx_project_5)
+	available_ids <- unique(listing_all$id)
+
+	if (length(available_ids) >= 3) {
+		selected_ids <- available_ids[1:3]
+
+		# Test with ID filter
+		listing_filtered <- listingNCARatios(
+			projectFile = pkx_project_5,
+			id_filter   = selected_ids
+		)
+
+		# Filtered listing should have fewer rows
+		expect_lt(nrow(listing_filtered), nrow(listing_all))
+		expect_true(is.data.frame(listing_filtered))
+
+		# Only selected IDs should be present
+		expect_true(all(listing_filtered$id %in% selected_ids))
+	}
+})
+
+# --- Filter validation tests ---
+
+test_that("covariate_filter must be a named list", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Test with vector instead of list
+	expect_error(
+		tableNCAParameters(
+			projectFile      = pkx_project_1,
+			covariate_filter = c(TINFCAT = "value")
+		),
+		"must be a named list"
+	)
+
+	# Test with unnamed list
+	expect_error(
+		tableNCAParameters(
+			projectFile      = pkx_project_1,
+			covariate_filter = list("value")
+		),
+		"must be a named list"
+	)
+})
+
+test_that("covariate_filter validates covariate names", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Test with non-existent covariate
+	expect_error(
+		tableNCAParameters(
+			projectFile      = pkx_project_1,
+			covariate_filter = list(NONEXISTENT_COV = "value")
+		),
+		"Invalid covariate"
+	)
+})
+
+test_that("filter with multiple covariate values", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Get unique TINFCAT values first
+	listing <- listingNCAParameters(projectFile = pkx_project_1, covariates = "TINFCAT")
+	tinfcat_values <- unique(listing$TINFCAT)
+
+	if (length(tinfcat_values) >= 2) {
+		filter_values <- tinfcat_values[1:2]
+
+		# Test with multiple values for one covariate
+		table <- tableNCAParameters(
+			projectFile      = pkx_project_1,
+			covariates       = "TINFCAT",
+			NCAparams        = c("Cmax"),
+			covariate_filter = list(TINFCAT = filter_values)
+		)
+
+		expect_true(is.data.frame(table))
+		# Only filtered covariate values should be present
+		expect_true(all(table$TINFCAT %in% filter_values))
+	}
+})
+
+################################################################################
+################################################################################
+# Tests for include_id in tableNCAConcentration --------------------------------
+
+test_that("tableNCAConcentration with include_id basic (no covariates)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Test basic include_id functionality without covariates
+	# Note: include_id = TRUE requires use_wide_format = TRUE for tableNCAConcentration
+	table <- tableNCAConcentration(
+		projectFile     = pkx_project_1,
+		use_wide_format = TRUE,
+		include_id      = TRUE,
+		prettyLabels    = FALSE
+	)
+
+	# Verify structure
+	expect_true(is.data.frame(table))
+	expect_true("Statistic" %in% names(table))
+	expect_true("Section" %in% names(table))  # Section column added when include_id = TRUE
+	expect_gt(nrow(table), 0)
+
+	# Verify that table contains both SUMMARY and INDIVIDUAL sections
+	expect_true(all(c("SUMMARY", "INDIVIDUAL") %in% table$Section))
+})
+
+test_that("tableNCAConcentration with include_id and single covariate", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Test include_id with stratification by single covariate
+	# Note: include_id = TRUE requires use_wide_format = TRUE for tableNCAConcentration
+	table <- tableNCAConcentration(
+		projectFile     = pkx_project_1,
+		use_wide_format = TRUE,
+		covariates      = "TINFCAT",
+		metrics         = c("min", "MeanSD", "median", "GeomCV", "max"),
+		include_id      = TRUE,
+		prettyLabels    = FALSE
+	)
+
+	# Verify structure
+	expect_true(is.data.frame(table))
+	expect_true("Statistic" %in% names(table))
+	expect_true("TINFCAT" %in% names(table))
+	expect_true("Section" %in% names(table))
+	expect_gt(nrow(table), 0)
+})
+
+test_that("tableNCAConcentration with include_id validation: use_wide_format = FALSE", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Test that include_id = TRUE with use_wide_format = TRUE generates warning
+	expect_warning(
+		table <- tableNCAConcentration(
+			projectFile     = pkx_project_1,
+			use_wide_format = FALSE,  # This should trigger warning
+			include_id      = TRUE),
+		"include_id = TRUE only works with use_wide_format = TRUE")
+
+	# Table should still be generated with include_id set to FALSE
+	expect_true(is.data.frame(table))
+})
+
+test_that("tableNCAConcentration with include_id validation: stratify_columns = TRUE", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Test that include_id = TRUE with stratify_columns = TRUE generates warning
+	expect_warning(
+		table <- tableNCAConcentration(
+			projectFile      = pkx_project_1,
+			use_wide_format  = TRUE,
+			stratify_columns = TRUE,  # This should trigger warning
+			covariates       = "TINFCAT",
+			include_id       = TRUE
+		),
+		"include_id = TRUE is not compatible with stratify_columns = TRUE"
+	)
+
+	# Table should still be generated with include_id set to FALSE
+	expect_true(is.data.frame(table))
+})
+
+test_that("tableNCAConcentration with include_id = FALSE (default behavior)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Test that include_id = FALSE produces table without individual IDs
+	# Using use_wide_format = TRUE for consistent structure with Statistic column
+	table <- tableNCAConcentration(
+		projectFile     = pkx_project_1,
+		use_wide_format = TRUE,
+		include_id      = FALSE,  # Explicitly FALSE
+		prettyLabels    = FALSE
+	)
+
+	# Verify structure
+	expect_true(is.data.frame(table))
+	expect_true("Statistic" %in% names(table))
+
+	# Should NOT have Section column when include_id = FALSE
+	expect_false("Section" %in% names(table))
+
+	# All Statistic values should be summary statistics, no individual IDs
+	statistic_values <- table$Statistic
+	summary_stats <- c("mean", "SD", "CV", "SE", "geoMean", "geoCV", "geoSD", "geoSE",
+	                   "median", "min", "max", "Q1", "Q3", "N", "Nobs", "Ntot", "Nmiss",
+	                   "P05", "P95", "MeanSD", "MeanSE", "GeomCV", "GeomSD", "GeomSE",
+	                   "harmMean", "Arithmetric\nMean (SD)", "Geometric\nCV%")
+
+	# All statistic values should be recognized summary statistics
+	expect_true(all(statistic_values %in% summary_stats),
+	            label = paste("Unexpected statistic values:",
+	                         paste(setdiff(statistic_values, summary_stats), collapse = ", ")))
+})
+
+test_that("tableNCAConcentration with include_id row count check", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Compare row counts: include_id = FALSE vs TRUE
+	# Note: include_id = TRUE requires use_wide_format = TRUE for tableNCAConcentration
+	table_no_ids <- tableNCAConcentration(
+		projectFile     = pkx_project_1,
+		use_wide_format = TRUE,
+		metrics         = c("median", "GeomCV"),
+		include_id      = FALSE,
+		prettyLabels    = FALSE
+	)
+
+	table_with_ids <- tableNCAConcentration(
+		projectFile     = pkx_project_1,
+		use_wide_format = TRUE,
+		metrics         = c("median", "GeomCV"),
+		include_id      = TRUE,
+		prettyLabels    = FALSE
+	)
+
+	# Table with IDs should have more rows than without IDs
+	expect_gt(nrow(table_with_ids), nrow(table_no_ids),
+	          label = "Table with include_id=TRUE should have more rows")
+
+	# Table with IDs has Section column added
+	expect_equal(ncol(table_with_ids), ncol(table_no_ids) + 1)
+})
+
 ################################################################################
 # setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
 # testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-PKanalixHelpers.R")
