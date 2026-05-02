@@ -897,6 +897,227 @@
 
 	return(invisible(NULL))
 }
+
+################################################################################
+# Filter Helpers for PKanalix Tables and Listings
+################################################################################
+
+#' Validate Filter Arguments
+#'
+#' Internal helper to validate covariate_filter and id_filter arguments.
+#' Checks that filter covariates are categorical (catcov or occ) based on
+#' the resultType. Does NOT validate that filter values exist in data
+#' (that is handled by .applyFilters()).
+#'
+#' @param covariate_filter Named list where names are categorical covariate names
+#'   and values are vectors of allowed values. Example:
+#'   `list(DOSE = c("100mg", "200mg"), SEX = "Male")`. If NULL, no covariate
+#'   filtering is applied.
+#' @param id_filter Character or numeric vector of subject IDs to include.
+#'   If NULL, no ID filtering is applied.
+#' @param resultType Character string specifying the result type context.
+#'   Determines which covariates are valid for filtering:
+#'   \itemize{
+#'     \item "nca": NCA parameters and concentrations - uses catcov and occ from getData()
+#'     \item "ncaRatio": NCA ratios - uses intersection of ratio columns and data variables
+#'   }
+#'
+#' @return Returns invisible(NULL) on success. Stops with error if validation fails.
+#'
+#' @details
+#' Validation checks performed:
+#' \itemize{
+#'   \item covariate_filter must be a named list (or NULL)
+#'   \item Filter covariate names must be categorical covariates (catcov or occ)
+#'   \item id_filter must be a vector (or NULL)
+#' }
+#'
+#' Note: This function does NOT validate that filter values exist in the data.
+#' Invalid values will simply result in no rows matching (handled by .applyFilters()).
+#'
+#' @keywords internal
+#'
+.validateFilters <- function(covariate_filter = NULL,
+                             id_filter        = NULL,
+                             resultType       = c("nca", "ncaRatio")) {
+
+	resultType <- match.arg(resultType)
+
+	# Early return if no filters specified
+	if (is.null(covariate_filter) && is.null(id_filter)) {
+		return(invisible(NULL))
+	}
+
+	# --------------------------------------------------------------------------
+	# Validate covariate_filter
+	# --------------------------------------------------------------------------
+	if (!is.null(covariate_filter)) {
+
+		# Must be a named list
+		if (!is.list(covariate_filter) || is.null(names(covariate_filter))) {
+			stop("covariate_filter must be a named list. Example: list(DOSE = c('100mg', '200mg'), SEX = 'Male')",
+					 call. = FALSE)
+		}
+
+		# Check for empty names
+		if (any(names(covariate_filter) == "")) {
+			stop("All elements in covariate_filter must be named.", call. = FALSE)
+		}
+
+		# Get available categorical covariates based on resultType
+		if (resultType == "ncaRatio") {
+			# For ratio tables: intersection of ratio columns and data variables
+			ratio_result       <- lixoftConnectors::getNCAIndividualRatios()
+			ratio_cols         <- setdiff(names(ratio_result), "id")
+			data_vars          <- lixoftConnectors::getData()$header
+			available_cat_covs <- intersect(ratio_cols, data_vars)
+		} else {
+			# For nca and ncaConcentration: categorical covariates and occasions
+			project_data       <- lixoftConnectors::getData()
+			available_cat_covs <- project_data$header[project_data$headerTypes %in% c("catcov", "occ")]
+		}
+
+		# Check that filter covariates are valid categorical covariates
+		filter_covs  <- names(covariate_filter)
+		invalid_covs <- setdiff(filter_covs, available_cat_covs)
+
+		if (length(invalid_covs) > 0) {
+			# Check if they're continuous covariates (more specific error message)
+			project_data <- lixoftConnectors::getData()
+			cont_covs    <- project_data$header[project_data$headerTypes == "contcov"]
+			invalid_cont <- intersect(invalid_covs, cont_covs)
+
+			if (length(invalid_cont) > 0) {
+				stop(sprintf(
+					"covariate_filter can only filter categorical covariates (catcov or occ).\n'%s' %s continuous covariate%s and cannot be filtered.\nAvailable categorical covariates: %s",
+					paste(invalid_cont, collapse = "', '"),
+					if (length(invalid_cont) > 1) "are" else "is a",
+					if (length(invalid_cont) > 1) "s" else "",
+					if (length(available_cat_covs) > 0) paste(available_cat_covs, collapse = ", ") else "none"), call. = FALSE)
+			} else {
+				stop(sprintf(
+					"Invalid covariate%s in covariate_filter: %s\nAvailable categorical covariates: %s",
+					if (length(invalid_covs) > 1) "s" else "",
+					paste(invalid_covs, collapse = ", "),
+					if (length(available_cat_covs) > 0) paste(available_cat_covs, collapse = ", ") else "none"), call. = FALSE)
+			}
+		}
+	}
+
+	# --------------------------------------------------------------------------
+	# Validate id_filter
+	# --------------------------------------------------------------------------
+	if (!is.null(id_filter)) {
+
+		# Must be a vector (character or numeric)
+		if (!is.vector(id_filter) || is.list(id_filter)) {
+			stop("id_filter must be a character or numeric vector of IDs.", call. = FALSE)
+		}
+
+		# Check it's not empty
+		if (length(id_filter) == 0) {
+			stop("id_filter cannot be an empty vector.", call. = FALSE)
+		}
+	}
+
+	return(invisible(NULL))
+}
+
+
+################################################################################
+#' Apply Filters to Data
+#'
+#' Internal helper to apply covariate and ID filters to a dataframe.
+#'
+#' @param data Data frame to filter.
+#' @param covariate_filter Named list where names are categorical covariate names
+#'   and values are vectors of allowed values. Example:
+#'   `list(DOSE = c("100mg", "200mg"), SEX = "Male")`. If NULL, no covariate
+#'   filtering is applied.
+#' @param id_filter Character or numeric vector of subject IDs to include.
+#'   If NULL, no ID filtering is applied.
+#' @param id_col Character string specifying the name of the ID column.
+#'   Default is "id".
+#'
+#' @return Filtered data frame. Warns if the result is empty.
+#'
+#' @details
+#' Filters are applied in the following order:
+#' \enumerate{
+#'   \item ID filter (if specified)
+#'   \item Covariate filters (if specified) - applied sequentially
+#' }
+#'
+#' The function assumes filters have been validated by `.validateFilters()`.
+#' If filter values don't exist in the data, those conditions simply won't
+#' match any rows (no error is thrown).
+#'
+#' @keywords internal
+#'
+.applyFilters <- function(data,
+                          covariate_filter = NULL,
+                          id_filter        = NULL,
+                          id_col           = "id") {
+
+	# Early return if no filters specified
+	if (is.null(covariate_filter) && is.null(id_filter)) {
+		return(data)
+	}
+
+	# Store original row count for messaging
+	n_original <- nrow(data)
+
+	# --------------------------------------------------------------------------
+	# Apply ID filter
+	# --------------------------------------------------------------------------
+	if (!is.null(id_filter)) {
+		if (id_col %in% names(data)) {
+			# Convert both to character for consistent comparison
+			data_ids <- as.character(data[[id_col]])
+			filter_ids <- as.character(id_filter)
+
+			data <- data[data_ids %in% filter_ids, , drop = FALSE]
+		} else {
+			warning(sprintf("ID column '%s' not found in data. ID filter not applied.", id_col),
+							call. = FALSE)
+		}
+	}
+
+	# --------------------------------------------------------------------------
+	# Apply covariate filters
+	# --------------------------------------------------------------------------
+	if (!is.null(covariate_filter)) {
+		for (cov_name in names(covariate_filter)) {
+			if (cov_name %in% names(data)) {
+				filter_values <- covariate_filter[[cov_name]]
+
+				# Convert both to character for consistent comparison
+				data_values <- as.character(data[[cov_name]])
+				filter_values_char <- as.character(filter_values)
+
+				data <- data[data_values %in% filter_values_char, , drop = FALSE]
+			} else {
+				warning(sprintf("Covariate '%s' not found in data. Filter not applied for this covariate.",
+												cov_name), call. = FALSE)
+			}
+		}
+	}
+
+	# --------------------------------------------------------------------------
+	# Check for empty result
+	# --------------------------------------------------------------------------
+	n_filtered <- nrow(data)
+
+	if (n_filtered == 0) {
+		warning(sprintf(
+			"Filter resulted in empty dataset (0 of %d rows remaining).\nCheck your covariate_filter and id_filter values.",
+			n_original
+		), call. = FALSE)
+	}
+
+	return(data)
+}
+
 ##################################################################################
 #' Internal helper to validate stratification arguments
 #'
@@ -1192,13 +1413,10 @@
 
 		# Get individual data based on type
 		if (resultType == "ncaParameters") {
-			indiv_data <- lixoftConnectors::getNCAIndividualParameters()$parameters
-
 			# Get parameter columns (exclude id and ALL covariates including occasions)
 			param_cols <- setdiff(names(indiv_data), c("id", all_covariates))
 
 		} else {  # ncaRatio
-			indiv_data <- lixoftConnectors::getNCAIndividualRatios()
 			ratio_info <- lixoftConnectors::getNCARatios()
 			param_cols <- names(ratio_info)
 
@@ -2245,7 +2463,7 @@
 				tidyr::pivot_longer(cols = dplyr::all_of(selected_metrics), names_to = "Statistic", values_to = "Overall") %>%
 				dplyr::select(!!rlang::sym(param_col), Statistic, Overall, header_N)
 
-			overall_label <- unique(overall_pivoted$header_N)
+			overall_label <- unique(overall_pivoted$header_N)[1]
 			result <- result %>%
 				dplyr::left_join(overall_pivoted %>% dplyr::select(-header_N), by = c(param_col, "Statistic")) %>%
 				dplyr::rename(!!overall_label := Overall)
@@ -2276,7 +2494,7 @@
 
 			result <- result %>%
 				dplyr::left_join(overall_renamed, by = param_col) %>%
-				dplyr::rename(!!unique(overall_renamed$header_N) := Overall) %>%
+				dplyr::rename(!!unique(overall_renamed$header_N)[1] := Overall) %>%
 				dplyr::select(-header_N)
 		}
 	}
