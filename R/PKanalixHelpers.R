@@ -125,6 +125,8 @@ tableNCAConcentration <- function(projectFile      = NULL,
 																	use_wide_format  = TRUE,
 																	maxTimeDeviation = NULL,
 																	include_id       = FALSE,
+																	covariate_filter = NULL,
+																	id_filter        = NULL,
 																	roundDigits      = 3,
 																	roundMethod      = c("monolix", "signif", "none"),
 																	prettyLabels     = TRUE) {
@@ -158,6 +160,8 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
 	covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
 
+	# Validate covariate and id filters
+	.validateFilters(covariate_filter, id_filter, resultType = "nca")
 	# Initialize time deviation attributes container (for footnote generation)
 	.time_dev_attrs <- NULL
 
@@ -188,6 +192,9 @@ tableNCAConcentration <- function(projectFile      = NULL,
 		useNominalTime = useNominalTime,
 		roundDigits    = NULL,
 		roundMethod    = "none")
+
+	# Apply covariate and ID filters
+	raw_data <- .applyFilters(raw_data, covariate_filter, id_filter, id_col = "id")
 
 	# Keep full data for individual listing
 	raw_data_full <- raw_data
@@ -539,6 +546,8 @@ tableNCAParameters <- function(projectFile      = NULL,
 															 stratify_columns = FALSE,
 															 covariate_labels = NULL,
 															 include_id       = FALSE,
+															 covariate_filter = NULL,
+															 id_filter        = NULL,
 															 roundDigits      = 3,
 															 roundMethod      = c("monolix", "signif", "none"),
 															 units            = TRUE,
@@ -575,6 +584,9 @@ tableNCAParameters <- function(projectFile      = NULL,
 	.validateCovariateSelection(covariates, ratio = FALSE)
 	stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
 	covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
+
+	# Validate covariate and id filters
+	.validateFilters(covariate_filter, id_filter, resultType = "nca")
 	# Validate set parameters
 	.validateNCAParametersSelection(NCAparams, ratio = FALSE)
 
@@ -598,6 +610,9 @@ tableNCAParameters <- function(projectFile      = NULL,
 	# GET INDIVIDUAL PARAMETERS DATA (fetch once, reuse for stats and include_id)
 
 	indiv_params <- lixoftConnectors::getNCAIndividualParameters()$parameters
+
+	# Apply covariate and ID filters
+	indiv_params <- .applyFilters(indiv_params, covariate_filter, id_filter, id_col = "id")
 
 	# Get ALL covariates from project (catcov + contcov + occ) for column identification
 	project_data   <- lixoftConnectors::getData()
@@ -880,6 +895,8 @@ tableNCARatios <- function(projectFile      = NULL,
 													 metrics          = NULL,
 													 use_wide_format  = TRUE,
 													 include_id       = FALSE,
+													 covariate_filter = NULL,
+													 id_filter        = NULL,
 													 roundDigits      = 3,
 													 roundMethod      = c("monolix", "signif", "none"),
 													 prettyLabels     = TRUE) {
@@ -895,6 +912,9 @@ tableNCARatios <- function(projectFile      = NULL,
 
 	# Validate availability of analysis results
 	.validateProjectResultsAvailability(software = "pkanalix", resultType = "ncaRatio")
+
+	# Validate filter arguments
+	.validateFilters(covariate_filter, id_filter, resultType = "ncaRatio")
 
 	# Validate covariates, stratification and covariate label arguments
 	.validateCovariateSelection(covariates, ratio = TRUE)
@@ -934,6 +954,10 @@ tableNCARatios <- function(projectFile      = NULL,
 
 	# Candidate group-by columns: in dataframe but not id and not ratio(s)
 	indivratio <- lixoftConnectors::getNCAIndividualRatios()
+
+	# Apply filters
+	indivratio <- .applyFilters(indivratio, covariate_filter, id_filter, id_col = "id")
+
 	groupby_candidates <- setdiff(names(indivratio), c("id", ratio_cols))
 
 	# ==========================================================================
@@ -972,11 +996,6 @@ tableNCARatios <- function(projectFile      = NULL,
 		# Add combined metrics
 		summary_stats <- .combinedStats(summary_stats)
 
-		# Rename N to Nobs for consistency with helper
-		if ("N" %in% names(summary_stats)) {
-			summary_stats <- summary_stats %>% dplyr::rename(Nobs = N)
-		}
-
 		# Validate metrics
 		descriptor_cols <- c("Parameter", covariates)  # N/Nobs are optional metrics
 		selected_metrics <- .validateAndSelectMetrics(
@@ -1000,11 +1019,6 @@ tableNCARatios <- function(projectFile      = NULL,
 
 		# Add combined metrics to overall
 		overall_stats <- .combinedStats(overall_stats)
-
-		# Rename N to Nobs for consistency
-		if ("N" %in% names(overall_stats)) {
-			overall_stats <- overall_stats %>% dplyr::rename(Nobs = N)
-		}
 
 		# Build stratified table using helper
 		summary_tbl <- .buildStratifiedTable(
@@ -1074,7 +1088,8 @@ tableNCARatios <- function(projectFile      = NULL,
 			resultType    = "ncaRatio",
 			params        = ratioParams,
 			roundDigits   = roundDigits,
-			roundMethod   = roundMethod)
+			roundMethod   = roundMethod,
+			indiv_data    = indivratio)
 	}
 
 	# ==========================================================================
@@ -1266,11 +1281,13 @@ listingAbbreviation <- function(data,
 #' # Include nominal time if available
 #' listingNCAConcentration(covariates = c("TREAT", "FOOD"), useNominalTime = TRUE)
 #'
-listingNCAConcentration <- function(projectFile    = NULL,
-																		covariates     = NULL,
-																		useNominalTime = FALSE,
-																		roundDigits    = 3,
-																		roundMethod    = "none") {
+listingNCAConcentration <- function(projectFile      = NULL,
+																		covariates       = NULL,
+																		useNominalTime   = FALSE,
+																		covariate_filter = NULL,
+																		id_filter        = NULL,
+																		roundDigits      = 3,
+																		roundMethod      = "none") {
 
 	# Ensure the correct project is loaded
 	.checkProjectFile(projectFile, "pkanalix")
@@ -1278,6 +1295,10 @@ listingNCAConcentration <- function(projectFile    = NULL,
 
 	# Validate availability of analysis results
 	.validateProjectResultsAvailability(software = "pkanalix", resultType = "nca")
+
+	# Validate filter arguments
+	.validateFilters(covariate_filter, id_filter, resultType = "nca")
+
 	# Validate set covariates
 	.validateCovariateSelection(covariates, ratio = FALSE)
 
@@ -1435,6 +1456,9 @@ listingNCAConcentration <- function(projectFile    = NULL,
 			dplyr::across(dplyr::any_of(c("ActualTime", "NominalTime")))) %>%
 		dplyr::select(-.id_numeric)  # Remove helper column
 
+	# Apply filters
+	indiv <- .applyFilters(indiv, covariate_filter, id_filter, id_col = "id")
+
 	# Get IDs from NCA data
 	nca_ids <- unique(lixoftConnectors::getNCAIndividualParameters()$parameters$id)
 
@@ -1501,13 +1525,15 @@ listingNCAConcentration <- function(projectFile    = NULL,
 #'   aliases = TRUE
 #' )
 #' }
-listingNCAParameters <- function(projectFile = NULL,
-																 covariates  = NULL,
-																 NCAparams   = NULL,
-																 roundDigits = 3,
-																 roundMethod = c("monolix", "signif", "none"),
-																 units       = TRUE,
-																 aliases     = TRUE){
+listingNCAParameters <- function(projectFile      = NULL,
+																 covariates       = NULL,
+																 NCAparams        = NULL,
+																 covariate_filter = NULL,
+																 id_filter        = NULL,
+																 roundDigits      = 3,
+																 roundMethod      = c("monolix", "signif", "none"),
+																 units            = TRUE,
+																 aliases          = TRUE){
 
 	roundMethod <- match.arg(roundMethod)
 	# Ensure the correct project is loaded
@@ -1516,12 +1542,19 @@ listingNCAParameters <- function(projectFile = NULL,
 
 	# Validate availability of analysis results
 	.validateProjectResultsAvailability(software = "pkanalix", resultType = "nca")
+
+	# Validate filter arguments
+	.validateFilters(covariate_filter, id_filter, resultType = "nca")
+
 	# Validate set covariates
 	.validateCovariateSelection(covariates, ratio = FALSE)
 	# Validate set parameters
 	.validateNCAParametersSelection(NCAparams, ratio = FALSE)
 
 	indivNCA <- lixoftConnectors::getNCAIndividualParameters()$parameter
+
+	# Apply filters
+	indivNCA <- .applyFilters(indivNCA, covariate_filter, id_filter, id_col = "id")
 
 	# Get ALL available covariates from data
 	project_data <- lixoftConnectors::getData()
@@ -1611,12 +1644,14 @@ listingNCAParameters <- function(projectFile = NULL,
 #'   roundDigits = 2
 #' )
 #' }
-listingNCARatios <- function(projectFile = NULL,
-														 covariates  = NULL,
-														 ratioParams = NULL,
-														 roundDigits = 3,
-														 roundMethod = c("monolix", "signif", "none"),
-														 aliases     = TRUE){
+listingNCARatios <- function(projectFile      = NULL,
+														 covariates       = NULL,
+														 ratioParams      = NULL,
+														 covariate_filter = NULL,
+														 id_filter        = NULL,
+														 roundDigits      = 3,
+														 roundMethod      = c("monolix", "signif", "none"),
+														 aliases          = TRUE){
 
 	roundMethod <- match.arg(roundMethod)
 	# Ensure the correct project is loaded
@@ -1625,12 +1660,19 @@ listingNCARatios <- function(projectFile = NULL,
 
 	# Validate availability of analysis results
 	.validateProjectResultsAvailability(software = "pkanalix", resultType = "ncaRatio")
+
+	# Validate filter arguments
+	.validateFilters(covariate_filter, id_filter, resultType = "ncaRatio")
+
 	# Validate set covariates
 	.validateCovariateSelection(covariates, ratio = TRUE)
 	# Validate set parameters
 	.validateNCAParametersSelection(ratioParams, ratio = TRUE)
 
 	indivRatios <- lixoftConnectors::getNCAIndividualRatios()
+
+	# Apply filters
+	indivRatios <- .applyFilters(indivRatios, covariate_filter, id_filter, id_col = "id")
 
 	# Get ALL available covariates from data
 	project_data   <- lixoftConnectors::getData()
