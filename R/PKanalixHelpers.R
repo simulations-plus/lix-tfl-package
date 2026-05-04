@@ -1154,7 +1154,153 @@ tableNCARatios <- function(projectFile      = NULL,
 
 }
 
+################################################################################
+#' tableBEResults
+#'
+#' Generates a summary table of bioequivalence (BE) analysis results, including
+#' geometric mean ratios (GMR), confidence intervals, and BE conclusions for all
+#' test vs. reference comparisons.
+#'
+#' @param projectFile Character string specifying the path to a PKanalix project file (.pkx).
+#'   If `NULL` (default), uses the currently loaded project.
+#'
+#' @param BEParams Character vector of parameter names to include in the output.
+#'   If `NULL` (default), all BE parameters are included.
+#'
+#' @param roundDigits Integer specifying the number of decimal places for rounding
+#'   numeric values. Default is `3`.
+#'
+#' @param roundMethod Character string specifying the rounding method. Options are:
+#'   - `"monolix"` (default): Adaptive rounding that adds extra digits for values < 1
+#'   - `"signif"`: Standard significant figures rounding
+#'   - `"none"`: No rounding performed
+#'
+#' @param units Logical; if `TRUE` (default), appends units to parameter names
+#'   (e.g., "ln(AUClast) (h*ng/mL)"). Units are retrieved from project settings.
+#'
+#' @param aliases Logical; if `TRUE` (default), uses parameter aliases instead of
+#'   raw parameter names (e.g., "AUC[[sub:0-tlast]]" instead of "AUClast").
+#'
+#' @param BELimits Logical; if `TRUE`, includes a column showing the BE acceptance
+#'   criteria interval (e.g., "(80;125)"). Default is `FALSE`. Limits are retrieved
+#'   from the project's BE settings.
+#'
+#' @param BEConclusion Logical; if `TRUE` (default), includes a conclusion column
+#'   indicating "Bioequivalent" or "Not bioequivalent" based on the analysis results.
+#'
+#' @param prettyLabels Logical; if `TRUE` (default), converts column names to
+#'   human-readable labels (e.g., "Ratio (%)", "Confidence Interval").
+#'
+#' @return A data.frame containing BE results with columns for comparison, parameter,
+#'   GMR (ratio), confidence interval, and optionally BE limits and conclusion.
+#'   Parameters analyzed on log scale are indicated with "ln()" prefix.
+#'
+#' @details
+#' The function retrieves BE results from `lixoftConnectors::getBioequivalenceResults()`
+#' and combines all test vs. reference comparisons into a single table. Log-transformed
+#' parameters are automatically identified and labeled with "ln()" prefix.
+#'
+#' @export
+tableBEResults <- function(projectFile  = NULL,
+													 BEParams     = NULL,
+													 roundDigits  = 3,
+													 roundMethod  = c("monolix", "signif", "none"),
+													 units        = TRUE,
+													 aliases      = TRUE,
+													 BELimits     = FALSE,
+													 BEConclusion = TRUE,
+													 prettyLabels = TRUE){
 
+	roundMethod <- match.arg(roundMethod)
+
+	# Ensure the correct project is loaded
+	.checkProjectFile(projectFile, "pkanalix")
+	.ensureProjectLoaded(projectFile)
+
+	# Validate availability of analysis results
+	.validateProjectResultsAvailability(software = "pkanalix", resultType = "be")
+
+	# Validate set parameters
+	.validateNCAParametersSelection(BEParams, ratio = FALSE, be = TRUE)  # Early validation
+	#-----------------------------------------------------------------------------
+	# GET BE RESULTS AND SETTINGS
+	be_results  <- lixoftConnectors::getBioequivalenceResults()
+	be_settings <- lixoftConnectors::getBioequivalenceSettings()
+
+	# Get reference treatment
+	reference <- be_settings$linearmodelfactors$reference
+
+	# Get BE limits from settings
+	be_lower <- be_settings$bioequivalencelimits[1]
+	be_upper <- be_settings$bioequivalencelimits[2]
+
+	# Get log transformation info
+	param_info        <- be_settings$computedbioequivalenceparameters
+	log_transform_map <- setNames(param_info$logTransform, param_info$parameters)
+
+	#-----------------------------------------------------------------------------
+	# COMBINE ALL COMPARISONS INTO ONE TABLE
+	ci_results <- be_results$confidenceIntervals
+
+	# Modular: iterate over all test treatments
+	result <- purrr::map_dfr(names(ci_results), function(test_treatment) {
+		df   <- ci_results[[test_treatment]]
+
+		df %>%
+			dplyr::transmute(
+				Original_Parameter= Parameter,
+				parameter         = Parameter,
+				Comparison        = paste0(test_treatment, " vs.",reference),
+				Ratio             = Ratio,
+				CILower           = CILower,
+				CIUpper           = CIUpper,
+				BE                = BE)
+	})
+
+	# Filter to selected BE parameters (if specified)
+	if (!is.null(BEParams)) {
+		result <- result %>% dplyr::filter(Original_Parameter %in% BEParams)
+	}
+
+	# Apply aliases only (no units)
+	result <- .addUnitsAliases(result, add_units = FALSE, add_aliases = aliases)
+
+	# Apply ln() wrapper
+	result <- .applyLogTransformLabel(result, log_transform_map)
+
+	# Add units and remove Original_Parameter
+	if (units) {
+		result <- .addUnitsOnly(result)
+	} else {
+		result$Original_Parameter <- NULL
+	}
+
+	# print_table_flex(result)
+	result <- .round_num(
+		to_round        = result,
+		digits          = roundDigits,
+		rounding_method = roundMethod,
+		exclude         = c("parameter", "Comparison", "BE"))
+
+	result <- result %>% mutate(CI = paste0("(",CILower,";",CIUpper,")")) %>%
+		select(Comparison, parameter, Ratio, CI, BE) %>%
+		arrange(Comparison)
+
+	if(isTRUE(BELimits)){
+		result <- result %>%
+			mutate(Criteria.interval = paste0("(",be_lower,";",be_upper,")")) %>%
+			dplyr::relocate(Criteria.interval, .before = BE)
+	}
+	if(isTRUE(BEConclusion)){
+		result <- result %>% mutate(Conclusion = case_when(BE == 0 ~ "Not bioequivalent",
+																											 BE == 1 ~ "Bioequivalent"))
+	}
+	result <- result %>% select(-BE)
+
+	if (isTRUE(prettyLabels)) {
+		result <- .prettyLabels(result)
+	}
+}
 
 
 
