@@ -1300,6 +1300,7 @@ tableBEResults <- function(projectFile  = NULL,
 	if (isTRUE(prettyLabels)) {
 		result <- .prettyLabels(result)
 	}
+	return(result)
 }
 
 
