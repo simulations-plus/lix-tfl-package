@@ -324,8 +324,8 @@ utils::globalVariables(c("."))
 		"IOV_RSE"             = "IOV\nRSE (%)",
 		"Dosing.range"        = "Dosing Range",
 		"Point.estimate"      = "Point Estimate",
-		"Criteria.interval"   = "Criteria Interval",
-		"Confidence.interval" = "Confidence Interval"
+		"Criteria.interval"   = "Criteria\nInterval",
+		"Ratio"               = "Geometric Mean\nRatio (%)"
 	)
 
 	# Process each column name
