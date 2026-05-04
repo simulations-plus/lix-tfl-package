@@ -3207,6 +3207,289 @@ test_that("tableNCAConcentration with include_id row count check", {
 })
 
 ################################################################################
+# tableBEResults
+
+test_that("tableBEResults basic functionality", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	# Test basic functionality
+	table <- tableBEResults(projectFile = pkx_project_3)
+
+	# Verify structure
+	expect_true(is.data.frame(table))
+	expect_gt(nrow(table), 0)
+
+	# Verify expected columns exist
+	expect_true("Comparison" %in% names(table) || "comparison" %in% tolower(names(table)))
+	expect_true("Parameter" %in% names(table) || "parameter" %in% tolower(names(table)))
+})
+
+test_that("tableBEResults with specific BEParams", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	# Test with specific parameters
+	selected_params <- c("AUClast_D", "Cmax_D")
+	table <- tableBEResults(
+		projectFile = pkx_project_3,
+		BEParams    = selected_params
+	)
+
+	expect_true(is.data.frame(table))
+	expect_gt(nrow(table), 0)
+
+	# Compare with all parameters - filtered should have fewer or equal rows
+	table_all <- tableBEResults(projectFile = pkx_project_3)
+	expect_lte(nrow(table), nrow(table_all))
+})
+
+test_that("tableBEResults with invalid BEParams warns", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	# Test with mix of valid and invalid parameters
+	expect_warning(
+		tableBEResults(
+			projectFile = pkx_project_3,
+			BEParams    = c("AUClast_D", "INVALID_PARAM")
+		),
+		"Ignoring unknown"
+	)
+})
+
+test_that("tableBEResults with all invalid BEParams errors", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	# Test with only invalid parameters
+	expect_error(
+		tableBEResults(
+			projectFile = pkx_project_3,
+			BEParams    = c("INVALID1", "INVALID2")
+		),
+		"None of the requested"
+	)
+})
+
+test_that("tableBEResults with BELimits = TRUE", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	# Test with BE limits column
+	table <- tableBEResults(
+		projectFile = pkx_project_3,
+		BELimits    = TRUE
+	)
+
+	expect_true(is.data.frame(table))
+	# Check for criteria/limits column (name may vary with prettyLabels)
+	col_names_lower <- tolower(names(table))
+	expect_true(any(grepl("criteria|limit", col_names_lower)))
+})
+
+test_that("tableBEResults with BEConclusion = TRUE", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	# Test with conclusion column (default)
+	table <- tableBEResults(
+		projectFile  = pkx_project_3,
+		BEConclusion = TRUE
+	)
+
+	expect_true(is.data.frame(table))
+	# Check for conclusion column
+	col_names_lower <- tolower(names(table))
+	expect_true(any(grepl("conclusion", col_names_lower)))
+
+	# Verify conclusion values
+	conclusion_col <- names(table)[grepl("conclusion", tolower(names(table)))]
+	if (length(conclusion_col) > 0) {
+		conclusions <- unique(table[[conclusion_col[1]]])
+		expect_true(all(conclusions %in% c("Bioequivalent", "Not bioequivalent")))
+	}
+})
+
+test_that("tableBEResults with BEConclusion = FALSE", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	# Test without conclusion column
+	table <- tableBEResults(
+		projectFile  = pkx_project_3,
+		BEConclusion = FALSE
+	)
+
+	expect_true(is.data.frame(table))
+	# Conclusion column should not exist
+	col_names_lower <- tolower(names(table))
+	expect_false(any(grepl("conclusion", col_names_lower)))
+})
+
+test_that("tableBEResults with units = TRUE", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	# Test with units
+	table <- tableBEResults(
+		projectFile  = pkx_project_3,
+		units        = TRUE,
+		prettyLabels = FALSE
+	)
+
+	expect_true(is.data.frame(table))
+	# Parameter names should contain units in parentheses
+	param_col <- names(table)[grepl("param", tolower(names(table)))]
+	if (length(param_col) > 0) {
+		params <- table[[param_col[1]]]
+		expect_true(any(grepl("\\(.*\\)", params)))  # Contains parentheses (units)
+	}
+})
+
+test_that("tableBEResults with units = FALSE", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	# Test without units
+	table_no_units <- tableBEResults(
+		projectFile  = pkx_project_3,
+		units        = FALSE,
+		aliases      = FALSE,
+		prettyLabels = FALSE
+	)
+
+	table_with_units <- tableBEResults(
+		projectFile  = pkx_project_3,
+		units        = TRUE,
+		aliases      = FALSE,
+		prettyLabels = FALSE
+	)
+
+	expect_true(is.data.frame(table_no_units))
+
+	# Parameter names without units should be shorter
+	param_col <- names(table_no_units)[grepl("param", tolower(names(table_no_units)))]
+	if (length(param_col) > 0) {
+		params_no_units <- nchar(table_no_units[[param_col[1]]][1])
+		params_with_units <- nchar(table_with_units[[param_col[1]]][1])
+		expect_lt(params_no_units, params_with_units)
+	}
+})
+
+test_that("tableBEResults log-transformed parameters have ln() prefix", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	# Test that log-transformed parameters are labeled
+	table <- tableBEResults(
+		projectFile  = pkx_project_3,
+		prettyLabels = FALSE
+	)
+
+	expect_true(is.data.frame(table))
+
+	# Check for ln() in parameter names (most BE params are log-transformed)
+	param_col <- names(table)[grepl("param", tolower(names(table)))]
+	if (length(param_col) > 0) {
+		params <- table[[param_col[1]]]
+		expect_true(any(grepl("^ln\\(", params)))
+	}
+})
+
+test_that("tableBEResults rounding methods", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	# Test monolix rounding
+	table_monolix <- tableBEResults(
+		projectFile = pkx_project_3,
+		roundMethod = "monolix",
+		roundDigits = 2
+	)
+	expect_true(is.data.frame(table_monolix))
+
+	# Test signif rounding
+	table_signif <- tableBEResults(
+		projectFile = pkx_project_3,
+		roundMethod = "signif",
+		roundDigits = 3
+	)
+	expect_true(is.data.frame(table_signif))
+
+	# Test no rounding
+	table_none <- tableBEResults(
+		projectFile = pkx_project_3,
+		roundMethod = "none"
+	)
+	expect_true(is.data.frame(table_none))
+})
+
+test_that("tableBEResults prettyLabels", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	# Test with pretty labels
+	table_pretty <- tableBEResults(
+		projectFile  = pkx_project_3,
+		prettyLabels = TRUE
+	)
+
+	# Test without pretty labels
+	table_raw <- tableBEResults(
+		projectFile  = pkx_project_3,
+		prettyLabels = FALSE
+	)
+
+	expect_true(is.data.frame(table_pretty))
+	expect_true(is.data.frame(table_raw))
+
+	# Column names should differ
+	expect_false(identical(names(table_pretty), names(table_raw)))
+})
+
+test_that("tableBEResults multiple comparisons combined", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	# Test that multiple test vs ref comparisons are in one table
+	table <- tableBEResults(
+		projectFile  = pkx_project_3,
+		prettyLabels = FALSE
+	)
+
+	expect_true(is.data.frame(table))
+
+	# Check for Comparison column
+	expect_true("Comparison" %in% names(table))
+
+	# Should have "vs." in comparison strings
+	expect_true(all(grepl("vs\\.", table$Comparison)))
+})
+
+test_that("tableBEResults all arguments combined", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	# Test with all arguments specified
+	table <- tableBEResults(
+		projectFile  = pkx_project_3,
+		BEParams     = c("AUClast_D", "Cmax_D"),
+		roundDigits  = 2,
+		roundMethod  = "monolix",
+		units        = TRUE,
+		aliases      = TRUE,
+		BELimits     = TRUE,
+		BEConclusion = TRUE,
+		prettyLabels = TRUE
+	)
+
+	expect_true(is.data.frame(table))
+	expect_gt(nrow(table), 0)
+	expect_gt(ncol(table), 3)
+})
+
+################################################################################
 # setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
 # testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-PKanalixHelpers.R")
 
