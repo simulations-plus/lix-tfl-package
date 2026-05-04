@@ -739,7 +739,7 @@
 			if (is.null(nca_result) || isFALSE(nca_result)) {
 				stop("No NCA results available. Please run non-compartmental analysis (required for BE analysis).", call. = FALSE)
 			}
-			be_result <- tryCatch(lixoftConnectors::getBEResults(), error = function(e) NULL)
+			be_result <- tryCatch(lixoftConnectors::getBioequivalenceResults()$confidenceIntervals, error = function(e) NULL)
 
 			if (is.null(be_result) || isFALSE(be_result)) {
 				stop("No BE results available. Please run bioequivalence analysis first.", call. = FALSE)
@@ -1221,19 +1221,23 @@
 #'   - Warns if SOME parameters are missing (continues with valid ones)
 #'
 #' @noRd
-.validateNCAParametersSelection <- function(NCAparams, ratio = FALSE) {
+.validateNCAParametersSelection <- function(NCAparams, ratio = FALSE, be = FALSE) {
 	# Skip validation if no parameters specified
 	if (is.null(NCAparams)) {
 		return(invisible(NULL))
 	}
-
-	if (ratio) {
+	if (be) {
+		# For BE tables: get computed BE parameters
+		be_settings      <- lixoftConnectors::getBioequivalenceSettings()
+		available_params <- be_settings$computedbioequivalenceparameters$parameters
+		context_msg      <- "BE parameters"
+	} else if (ratio) {
 		# For ratio tables: get available ratio parameters
 		ratio_result <- lixoftConnectors::getNCAIndividualRatios()
 
 		# Get all parameters columns except id and covariates
-		data_info <- lixoftConnectors::getData()
-		data_vars <- data_info$header
+		data_info  <- lixoftConnectors::getData()
+		data_vars  <- data_info$header
 		ratio_cols <- setdiff(names(ratio_result), "id")
 
 		# Parameters are columns that only appear in ratio results, not in data
@@ -2500,4 +2504,120 @@
 	}
 
 	return(result)
+}
+################################################################################
+#' Apply Log Transformation Label to Parameter Names
+#'
+#' @description
+#' Wraps parameter names with "ln()" prefix for parameters that were
+#' log-transformed in the bioequivalence analysis.
+#'
+#' @param df A data.frame containing parameter information.
+#' @param log_map A named logical vector where names are parameter names and
+#'   values indicate whether log transformation was applied (TRUE/FALSE).
+#' @param orig_col Character. Name of the column containing original parameter
+#'   names used for log transformation lookup. Default: "Original_Parameter".
+#' @param param_col Character. Name of the column containing formatted parameter
+#'   names to be wrapped. Default: "parameter".
+#'
+#' @return A data.frame with log-transformed parameters wrapped in "ln()".
+#'   The original parameter column is retained for subsequent processing.
+#'
+#' @details
+#' This function checks each parameter against the log transformation map
+#' (typically from \code{getBioequivalenceSettings()$computedbioequivalenceparameters})
+#' and prepends "ln(" and appends ")" to parameters where \code{logTransform = TRUE}.
+#'
+#' @note This is an internal function used by \code{tableBEResults()} to indicate
+#'   which parameters were analyzed on the log scale. Should be called after
+#'   aliases are applied but before units are added.
+#'
+#' @seealso \code{\link{.addUnitsOnly}}, \code{\link{tableBEResults}}
+#'
+#' @keywords internal
+.applyLogTransformLabel <- function(df, log_map, orig_col = "Original_Parameter", param_col = "parameter") {
+	df[[param_col]] <- sapply(seq_len(nrow(df)), function(i) {
+		orig_param <- df[[orig_col]][i]
+		formatted_param <- df[[param_col]][i]
+
+		if (isTRUE(log_map[orig_param])) {
+			paste0("ln(", formatted_param, ")")
+		} else {
+			formatted_param
+		}
+	})
+
+	df
+}
+################################################################################
+#' Add Units to Parameter Names
+#'
+#' @description
+#' Appends units to parameter display names by looking up the original parameter
+#' name in the project's NCA settings. Units are formatted and appended in
+#' parentheses (e.g., "AUClast (h*ng/mL)").
+#'
+#' @param df A data.frame containing parameter information.
+#' @param orig_col Character. Name of the column containing original parameter
+#'   names used for unit lookup. Default: "Original_Parameter".
+#' @param param_col Character. Name of the column containing formatted parameter
+#'   names to which units will be appended. Default: "parameter".
+#'
+#' @return A data.frame with units appended to the parameter column and the
+#'   original parameter column removed.
+#'
+#' @details
+#' This function retrieves unit information from the loaded PKanalix project
+#' using \code{lixoftConnectors::getNCAParameterStatistics()}. If units are not
+#' enabled in the project settings, a warning is issued and the original
+#' parameter column is removed without modification.
+#'
+#' The function uses \code{.formatUnits()} to properly format unit strings
+#' before appending.
+#'
+#' @note This is an internal function used by \code{tableBEResults()} to add
+#'   units separately from aliases, allowing log transformation labels to be
+#'   applied to parameter names before units are appended.
+#'
+#' @seealso \code{\link{.addUnitsAliases}}, \code{\link{.applyLogTransformLabel}}
+#'
+#' @keywords internal
+.addUnitsOnly <- function(df, orig_col = "Original_Parameter", param_col = "parameter") {
+	# Retrieve all parameters from project
+	allparams <- lixoftConnectors::getNCASettings()$computedncaparameters
+
+	NCAParamSummary_info <- lixoftConnectors::getNCAParameterStatistics(parameters = allparams)$information %>%
+		tibble::rownames_to_column(var = "parameter")
+
+	# Check if units are enabled in project
+	if (!isTRUE(lixoftConnectors::getDataSettings()$enableunits)) {
+		warning("Units were requested but are not enabled in the current project. Skipping unit retrieval.")
+		df[[orig_col]] <- NULL
+		return(df)
+	}
+
+	# Extract and format units
+	units_df <- NCAParamSummary_info %>%
+		dplyr::select(parameter, units) %>%
+		dplyr::mutate(units = sapply(units, .formatUnits))
+
+	# Create lookup map
+	units_map <- setNames(units_df$units, units_df$parameter)
+
+	# Apply units to parameter column
+	df[[param_col]] <- sapply(seq_len(nrow(df)), function(i) {
+		orig_param <- df[[orig_col]][i]
+		formatted_param <- df[[param_col]][i]
+		unit <- units_map[orig_param]
+
+		if (!is.na(unit) && nchar(unit) > 0) {
+			paste0(formatted_param, " (", unit, ")")
+		} else {
+			formatted_param
+		}
+	})
+
+	# Remove Original_Parameter column
+	df[[orig_col]] <- NULL
+	df
 }
