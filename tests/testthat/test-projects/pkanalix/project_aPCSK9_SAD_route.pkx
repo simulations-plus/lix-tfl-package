@@ -88,7 +88,7 @@ CA:
 initialvalues = {Cl={value=0.00549, constraint=positive}, Km={value=2.758, constraint=positive}, V={value=10.52, constraint=positive}, Vm={value=0.481, constraint=positive}, ka={value=0.665, constraint=positive}}
 
 BIOEQUIVALENCE:
-computedParameters = {{value = Max_Rate, log = yes}, {value = AURC_last, log = yes}, {value = Cmax_D, log = yes}, {value = AUClast_D, log = yes}, {value = AUCINF_D_obs, log = yes}}
+computedParameters = {{value = Max_Rate, log = yes}, {value = AURC_last, log = yes}, {value = Tmax, log = no}, {value = Cmax_D, log = yes}, {value = AUClast_D, log = yes}, {value = AUCINF_D_obs, log = yes}}
 design = parallel
 factors = {formulation={'DOSE_mg'}, reference={'300mg'}, additional={}}
 
