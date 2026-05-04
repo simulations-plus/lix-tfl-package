@@ -2418,6 +2418,39 @@ test_that("tableNCAConcentration with combined covariate_filter and id_filter", 
 	}
 })
 
+test_that("tableNCAConcentration with covariate_filter and include_id", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Get unique TINFCAT values first
+	listing <- listingNCAConcentration(projectFile = pkx_project_1, covariates = "TINFCAT")
+	tinfcat_values <- unique(listing$TINFCAT)
+
+	if (length(tinfcat_values) >= 2) {
+		filter_value <- tinfcat_values[1]
+
+		# Test with covariate filter and include_id
+		# Note: include_id = TRUE requires use_wide_format = TRUE for tableNCAConcentration
+		table <- tableNCAConcentration(
+			projectFile      = pkx_project_1,
+			use_wide_format  = TRUE,
+			covariates       = "TINFCAT",
+			covariate_filter = list(TINFCAT = filter_value),
+			include_id       = TRUE
+		)
+
+		expect_true(is.data.frame(table))
+		expect_true("Statistic" %in% names(table))
+		expect_true("Section" %in% names(table))
+
+		# Only filtered covariate value should appear
+		expect_true(all(table$TINFCAT == filter_value))
+
+		# Should have both SUMMARY and INDIVIDUAL sections
+		expect_true(all(c("SUMMARY", "INDIVIDUAL") %in% table$Section))
+	}
+})
+
 test_that("tableNCAConcentration covariate_filter validation errors", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
@@ -2529,6 +2562,45 @@ test_that("tableNCAParameters with covariate_filter and include_id", {
 	}
 })
 
+test_that("tableNCAParameters with combined covariate_filter and id_filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# Get available data first
+	listing <- listingNCAParameters(projectFile = pkx_project_1, covariates = "TINFCAT")
+	tinfcat_values <- unique(listing$TINFCAT)
+	available_ids <- unique(listing$id)
+
+	if (length(tinfcat_values) >= 2 && length(available_ids) >= 3) {
+		filter_value <- tinfcat_values[1]
+		selected_ids <- available_ids[1:3]
+
+		# Test with both filters combined
+		table_filtered <- tableNCAParameters(
+			projectFile      = pkx_project_1,
+			covariates       = "TINFCAT",
+			NCAparams        = c("Cmax", "AUClast"),
+			covariate_filter = list(TINFCAT = filter_value),
+			id_filter        = selected_ids
+		)
+
+		# Table should exist and be valid
+		expect_true(is.data.frame(table_filtered))
+		expect_gt(nrow(table_filtered), 0)
+
+		# Only filtered covariate value should appear
+		expect_true(all(table_filtered$TINFCAT == filter_value))
+
+		# Compare with unfiltered - should have fewer or equal rows
+		table_unfiltered <- tableNCAParameters(
+			projectFile = pkx_project_1,
+			covariates  = "TINFCAT",
+			NCAparams   = c("Cmax", "AUClast")
+		)
+		expect_lte(nrow(table_filtered), nrow(table_unfiltered))
+	}
+})
+
 # --- tableNCARatios filter tests ---
 
 test_that("tableNCARatios with covariate_filter", {
@@ -2586,6 +2658,75 @@ test_that("tableNCARatios with id_filter", {
 	}
 })
 
+test_that("tableNCARatios with combined covariate_filter and id_filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Get available data first
+	listing <- listingNCARatios(projectFile = pkx_project_5, covariates = "SEQ")
+	seq_values <- unique(listing$SEQ)
+	available_ids <- unique(listing$id)
+
+	if (length(seq_values) >= 2 && length(available_ids) >= 3) {
+		filter_value <- seq_values[1]
+		selected_ids <- available_ids[1:3]
+
+		# Test with both filters combined
+		table_filtered <- tableNCARatios(
+			projectFile      = pkx_project_5,
+			covariates       = "SEQ",
+			covariate_filter = list(SEQ = filter_value),
+			id_filter        = selected_ids
+		)
+
+		# Table should exist and be valid
+		expect_true(is.data.frame(table_filtered))
+		expect_gt(nrow(table_filtered), 0)
+
+		# Only filtered covariate value should appear
+		expect_true(all(table_filtered$SEQ == filter_value))
+
+		# Compare with unfiltered - should have fewer or equal rows
+		table_unfiltered <- tableNCARatios(
+			projectFile = pkx_project_5,
+			covariates  = "SEQ"
+		)
+		expect_lte(nrow(table_filtered), nrow(table_unfiltered))
+	}
+})
+
+test_that("tableNCARatios with covariate_filter and include_id", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Get unique SEQ values first
+	listing <- listingNCARatios(projectFile = pkx_project_5, covariates = "SEQ")
+	seq_values <- unique(listing$SEQ)
+
+	if (length(seq_values) >= 2) {
+		filter_value <- seq_values[1]
+
+		# Test with covariate filter and include_id
+		table <- tableNCARatios(
+			projectFile      = pkx_project_5,
+			use_wide_format  = FALSE,
+			covariates       = "SEQ",
+			covariate_filter = list(SEQ = filter_value),
+			include_id       = TRUE
+		)
+
+		expect_true(is.data.frame(table))
+		expect_true("Statistic" %in% names(table))
+		expect_true("Section" %in% names(table))
+
+		# Only filtered covariate value should appear
+		expect_true(all(table$SEQ == filter_value))
+
+		# Should have both SUMMARY and INDIVIDUAL sections
+		expect_true(all(c("SUMMARY", "INDIVIDUAL") %in% table$Section))
+	}
+})
+
 # --- listingNCAConcentration filter tests ---
 
 test_that("listingNCAConcentration with covariate_filter", {
@@ -2635,6 +2776,39 @@ test_that("listingNCAConcentration with id_filter", {
 		# Filtered listing should have fewer rows
 		expect_lt(nrow(listing_filtered), nrow(listing_all))
 		expect_true(is.data.frame(listing_filtered))
+
+		# Only selected IDs should be present
+		expect_true(all(listing_filtered$id %in% selected_ids))
+	}
+})
+
+test_that("listingNCAConcentration with combined covariate_filter and id_filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	# Get available data first
+	listing_all <- listingNCAConcentration(projectFile = pkx_project_2, covariates = "FOOD")
+	food_values <- unique(listing_all$FOOD)
+	available_ids <- unique(listing_all$id)
+
+	if (length(food_values) >= 2 && length(available_ids) >= 3) {
+		filter_value <- food_values[1]
+		selected_ids <- available_ids[1:3]
+
+		# Test with both filters combined
+		listing_filtered <- listingNCAConcentration(
+			projectFile      = pkx_project_2,
+			covariates       = "FOOD",
+			covariate_filter = list(FOOD = filter_value),
+			id_filter        = selected_ids
+		)
+
+		# Filtered listing should have fewer rows than unfiltered
+		expect_lt(nrow(listing_filtered), nrow(listing_all))
+		expect_true(is.data.frame(listing_filtered))
+
+		# Only filtered covariate value should appear
+		expect_true(all(listing_filtered$FOOD == filter_value))
 
 		# Only selected IDs should be present
 		expect_true(all(listing_filtered$id %in% selected_ids))
@@ -2781,6 +2955,39 @@ test_that("listingNCARatios with id_filter", {
 	}
 })
 
+test_that("listingNCARatios with combined covariate_filter and id_filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Get available data first
+	listing_all <- listingNCARatios(projectFile = pkx_project_5, covariates = "SEQ")
+	seq_values <- unique(listing_all$SEQ)
+	available_ids <- unique(listing_all$id)
+
+	if (length(seq_values) >= 2 && length(available_ids) >= 3) {
+		filter_value <- seq_values[1]
+		selected_ids <- available_ids[1:3]
+
+		# Test with both filters combined
+		listing_filtered <- listingNCARatios(
+			projectFile      = pkx_project_5,
+			covariates       = "SEQ",
+			covariate_filter = list(SEQ = filter_value),
+			id_filter        = selected_ids
+		)
+
+		# Filtered listing should have fewer rows than unfiltered
+		expect_lt(nrow(listing_filtered), nrow(listing_all))
+		expect_true(is.data.frame(listing_filtered))
+
+		# Only filtered covariate value should appear
+		expect_true(all(listing_filtered$SEQ == filter_value))
+
+		# Only selected IDs should be present
+		expect_true(all(listing_filtered$id %in% selected_ids))
+	}
+})
+
 # --- Filter validation tests ---
 
 test_that("covariate_filter must be a named list", {
@@ -2915,20 +3122,25 @@ test_that("tableNCAConcentration with include_id validation: stratify_columns = 
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
-	# Test that include_id = TRUE with stratify_columns = TRUE generates warning
+	# Test that conflicting settings (use_wide_format=TRUE + stratify_columns=TRUE)
+	# generates a warning and falls back to valid settings
+	# Note: stratify_columns=TRUE requires use_wide_format=FALSE, so stratify_columns
+	# gets disabled first, before the include_id+stratify_columns check can fire
 	expect_warning(
 		table <- tableNCAConcentration(
 			projectFile      = pkx_project_1,
 			use_wide_format  = TRUE,
-			stratify_columns = TRUE,  # This should trigger warning
+			stratify_columns = TRUE,
 			covariates       = "TINFCAT",
 			include_id       = TRUE
 		),
-		"include_id = TRUE is not compatible with stratify_columns = TRUE"
+		"stratify_columns = TRUE is only compatible with use_wide_format = FALSE"
 	)
 
-	# Table should still be generated with include_id set to FALSE
+	# Table should still be generated with fallback settings
 	expect_true(is.data.frame(table))
+	# With fallback, include_id should work (Section column present)
+	expect_true("Section" %in% names(table))
 })
 
 test_that("tableNCAConcentration with include_id = FALSE (default behavior)", {
