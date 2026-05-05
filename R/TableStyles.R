@@ -702,13 +702,121 @@ print_table_flex <- function(data.flex,
 														 footnote         = NULL,     # manual footnote text
 														 autoFootnote     = TRUE)     # auto-detect footnotes from attributes
 {
-
-	color <- toupper(color) # optional but helpful
-
+	##############################################################################
+	# 0. Check required packages
+	if (!requireNamespace("flextable", quietly = TRUE)) {
+		stop("Package 'flextable' is required for print_table_flex(). ",
+				 "Install it with: install.packages('flextable')", call. = FALSE)
+	}
+	#-----------------------------------------------------------------------------
+	# ARGUMENT VALIDATION
+	# 1. data.flex
+	if (!is.data.frame(data.flex)) {
+		stop("'data.flex' must be a data.frame.", call. = FALSE)
+	}
+	if (nrow(data.flex) == 0) {
+		stop("'data.flex' must have at least one row.", call. = FALSE)
+	}
+	#-----------------------------------------------------------------------------
+	# 2. grouping.columns
+	if (!is.null(grouping.columns)) {
+		if (!is.character(grouping.columns)) {
+			stop("'grouping.columns' must be a character vector or NULL.", call. = FALSE)
+		}
+		# Column existence check below
+	}
+	#-----------------------------------------------------------------------------
+	# 3. header_level1, header_level2, header_level3
+	for (hdr_name in c("header_level1", "header_level2", "header_level3")) {
+		hdr_val <- get(hdr_name)
+		if (!is.null(hdr_val) && (!is.character(hdr_val) || length(hdr_val) != 1)) {
+			stop(sprintf("'%s' must be a single character string or NULL.", hdr_name), call. = FALSE)
+		}
+	}
+	#-----------------------------------------------------------------------------
+	# 4. color
+	if (!is.null(color)) {
+		color <- match.arg(toupper(color), c("BE", "DP", "PVAL", "RSE"), several.ok = TRUE)
+	}
+	#-----------------------------------------------------------------------------
+	# 5. theme_fn
+	if (!is.function(theme_fn)) {
+		stop("'theme_fn' must be a function.", call. = FALSE)
+	}
+	#-----------------------------------------------------------------------------
+	# 6. soften_amount
+	if (!is.numeric(soften_amount) || length(soften_amount) != 1) {
+		stop("'soften_amount' must be a single numeric value.", call. = FALSE)
+	}
+	if (soften_amount < 0 || soften_amount > 1) {
+		stop("'soften_amount' must be between 0 and 1.", call. = FALSE)
+	}
+	#-----------------------------------------------------------------------------
+	# 7. html_alpha
+	if (!is.numeric(html_alpha) || length(html_alpha) != 1) {
+		stop("'html_alpha' must be a single numeric value.", call. = FALSE)
+	}
+	if (html_alpha < 0 || html_alpha > 1) {
+		stop("'html_alpha' must be between 0 and 1.", call. = FALSE)
+	}
+	#-----------------------------------------------------------------------------
+	# 8. align_default
+	valid_alignments <- c("left", "center", "right", "justify")
+	if (!is.character(align_default) || length(align_default) != 1 ||
+			!align_default %in% valid_alignments) {
+		stop(sprintf(
+			"'align_default' must be one of: %s",
+			paste(valid_alignments, collapse = ", ")
+		), call. = FALSE)
+	}
+	#-----------------------------------------------------------------------------
+	# 9. align_grouping
+	if (!is.null(align_grouping)) {
+		if (!is.character(align_grouping) || length(align_grouping) != 1 ||
+				!align_grouping %in% valid_alignments) {
+			stop(sprintf(
+				"'align_grouping' must be one of: %s (or NULL)",
+				paste(valid_alignments, collapse = ", ")
+			), call. = FALSE)
+		}
+	}
+	#-----------------------------------------------------------------------------
+	# 10. align_cols
+	if (!is.null(align_cols)) {
+		if (!is.character(align_cols) || is.null(names(align_cols))) {
+			stop("'align_cols' must be a named character vector or NULL.", call. = FALSE)
+		}
+		invalid_aligns <- setdiff(align_cols, valid_alignments)
+		if (length(invalid_aligns) > 0) {
+			stop(sprintf(
+				"'align_cols' values must be one of: %s\nInvalid values: %s",
+				paste(valid_alignments, collapse = ", "),
+				paste(invalid_aligns, collapse = ", ")
+			), call. = FALSE)
+		}
+		missing_cols <- setdiff(names(align_cols), names(data.flex))
+		if (length(missing_cols) > 0) {
+			warning(sprintf(
+				"Some columns in 'align_cols' not found in data: %s",
+				paste(missing_cols, collapse = ", ")
+			), call. = FALSE)
+		}
+	}
+	#-----------------------------------------------------------------------------
+	# 11. footnote
+	if (!is.null(footnote) && !is.character(footnote)) {
+		stop("'footnote' must be a character vector or NULL.", call. = FALSE)
+	}
+	#-----------------------------------------------------------------------------
+	# 12. autoFootnote
+	if (!is.logical(autoFootnote) || length(autoFootnote) != 1 || is.na(autoFootnote)) {
+		stop("'autoFootnote' must be TRUE or FALSE.", call. = FALSE)
+	}
+	##############################################################################
 	# Check if columns exist
 	pval.flag <- ("PVAL" %in% color) && "p.value" %in% colnames(data.flex)
-	BE.flag <- ("BE" %in% color) && "Conclusion" %in% colnames(data.flex)
-	DP.flag <- ("DP" %in% color) && "Conclusion" %in% colnames(data.flex)
+	BE.flag   <- ("BE" %in% color) && "Conclusion" %in% colnames(data.flex)
+	DP.flag   <- ("DP" %in% color) && "Conclusion" %in% colnames(data.flex)
 
 	# RSE flag: detect any columns containing "RSE" in their name
 	# This covers: "RSE", "%RSE", "RSE (%)", "FE_RSE", "IIV_RSE", "IOV_RSE", "IIV\nRSE (%)", etc.
@@ -1015,4 +1123,18 @@ print_table_flex <- function(data.flex,
 # Booktabs table style = theme_booktabs()
 # Box table style      = theme_box(ft)
 # Thron table style    = theme_tron()
+# Custom theme example
+my_custom_theme <- function(ft) {
+	ft <- flextable::border_remove(ft)
+	ft <- flextable::bg(ft, bg = "#F5F5F5", part = "header")
+	ft <- flextable::bold(ft, part = "header")
+	ft <- flextable::fontsize(ft, size = 10, part = "all")
+	ft <- flextable::hline_bottom(ft,
+																border = officer::fp_border(color = "black", width = 2),
+																part = "header")
+	ft <- flextable::hline_bottom(ft,
+																border = officer::fp_border(color = "black", width = 1),
+																part = "body")
+	ft
+}
 ################################################################################
