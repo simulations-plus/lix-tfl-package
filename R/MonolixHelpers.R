@@ -779,7 +779,7 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	attr(pop, "format")      <- if (use_wide_format) "wide" else "long"
 	attr(pop, "include_IIV") <- use_wide_format && include_IIV
 	attr(pop, "include_IOV") <- use_wide_format && include_IOV
-
+	attr(pop, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	return(pop)
 
 	# TODO move this to flextable function (and need to adapt row insertion to be based on new section column)

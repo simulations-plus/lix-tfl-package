@@ -441,6 +441,8 @@ tableNCAConcentration <- function(projectFile      = NULL,
 		attr(final_df, "table_type") <- "nca_concentration"
 		attr(final_df, "format")     <- "long"  # Always long when include_id=TRUE
 	}
+	attr(final_df, "project_source") <- lixoftConnectors::getProjectSettings()$directory
+
 	return(final_df)
 
 }
@@ -852,7 +854,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 		attr(summary_stats, "table_type") <- "nca_parameters"
 		attr(summary_stats, "format")     <- "long"  # Always long when include_id=TRUE
 	}
-
+	attr(summary_stats, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	return(as.data.frame(summary_stats))
 }
 
@@ -1148,7 +1150,7 @@ tableNCARatios <- function(projectFile      = NULL,
 		attr(summary_tbl, "table_type") <- "nca_ratio"
 		attr(summary_tbl, "format")     <- "long"  # Always long when include_id=TRUE
 	}
-
+	attr(summary_tbl, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	return(as.data.frame(summary_tbl))
 
 
@@ -1300,6 +1302,7 @@ tableBEResults <- function(projectFile  = NULL,
 	if (isTRUE(prettyLabels)) {
 		result <- .prettyLabels(result)
 	}
+	attr(result, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	return(result)
 }
 
@@ -1627,7 +1630,7 @@ listingNCAConcentration <- function(projectFile      = NULL,
 														rounding_method = roundMethod)) %>%
 		dplyr::select(-.conc_numeric)
 
-
+	attr(indiv, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	return(as.data.frame(indiv))
 }
 
@@ -1749,7 +1752,7 @@ listingNCAParameters <- function(projectFile      = NULL,
 			dplyr::select("id", dplyr::all_of(covariates), dplyr::all_of(remaining_cols)) %>%
 			dplyr::arrange(!!!rlang::syms(covariates))
 	}
-
+	attr(indivNCA, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	return(indivNCA)
 }
 #-------------------------------------------------------------------------------
@@ -1870,6 +1873,6 @@ listingNCARatios <- function(projectFile      = NULL,
 			dplyr::select("id", dplyr::all_of(covariates), dplyr::all_of(remaining_cols)) %>%
 			dplyr::arrange(!!!rlang::syms(covariates))
 	}
-
+	attr(indivRatios, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	return(indivRatios)
 }

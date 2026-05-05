@@ -138,7 +138,7 @@ tableContinuousCovariateSummary <- function(projectFile,
     		setNames(col_names) %>%
     		tibble::rownames_to_column("Statistic")
     }
-
+    attr(cov_summary, "project_source") <- lixoftConnectors::getProjectSettings()$directory
     return(cov_summary)
 }
 
@@ -247,7 +247,7 @@ tableCategoricalCovariateSummary <- function(projectFile,
         }
         cov_summary <- rbind(cov_summary, cov)
     }
-
+    attr(cov_summary, "project_source") <- lixoftConnectors::getProjectSettings()$directory
     return(cov_summary)
 }
 
@@ -873,6 +873,7 @@ Exclusion_Table <- function(projectFile = NULL, covariates = NULL, horizontal = 
                 values_to = "Value"
             )
     }
+    attr(summary_tbl, "project_source") <- lixoftConnectors::getProjectSettings()$directory
     return(as.data.frame(summary_tbl))
 }
 ################################################################################
@@ -1058,6 +1059,7 @@ Exclusion_Listing <- function(projectFile = NULL) {
     if (length(indexFiltered) > 0) {
         message(paste0(length(indexFiltered), " lines were filtered in ", software))
         excl <- dataRaw[indexFiltered, ]
+        attr(excl, "project_source") <- lixoftConnectors::getProjectSettings()$directory
         return(excl)
     } else {
         message(paste0("All the lines are in the ", software, " project, no table of exclusions is created."))
@@ -1141,5 +1143,6 @@ DosingRegimen_Listing <- function(projectFile = NULL,
 
         listing <- merge(listing, df_InfDur, by = c("id"))
     }
+    attr(listing, "project_source") <- lixoftConnectors::getProjectSettings()$directory
     return(listing)
 }
