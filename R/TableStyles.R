@@ -565,7 +565,6 @@
 
 	# -------------------------------------------------------------------------
 	# Time deviation filtering footnote
-	# -------------------------------------------------------------------------
 	if (isTRUE(attrs$timeDeviationFiltered)) {
 		excluded  <- attrs$timeDeviationExcluded
 		threshold <- attrs$timeDeviationThreshold
@@ -607,7 +606,11 @@
 			footnotes <- c(footnotes, footnote_msg)
 		}
 	}
-
+	# -------------------------------------------------------------------------
+	# Project source footnote
+	if (!is.null(attrs$project_source)) {
+		footnotes <- c(footnotes, paste0("Source: ", attrs$project_source))
+	}
 	# -------------------------------------------------------------------------
 	# Future: Add more auto-footnote detection here
 	# e.g., BLQ handling, missing data, etc.
