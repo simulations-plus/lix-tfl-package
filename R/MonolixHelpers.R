@@ -1,172 +1,245 @@
-#' Created a data.frame table of the Monolix run history from a Sycomore project.
+#' tableRunHistory
 #'
-#' @param sycomoreProjectFile path to Sycomore .syc project file
-#' @param digits number of digits to display
-#' @param roundingMethod "monolix" to use MonolixSuite rounding where digits specifies the number of places after the decimal, or "signif"
-#' for digits to specify the number of significant figures
+#' @description
+#' Creates a summary table of the Monolix run history from a Sycomore project,
+#' including model selection criteria (OFV/LL and BICc), parent relationships,
+#' ratings, and comments.
 #'
-#' @returns data.frame, including the run name, the parent run, the rating and comments, as well as the
-#' -2 * loglikelihood (OFV) and BICc values and the difference from the parent, if available
+#' @param sycomoreProjectFile Character string specifying the path to a Sycomore
+#'   project file (.syc). This argument is mandatory.
+#'
+#' @param roundDigits Integer specifying the number of digits for rounding
+#'   numeric values. Default is `2`.
+#'
+#' @param roundingMethod Character string specifying the rounding method:
+#'   - `"monolix"` (default): Adaptive rounding where digits specifies decimal places
+#'   - `"signif"`: Standard significant figures rounding
+#'   - `"none"`: No rounding applied
+#'
+#' @param sortByCriteria Character string specifying which criteria to sort by:
+#'   - `"LL"` (default): Sort by log-likelihood/OFV (lowest first = best model)
+#'   - `"BICc"`: Sort by BICc (lowest first = best model)
+#'   - `"none"`: No sorting applied
+#'
+#'   When both linearization and importance sampling results are available,
+#'   the function automatically detects which method to use based on the
+#'   root/parent project.
+#'
+#' @param filterCriteria Character string specifying which criteria columns to display:
+#'   - `"none"` (default): Show all criteria columns (LL and BICc)
+#'   - `"LL"`: Show only LL columns (removes BICc columns)
+#'   - `"BICc"`: Show only BICc columns (removes LL columns)
+#'
+#'   Note: When sorting by a criteria, `filterCriteria` must be `"none"` or
+#'   match the sorting criteria. For example, `sortByCriteria = "LL"` with
+#'   `filterCriteria = "BICc"` will produce an error.
+#'
+#' @param prettyLabels Logical; if `TRUE` (default), applies human-readable
+#'   column labels (e.g., "LL (Imp. Sampling)" instead of "LLis").
+#'
+#' @return A data.frame containing:
+#'   \itemize{
+#'     \item \code{Run}: Project/run name
+#'     \item \code{Parent}: Parent run name (empty for root projects)
+#'     \item \code{LLlin}, \code{LLis}: Log-likelihood from linearization/importance sampling
+#'     \item \code{BICclin}, \code{BICcis}: BICc from linearization/importance sampling
+#'     \item \code{dLLlin}, \code{dLLis}: Delta LL from parent
+#'     \item \code{dBICclin}, \code{dBICcis}: Delta BICc from parent
+#'     \item \code{Comments}: Comments from the mlxtran file
+#'     \item \code{Rating}: User rating from Sycomore
+#'   }
+#'   Columns with all NA values are automatically removed.
+#'
+#' @details
+#' The function parses the Sycomore project file to extract the run hierarchy
+#' and relationships, then loads each individual Monolix project to retrieve
+#' the log-likelihood results and comments.
+#'
+#' Delta values (dLL, dBICc) represent the difference between each run and
+#' its parent run, useful for comparing nested models.
+#'
 #' @export
 #'
 #' @examples
-#' # TODO
+#' \dontrun{
+#' # Basic usage - sorted by LL, showing all criteria
+#' tableRunHistory("path/to/project.syc")
+#'
+#' # Sort by BICc, show only BICc columns
+#' tableRunHistory("path/to/project.syc", sortByCriteria = "BICc", filterCriteria = "BICc")
+#'
+#' # No sorting, show all criteria with 3 decimal places
+#' tableRunHistory("path/to/project.syc", sortByCriteria = "none", roundDigits = 3)
+#' }
 tableRunHistory <- function(sycomoreProjectFile,
-                            digits = 2,
-                            roundingMethod = c("monolix", "signif", "none")) {
-    if (is.null(sycomoreProjectFile)) {
-        stop("The argument 'sycomoreProjectFile' is mandatory.", call. = FALSE)
-    }
+														roundDigits      = 2,
+														roundingMethod   = c("monolix", "signif", "none"),
+														sortByCriteria   = c("LL", "BICc", "none"),
+														filterCriteria   = c("none", "LL", "BICc"),
+														prettyLabels     = TRUE) {
 
-    .checkProjectFile(sycomoreProjectFile, "sycomore")
+	if (is.null(sycomoreProjectFile)) {
+		stop("The argument 'sycomoreProjectFile' is mandatory.", call. = FALSE)
+	}
 
-    if (!file.exists(sycomoreProjectFile)) {
-        stop(paste0("Could not find Sycomore project ", path.expand(sycomoreProjectFile)), call. = FALSE)
-    }
+	.checkProjectFile(sycomoreProjectFile, "sycomore")
 
-    # read lines from sycomore file
-    sycContent <- readLines(sycomoreProjectFile)
+	if (!file.exists(sycomoreProjectFile)) {
+		stop(paste0("Could not find Sycomore project ", path.expand(sycomoreProjectFile)), call. = FALSE)
+	}
 
-    # keep section on relationship
-    rel <- sycContent[(which(sycContent == "[relationship]") + 1):length(sycContent)]
+	# Validate argument combinations
+	sortByCriteria <- match.arg(sortByCriteria)
+	filterCriteria <- match.arg(filterCriteria)
+	.validateCriteriaArgs(sortByCriteria, filterCriteria)
 
-    # replace \\ by = and split by =
-    spl <- strsplit(sub("\\", "=", rel, fixed = TRUE), "=", fixed = TRUE)
-    # add last cell if missing (can happen if no parent)
-    for (i in 1:length(spl)) {
-        if (length(spl[[i]]) < 3) {
-            spl[[i]] <- c(spl[[i]], "") # add empty string
-        }
-    }
-    # from list to data.frame
-    df <- data.frame(matrix(unlist(spl), ncol = 3, byrow = TRUE))
-    # keep only lines about path, parent and info (others are children and redundant, or are size info)
-    df <- df %>% dplyr::filter(.data$X2 %in% c("path", "parent", "info"))
-    # from long format to wide format
-    dfw <- stats::reshape(df,
-        idvar = "X1",
-        timevar = "X2",
-        direction = "wide"
-    )
-    # rename columns
-    dfw <- dfw %>% dplyr::rename(
-        Index = "X1",
-        Path = "X3.path",
-        Parent = "X3.parent"
-    )
+	# read lines from sycomore file
+	sycContent <- readLines(sycomoreProjectFile)
 
+	# keep section on relationship
+	rel <- sycContent[(which(sycContent == "[relationship]") + 1):length(sycContent)]
 
-    # keep section on projectList
-    proj <- sycContent[2:(which(sycContent == "[relationship]") - 2)]
-
-    # replace \\ by = and split by =
-    spp <- strsplit(sub("\\", "=", proj, fixed = TRUE), "=", fixed = TRUE)
-
-    # delete line with size= which can be anywhere in the list (not always at beginning or end)
-    for (i in 1:length(spp)) {
-        if (spp[[i]][1] == "size") {
-            indexToDelete <- i
-        }
-    }
-    spp[[indexToDelete]] <- NULL # delete line
-
-    # from list to data.frame
-    dfp <- data.frame(matrix(unlist(spp), ncol = 3, byrow = T))
-    # from long format to wide format
-    dfpw <- stats::reshape(dfp,
-        idvar = "X1",
-        timevar = "X2",
-        direction = "wide"
-    )
-    # rename columns
-    dfpw <- dfpw %>% dplyr::rename(
-        Index = "X1",
-        Path = "X3.path",
-        Used = "X3.used",
-        Selected = "X3.selected",
-        Rating = "X3.rating"
-    )
-    # filter projects not used
-    dfpw <- dfpw %>% dplyr::filter(.data$Used == "true")
-
-    # merge the two data.frames
-    dfall <- merge(dfw, dfpw, by = "Path") %>% dplyr::select(c("Path", "Parent", "Rating"))
-
-    # from filepath to file name
-    dfall <- dfall %>% dplyr::mutate(
-        Run = tools::file_path_sans_ext(basename(.data$Path)),
-        Parent = tools::file_path_sans_ext(basename(.data$Parent))
-    )
+	# replace \\ by = and split by =
+	spl <- strsplit(sub("\\", "=", rel, fixed = TRUE), "=", fixed = TRUE)
+	# add last cell if missing (can happen if no parent)
+	for (i in 1:length(spl)) {
+		if (length(spl[[i]]) < 3) {
+			spl[[i]] <- c(spl[[i]], "") # add empty string
+		}
+	}
+	# from list to data.frame
+	df <- data.frame(matrix(unlist(spl), ncol = 3, byrow = TRUE))
+	# keep only lines about path, parent and info (others are children and redundant, or are size info)
+	df <- df %>% dplyr::filter(.data$X2 %in% c("path", "parent", "info"))
+	# from long format to wide format
+	dfw <- stats::reshape(df,
+												idvar     = "X1",
+												timevar   = "X2",
+												direction = "wide"
+	)
+	# rename columns
+	dfw <- dfw %>%
+		dplyr::rename(Index  = "X1",
+									Path   = "X3.path",
+									Parent = "X3.parent")
 
 
-    dfall$LLlin <- NA
-    dfall$LLis <- NA
-    dfall$BICclin <- NA
-    dfall$BICcis <- NA
-    dfall$Comments <- NA
+	# keep section on projectList
+	proj <- sycContent[2:(which(sycContent == "[relationship]") - 2)]
 
-    # load all projects and extract LL and BIC + extract comments from mlxtran file
-    for (i in 1:nrow(dfall)) {
-        projPath <- paste0(
-            dirname(sycomoreProjectFile),
-            "/",
-            tools::file_path_sans_ext(dfall$Path[i])
-        )
+	# replace \\ by = and split by =
+	spp <- strsplit(sub("\\", "=", proj, fixed = TRUE), "=", fixed = TRUE)
 
+	# delete line with size= which can be anywhere in the list (not always at beginning or end)
+	for (i in 1:length(spp)) {
+		if (spp[[i]][1] == "size") {
+			indexToDelete <- i
+		}
+	}
+	spp[[indexToDelete]] <- NULL # delete line
 
-        LLfile <- paste0(projPath, "/LogLikelihood/logLikelihood.txt")
-        if (file.exists(LLfile)) {
-            dfLL <- utils::read.csv(LLfile)
-        } else {
-            dfLL <- NULL
-        }
+	# from list to data.frame
+	dfp <- data.frame(matrix(unlist(spp), ncol = 3, byrow = T))
+	# from long format to wide format
+	dfpw <- stats::reshape(dfp,
+												 idvar     = "X1",
+												 timevar   = "X2",
+												 direction = "wide")
+	# rename columns
+	dfpw <- dfpw %>%
+		dplyr::rename(Index    = "X1",
+									Path     = "X3.path",
+									Used     = "X3.used",
+									Selected = "X3.selected",
+									Rating   = "X3.rating")
+	# filter projects not used
+	dfpw <- dfpw %>% dplyr::filter(.data$Used == "true")
 
-        # extract LL and BIC
-        if (!is.null(dfLL$linearization)) {
-            dfall$BICclin[i] <- dfLL$linearization[dfLL$criteria == "BICc"]
-            dfall$LLlin[i] <- dfLL$linearization[dfLL$criteria == "OFV"]
-        }
-        if (!is.null(dfLL$importanceSampling)) {
-            dfall$BICcis[i] <- dfLL$importanceSampling[dfLL$criteria == "BICc"]
-            dfall$LLis[i] <- dfLL$importanceSampling[dfLL$criteria == "OFV"]
-        }
-        # extract comments from mlxtran
-        mlxTranContent <- readLines(paste0(projPath, ".mlxtran"))
-        if (length(which(mlxTranContent == "[COMMENTS]")) == 0) {
-            dfall$Comments[i] <- ""
-        } else {
-            # get comments
-            tmp <- mlxTranContent[(which(mlxTranContent == "[COMMENTS]") + 1):length(mlxTranContent)]
-            # remove first character which is ;
-            tmp <- sub(".", "", tmp)
-            dfall$Comments[i] <- paste(tmp, collapse = "\n")
-        }
-    }
+	# merge the two data.frames
+	dfall <- merge(dfw, dfpw, by = "Path") %>% dplyr::select(c("Path", "Parent", "Rating"))
 
-    # calculate deltaLL and deltaBIC
-    dfall$dLLlin <- NA
-    dfall$dLLis <- NA
-    dfall$dBICclin <- NA
-    dfall$dBICcis <- NA
-    for (i in 1:nrow(dfall)) {
-        if (dfall$Parent[i] != "") {
-            # has a parent
-            indexParent <- which(dfall$Run == dfall$Parent[i])
-            dfall$dLLlin[i] <- dfall$LLlin[i] - dfall$LLlin[indexParent]
-            dfall$dLLis[i] <- dfall$LLis[i] - dfall$LLis[indexParent]
-            dfall$dBICclin[i] <- dfall$BICclin[i] - dfall$BICclin[indexParent]
-            dfall$dBICcis[i] <- dfall$BICcis[i] - dfall$BICcis[indexParent]
-        }
-    }
+	# from filepath to file name
+	dfall <- dfall %>%
+		dplyr::mutate(Run    = tools::file_path_sans_ext(basename(.data$Path)),
+									Parent = tools::file_path_sans_ext(basename(.data$Parent)))
 
-    dfall <- dfall %>%
-        dplyr::select(dplyr::where(~ any(!is.na(.x)))) %>%
-        dplyr::relocate("Comments", "Rating", .after = dplyr::last_col()) %>%
-        dplyr::relocate("Run")
-    dfall <- .round_num(dfall, digits, rounding_method = roundingMethod)
+	dfall$LLlin    <- NA
+	dfall$LLis     <- NA
+	dfall$BICclin  <- NA
+	dfall$BICcis   <- NA
+	dfall$Comments <- NA
 
-    return(dfall)
+	# load all projects and extract LL and BIC + extract comments from mlxtran file
+	for (i in 1:nrow(dfall)) {
+		projPath <- paste0(
+			dirname(sycomoreProjectFile),
+			"/",
+			tools::file_path_sans_ext(dfall$Path[i]))
+
+		LLfile <- paste0(projPath, "/LogLikelihood/logLikelihood.txt")
+		if (file.exists(LLfile)) {
+			dfLL <- utils::read.csv(LLfile)
+		} else {
+			dfLL <- NULL
+		}
+
+		# extract LL and BIC
+		if (!is.null(dfLL$linearization)) {
+			dfall$BICclin[i] <- dfLL$linearization[dfLL$criteria == "BICc"]
+			dfall$LLlin[i]   <- dfLL$linearization[dfLL$criteria == "OFV"]
+		}
+		if (!is.null(dfLL$importanceSampling)) {
+			dfall$BICcis[i] <- dfLL$importanceSampling[dfLL$criteria == "BICc"]
+			dfall$LLis[i]   <- dfLL$importanceSampling[dfLL$criteria == "OFV"]
+		}
+		# extract comments from mlxtran
+		mlxTranContent <- readLines(paste0(projPath, ".mlxtran"))
+		if (length(which(mlxTranContent == "[COMMENTS]")) == 0) {
+			dfall$Comments[i] <- ""
+		} else {
+			# get comments
+			tmp <- mlxTranContent[(which(mlxTranContent == "[COMMENTS]") + 1):length(mlxTranContent)]
+			# remove first character which is ;
+			tmp <- sub(".", "", tmp)
+			dfall$Comments[i] <- paste(tmp, collapse = "\n")
+		}
+	}
+
+	# calculate deltaLL and deltaBIC
+	dfall$dLLlin   <- NA
+	dfall$dLLis    <- NA
+	dfall$dBICclin <- NA
+	dfall$dBICcis  <- NA
+	for (i in 1:nrow(dfall)) {
+		if (dfall$Parent[i] != "") {
+			# has a parent
+			indexParent       <- which(dfall$Run == dfall$Parent[i])
+			dfall$dLLlin[i]   <- dfall$LLlin[i]   - dfall$LLlin[indexParent]
+			dfall$dLLis[i]    <- dfall$LLis[i]    - dfall$LLis[indexParent]
+			dfall$dBICclin[i] <- dfall$BICclin[i] - dfall$BICclin[indexParent]
+			dfall$dBICcis[i]  <- dfall$BICcis[i]  - dfall$BICcis[indexParent]
+		}
+	}
+
+	dfall <- dfall %>%
+		dplyr::select(dplyr::where(~ any(!is.na(.x)))) %>%
+		dplyr::relocate("Comments", "Rating", .after = dplyr::last_col()) %>%
+		dplyr::relocate("Run")
+	dfall <- .round_num(dfall, roundDigits, rounding_method = roundingMethod)
+
+	# Apply sorting if requested
+	dfall <- .sortRunHistory(dfall, sortByCriteria = sortByCriteria)
+
+	# Filter to show only selected criteria columns
+	dfall <- .filterCriteriaColumns(dfall, filterCriteria = filterCriteria)
+
+	if (isTRUE(prettyLabels)) {
+		dfall <- .prettyLabels(dfall)
+	}
+
+	return(dfall)
 }
+
 
 
 
