@@ -276,8 +276,16 @@ utils::globalVariables(c("."))
 .prettyLabels <- function(df) {
 	# Helper function to extract CI level from column name
 	extract_ci_level <- function(col_name) {
-		# Match pattern like CI_2.5_97.5 or IIV_CI_2.5_97.5
+		# Match pattern like IIV_CI_2.5_97.5 (with prefix)
 		matches <- regmatches(col_name, regexec("_CI_([0-9.]+)_([0-9.]+)$", col_name))
+		if (length(matches[[1]]) == 3) {
+			lower_p <- as.numeric(matches[[1]][2])
+			upper_p <- as.numeric(matches[[1]][3])
+			ci_level <- round(upper_p - lower_p)
+			return(ci_level)
+		}
+		# Match pattern like CI_2.5_97.5 (standalone, no prefix)
+		matches <- regmatches(col_name, regexec("^CI_([0-9.]+)_([0-9.]+)$", col_name))
 		if (length(matches[[1]]) == 3) {
 			lower_p <- as.numeric(matches[[1]][2])
 			upper_p <- as.numeric(matches[[1]][3])
@@ -341,7 +349,8 @@ utils::globalVariables(c("."))
 	col_names <- names(df)
 	new_names <- sapply(col_names, function(col) {
 		# First check for dynamic CI columns (pattern matching for any confidence level)
-		if (grepl("_CI_[0-9.]+_[0-9.]+$", col)) {
+		# Matches both prefixed (e.g., IIV_CI_2.5_97.5) and standalone (e.g., CI_2.5_97.5)
+		if (grepl("(^|_)CI_[0-9.]+_[0-9.]+$", col)) {
 			ci_level <- extract_ci_level(col)
 
 			if (!is.null(ci_level)) {
