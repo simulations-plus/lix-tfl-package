@@ -454,7 +454,7 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 
 	p <- p +
 		labs(x        = "Theoretical quantiles",
-				 y        = "Emprirical quantiles of standardized random effects",
+				 y        = "Emprirical quantiles of\nstandardized random effects",
 				 colour   = NULL,
 				 linetype = NULL,
 				 shape    = NULL) +
@@ -463,7 +463,8 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 					legend.direction = "vertical",
 					axis.line   = element_line(color = "black"),
 					axis.ticks  = element_line(color = "black"),
-					strip.placement = "outside")
+					strip.placement = "outside",
+					strip.background = element_blank())
 
 	# Add identity line
 	if (settings$identityLine) {
