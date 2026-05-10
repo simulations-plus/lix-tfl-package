@@ -236,7 +236,7 @@ tableRunHistory <- function(sycomoreProjectFile,
 	if (isTRUE(prettyLabels)) {
 		dfall <- .prettyLabels(dfall)
 	}
-
+	attr(dfall, "project_source") <- sycomoreProjectFile
 	return(dfall)
 }
 
