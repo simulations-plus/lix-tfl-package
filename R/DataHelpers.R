@@ -4,10 +4,23 @@
 #' @param covDisplayLabels (optional) data.frame with columns covariate and label for the dataset covariate name
 #' @param splitCovariates vector of categorical covariates to stratify by, or NULL
 #' @param metrics vector of metrics to display, or NULL to display all available metrics
-#' @param metricsAsRows TRUE to display metrics as rows, or FALSE (default) to display them as columns
-#' @param digits number of digits to display
+#' @param use_wide_format Logical. If `TRUE` (default), returns a "wide" table format where
+#'   statistics appear as columns and covariates appear as rows.
+#'   If `FALSE`, returns a "long" table format where statistics appear as rows
+#'   (useful for vertical reporting layouts).
+#'   Note: `stratify_columns = TRUE` is only compatible with `use_wide_format = FALSE`.
+#' @param stratify_columns Logical; if `TRUE`, creates a stratified table layout with
+#'   separate columns for each covariate combination plus an "Overall" column. If `FALSE`
+#'   (default), splitCovariates appear as separate columns on the left side of the table.
+#'   Only applicable when `splitCovariates` is specified.
+#' @param covariate_labels Character vector of custom labels for splitCovariates, must be the
+#'   same length as `splitCovariates`. If `NULL` (default), the original covariate names are
+#'   used. These labels appear in column headers when `stratify_columns = TRUE`.
+#' @param roundDigits number of digits to display
 #' @param roundingMethod "monolix" to use MonolixSuite rounding where digits specifies the number of places after the decimal, or "signif"
 #' for digits to specify the number of significant figures
+#' @param prettyLabels Logical; if `TRUE` (default), converts column names to
+#'   human-readable labels (e.g., "CV" becomes "CV (%)", "geoMean" becomes "Geometric Mean").
 #'
 #' @returns a data.frame
 #' @seealso [getContinuousCovariateMetrics()]
@@ -19,24 +32,15 @@
 #' # TODO
 tableContinuousCovariateSummary <- function(projectFile      = NULL,
                                             covDisplayLabels = NULL,
-																						splitCovariates  = NULL,
-																						metrics          = NULL,
-																						metricsAsRows    = FALSE,
+                                            splitCovariates  = NULL,
+                                            metrics          = NULL,
+                                            use_wide_format  = TRUE,
+                                            stratify_columns = FALSE,
+                                            covariate_labels = NULL,
                                             roundDigits      = 2,
                                             roundingMethod   = c("monolix", "signif", "none"),
-																						prettyLabels     = TRUE)
+                                            prettyLabels     = TRUE)
 {
-
-
-	projectFile      = prj9
-	covDisplayLabels = NULL
-	splitCovariates  = "APGAR"
-	metrics          = NULL
-	metricsAsRows    = FALSE
-	roundDigits      = 2
-	roundMethod   = "monolix"
-	prettyLabels     = TRUE
-
     .checkProjectFile(projectFile, c("monolix", "pkanalix"))
     .ensureProjectLoaded(projectFile)
 
@@ -48,8 +52,16 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
     							paste(names(covDisplayLabels), collapse = ", ")
     	), call. = FALSE )
     }
-    if (metricsAsRows && !is.null(splitCovariates)) {
-    	stop("Splitting by covariates not supported for displaying metrics as rows.", call. = FALSE)
+
+    # Validate stratify_columns and covariate_labels (using same logic as PKanalixHelpers)
+    # Note: .validateStratificationArgs checks existence via lixoftConnectors::getCovariateInformation()
+    stratify_columns <- .validateStratificationArgs(splitCovariates, stratify_columns)
+    covariate_labels <- .validateCovariateLabels(splitCovariates, covariate_labels)
+
+    # Validate: stratify_columns only works with long format
+    if (stratify_columns && use_wide_format) {
+    	warning("stratify_columns = TRUE is only compatible with use_wide_format = FALSE (long format). Setting stratify_columns = FALSE")
+    	stratify_columns <- FALSE
     }
 
     cov_info <- lixoftConnectors::getCovariateInformation()
@@ -74,56 +86,141 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
             names_to = "Covariate",
             values_to = "Value")
 
-    # Calculate descriptive statistics using internal helper
-    group_by_vars <- c("Covariate", splitCovariates)
+    # ==========================================================================
+    # CALCULATE DESCRIPTIVE STATISTICS
 
-    cov_summary <- .calculateDescriptiveStats(
-        data      = cov_data,
-        value_col = "Value",
-        id_col    = if (has_id) "id" else NULL,
-        group_by  = group_by_vars)
+    if (stratify_columns && !is.null(splitCovariates)) {
+        # ----------------------------------------------------------------------
+        # STRATIFIED CASE: Calculate stats for each covariate combination
+        # ----------------------------------------------------------------------
+        group_by_vars <- c("Covariate", splitCovariates)
 
-    # Apply rounding
-    cov_summary <- .round_num(
-        to_round        = cov_summary,
-        digits          = roundDigits,
-        rounding_method = roundingMethod)
+        summary_stats <- .calculateDescriptiveStats(
+            data      = cov_data,
+            value_col = "Value",
+            id_col    = if (has_id) "id" else NULL,
+            group_by  = group_by_vars)
 
-    # Add combined metrics
-    cov_summary <- .combinedStats(cov_summary)
+        # Apply rounding
+        summary_stats <- .round_num(
+            to_round        = summary_stats,
+            digits          = roundDigits,
+            rounding_method = roundingMethod,
+            exclude         = c("Covariate", splitCovariates))
 
-    # Select metrics
-    descriptor_cols <- c("Covariate", splitCovariates)
+        # Add combined metrics (MeanSD, GeomCV, GeomSD)
+        summary_stats <- .combinedStats(summary_stats)
 
-    selected_metrics <- .validateAndSelectMetrics(
-        available_cols = names(cov_summary),
-        user_metrics   = metrics,
-        descriptors    = descriptor_cols)
+        # Also calculate overall stats (no covariate grouping)
+        overall_stats <- .calculateDescriptiveStats(
+            data      = cov_data,
+            value_col = "Value",
+            id_col    = if (has_id) "id" else NULL,
+            group_by  = "Covariate")
 
-    cov_summary <- cov_summary[, c(descriptor_cols, selected_metrics), drop = FALSE]
+        # Apply rounding to overall_stats
+        overall_stats <- .round_num(
+            to_round        = overall_stats,
+            digits          = roundDigits,
+            rounding_method = roundingMethod,
+            exclude         = "Covariate")
 
-    # rename covariates
-    if (!is.null(covDisplayLabels)) {
-    	labelIdx <- match(cov_summary$Covariate, covDisplayLabels$covariate)
-    	cov_summary$Covariate[!is.na(labelIdx)] <- covDisplayLabels$label[stats::na.omit(labelIdx)]
+        # Add combined metrics
+        overall_stats <- .combinedStats(overall_stats)
+
+        # Validate and select metrics
+        descriptor_cols  <- c("Covariate", splitCovariates)
+        selected_metrics <- .validateAndSelectMetrics(
+            available_cols = names(summary_stats),
+            user_metrics   = metrics,
+            descriptors    = descriptor_cols)
+
+        # Use internal helper to build stratified table
+        cov_summary <- .buildStratifiedTable(
+            summary_stats    = summary_stats,
+            overall_stats    = overall_stats,
+            splitCovariates  = splitCovariates,
+            selected_metrics = selected_metrics,
+            param_col        = "Covariate",
+            covariate_labels = covariate_labels)
+
+        # Rename covariates using covDisplayLabels if provided
+        if (!is.null(covDisplayLabels)) {
+            labelIdx <- match(cov_summary$Covariate, covDisplayLabels$covariate)
+            cov_summary$Covariate[!is.na(labelIdx)] <- covDisplayLabels$label[stats::na.omit(labelIdx)]
+        }
+
+    } else {
+        # ----------------------------------------------------------------------
+        # NON-STRATIFIED CASE
+        # ----------------------------------------------------------------------
+        group_by_vars <- c("Covariate", splitCovariates)
+
+        cov_summary <- .calculateDescriptiveStats(
+            data      = cov_data,
+            value_col = "Value",
+            id_col    = if (has_id) "id" else NULL,
+            group_by  = group_by_vars)
+
+        # Apply rounding
+        cov_summary <- .round_num(
+            to_round        = cov_summary,
+            digits          = roundDigits,
+            rounding_method = roundingMethod,
+            exclude         = c("Covariate", splitCovariates))
+
+        # Add combined metrics
+        cov_summary <- .combinedStats(cov_summary)
+
+        # Select metrics
+        descriptor_cols <- c("Covariate", splitCovariates)
+
+        selected_metrics <- .validateAndSelectMetrics(
+            available_cols = names(cov_summary),
+            user_metrics   = metrics,
+            descriptors    = descriptor_cols)
+
+        cov_summary <- cov_summary[, c(descriptor_cols, selected_metrics), drop = FALSE]
+
+        # Rename covariates using covDisplayLabels if provided
+        if (!is.null(covDisplayLabels)) {
+            labelIdx <- match(cov_summary$Covariate, covDisplayLabels$covariate)
+            cov_summary$Covariate[!is.na(labelIdx)] <- covDisplayLabels$label[stats::na.omit(labelIdx)]
+        }
+
+        # ==========================================================================
+        # FORMAT: WIDE vs LONG
+
+        if (!use_wide_format) {
+            # LONG FORMAT: transpose so metrics appear as rows
+            # Use helper function for vertical pivot (similar to tableNCAParameters)
+            cov_summary <- .pivotToVertical(
+                summary_stats = cov_summary,
+                param_col     = "Covariate",
+                splitCovariates = splitCovariates)
+        }
     }
+
+    # ==========================================================================
+    # APPLY PRETTY LABELS
 
     if (prettyLabels) {
-    	cov_summary <- .prettyLabels(cov_summary)
+        cov_summary <- .prettyLabels(cov_summary)
+
+        # Apply pretty labels to the content of the 'Statistic' column if it exists
+        if ("Statistic" %in% names(cov_summary)) {
+            curr_metrics    <- unique(cov_summary$Statistic)
+            dummy_df        <- as.data.frame(matrix(NA, nrow = 1, ncol = length(curr_metrics)))
+            names(dummy_df) <- curr_metrics
+            dummy_df        <- .prettyLabels(dummy_df)
+            metric_map      <- setNames(names(dummy_df), curr_metrics)
+
+            cov_summary$Statistic <- metric_map[cov_summary$Statistic]
+        }
     }
 
-    # transpose if requested
-    if (metricsAsRows) {
-    	col_names = cov_summary$Covariate
-    	cov_summary <- cov_summary %>%
-    		dplyr::select(-"Covariate") %>%
-    		t() %>%
-    		as.data.frame() %>%
-    		setNames(col_names) %>%
-    		tibble::rownames_to_column("Statistic")
-    }
     attr(cov_summary, "project_source") <- lixoftConnectors::getProjectSettings()$directory
-    return(cov_summary)
+    return(as.data.frame(cov_summary))
 }
 
 #' Available metrics for continuous covariate summary
@@ -651,7 +748,7 @@ CovariateFrequency_Table <- function(projectFile = NULL,
         # Overall summary
         overall_raw <- df_long_all %>%
             dplyr::filter(!variable %in% splitCovariates) %>%
-            .calculate_raw_freq()
+            .calculateCategoricalFrequencies()
 
         overall <- overall_raw %>%
             .format_frequency_table(roundDigits, roundMethod, exclude_cols = c("variable", "Modalities", "N")) %>%
