@@ -10,14 +10,14 @@
 #' tableNCAConcentration
 #'
 #' Generates a summary table of concentration data from NCA analysis, with optional
-#' stratification by covariates. Transforms concentration data from wide to long format
+#' stratification by splitCovariates. Transforms concentration data from wide to long format
 #' and provides summary statistics across time points.
 #'
 #' @param projectFile Character string specifying the path to a PKanalix project file (.pkx).
 #'   If `NULL` (default), uses the currently loaded project. The function will load the
 #'   specified project if it differs from the currently active one.
 #'
-#' @param covariates Character vector of covariate names to stratify results by
+#' @param splitCovariates Character vector of covariate names to stratify results by
 #'   (e.g., `c("DOSE", "FOOD")`). If `NULL` (default), no stratification is applied
 #'   and overall summary statistics are returned.
 #'
@@ -33,11 +33,11 @@
 #'
 #' @param stratify_columns Logical; if `TRUE`, creates a stratified table layout with
 #'   separate columns for each covariate combination plus an "Overall" column. If `FALSE`
-#'   (default), covariates appear as separate columns on the left side of the table.
-#'   Only applicable when `covariates` is specified.
+#'   (default), splitCovariates appear as separate columns on the left side of the table.
+#'   Only applicable when `splitCovariates` is specified.
 #'
-#' @param covariate_labels Character vector of custom labels for covariates, must be the
-#'   same length as `covariates`. If `NULL` (default), the original covariate names are
+#' @param covariate_labels Character vector of custom labels for splitCovariates, must be the
+#'   same length as `splitCovariates`. If `NULL` (default), the original covariate names are
 #'   used. These labels appear in column headers when `stratify_columns = TRUE`.
 #'
 #' @param use_wide_format Logical. If `TRUE` (default), returns a "wide" table format where
@@ -60,7 +60,7 @@
 #'
 #' @param include_id Logical. If `TRUE`, adds individual subject IDs and their
 #'   concentration values at each time point below the summary statistics. When
-#'   stratified by covariates, individual IDs are grouped by their covariate values.
+#'   stratified by splitCovariates, individual IDs are grouped by their covariate values.
 #'   Default is `FALSE`. Only applicable when `stratify_columns = FALSE`.
 #'
 #' @param roundDigits Integer specifying the number of decimal places for rounding
@@ -77,7 +77,7 @@
 #'
 #' @details
 #' The function resets stratification via `lixoftConnectors::setNCAResultsStratification()` and
-#' optionally splits results by `covariates`. Concentration data are retrieved
+#' optionally splits results by `splitCovariates`. Concentration data are retrieved
 #' with `lixoftConnectors::getNCAConcentrations()`, using `useNominalTime` only if nominal
 #' time is set and available. Covariate column order is corrected with
 #' `fixNCAConcentrationsColumnSwap()`. Only summary rows (statistics) are kept,
@@ -86,24 +86,24 @@
 #' timepoint/covariate combination.
 #'
 #' @return A data frame containing concentration summary statistics organized by time points
-#'         and optionally stratified by covariates.
+#'         and optionally stratified by splitCovariates.
 #'
 #' @examples
 #' # Overall summary (no stratification)
 #' # tableNCAConcentration()
 #'
 #' # Stratified by treatment, all metrics
-#' # tableNCAConcentration(covariates = "TREAT")
+#' # tableNCAConcentration(splitCovariates = "TREAT")
 #'
-#' # Stratified by multiple covariates with column layout
+#' # Stratified by multiple splitCovariates with column layout
 #' # tableNCAConcentration(
-#' #   covariates = c("DOSE", "FOOD"),
+#' #   splitCovariates = c("DOSE", "FOOD"),
 #' #   stratify_columns = TRUE
 #' # )
 #'
 #' # Custom metrics and labels
 #' # tableNCAConcentration(
-#' #   covariates = c("SEX", "AGE_CAT"),
+#' #   splitCovariates = c("SEX", "AGE_CAT"),
 #' #   metrics = c("GeomCV", "MeanSD"),
 #' #   covariate_labels = c("Sex", "Age Category"),
 #' #   stratify_columns = TRUE
@@ -117,7 +117,7 @@
 #' # )
 #'
 tableNCAConcentration <- function(projectFile      = NULL,
-																	covariates       = NULL,
+																	splitCovariates  = NULL,
 																	useNominalTime   = TRUE,
 																	metrics          = NULL,
 																	stratify_columns = FALSE,
@@ -134,14 +134,14 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	roundMethod <- match.arg(roundMethod)
 	# # DEBUG EXAMPLE
 	# projectFile      = NULL
-	# covariates       = "ATRTNCA"
+	# splitCovariates       = "ATRTNCA"
 	# useNominalTime   = TRUE
 	# metrics = c("min", "MeanSD", "max")
 	# stratify_columns = FALSE
 	# covariate_labels = NULL
 	# use_wide_format  = TRUE
 	# maxTimeDeviation = 20
-	# include_id       = FALSE
+	# include_id       = TRUE
 	# roundDigits      = 3
 	# roundMethod      = "monolix"
 	# prettyLabels     = TRUE
@@ -155,10 +155,10 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	# Validate availability of analysis results
 	.validateProjectResultsAvailability(software = "pkanalix", resultType = "nca")
 
-	# Validate covariates, stratification and covariate label arguments
-	.validateCovariateSelection(covariates, ratio = FALSE)
-	stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
-	covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
+	# Validate splitCovariates, stratification and covariate label arguments
+	.validateCovariateSelection(splitCovariates, ratio = FALSE)
+	stratify_columns <- .validateStratificationArgs(splitCovariates, stratify_columns)
+	covariate_labels <- .validateCovariateLabels(splitCovariates, covariate_labels)
 
 	# Validate covariate and id filters
 	.validateFilters(covariate_filter, id_filter, resultType = "nca")
@@ -188,7 +188,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	# Don't apply rounding yet (will be done after calculating stats)
 	raw_data  <- listingNCAConcentration(
 		projectFile    = NULL, # project already loaded
-		covariates     = covariates,
+		splitCovariates= splitCovariates,
 		useNominalTime = useNominalTime,
 		roundDigits    = NULL,
 		roundMethod    = "none")
@@ -225,11 +225,11 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	# ==========================================================================
 	# CALCULATE DESCRIPTIVE STATISTICS
 
-	# For stratified analysis, calculate stats separately by covariates
-	# For non-stratified, calculate overall stats (may still include covariates as grouping)
-	if (stratify_columns && !is.null(covariates)) {
+	# For stratified analysis, calculate stats separately by splitCovariates
+	# For non-stratified, calculate overall stats (may still include splitCovariates as grouping)
+	if (stratify_columns && !is.null(splitCovariates)) {
 		# STRATIFIED CASE: Calculate stats for each covariate combination
-		group_by_vars <- c(time_col, covariates)
+		group_by_vars <- c(time_col, splitCovariates)
 
 		summary_stats <- .calculateDescriptiveStats(
 			data      = raw_data,
@@ -242,7 +242,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			to_round        = summary_stats,
 			digits          = roundDigits,
 			rounding_method = roundMethod,
-			exclude         = c(time_col, covariates))
+			exclude         = c(time_col, splitCovariates))
 
 		# Add combined metrics to summary_stats
 		summary_stats <- .combinedStats(summary_stats)
@@ -266,14 +266,14 @@ tableNCAConcentration <- function(projectFile      = NULL,
 
 		# Validate Metrics existence
 		available_cols   <- names(summary_stats)
-		descriptor_cols  <- c(time_col, covariates)  # N/Nobs are optional metrics
+		descriptor_cols  <- c(time_col, splitCovariates)  # N/Nobs are optional metrics
 		selected_metrics <- .validateAndSelectMetrics(available_cols, metrics, descriptor_cols)
 
 		# Use internal helper to build stratified table
 		final_df <- .buildStratifiedTable(
 			summary_stats    = summary_stats,
 			overall_stats    = overall_stats,
-			covariates       = covariates,
+			splitCovariates       = splitCovariates,
 			selected_metrics = selected_metrics,
 			param_col        = time_col,
 			covariate_labels = covariate_labels)
@@ -283,8 +283,8 @@ tableNCAConcentration <- function(projectFile      = NULL,
 		# CASE: No Stratification
 		# ----------------------------------------------------------------------
 
-		# Calculate stats with covariates as columns (if present)
-		group_by_vars <- if (!is.null(covariates)) c(time_col, covariates) else time_col
+		# Calculate stats with splitCovariates as columns (if present)
+		group_by_vars <- if (!is.null(splitCovariates)) c(time_col, splitCovariates) else time_col
 
 		summary_stats <- .calculateDescriptiveStats(
 			data      = raw_data,
@@ -292,18 +292,18 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			id_col    = "id",
 			group_by  = group_by_vars)
 
-		# Apply rounding to numeric columns (exclude time and covariates)
+		# Apply rounding to numeric columns (exclude time and splitCovariates)
 		summary_stats <- .round_num(
 			to_round        = summary_stats,
 			digits          = roundDigits,
 			rounding_method = roundMethod,
-			exclude         = c(time_col, covariates))
+			exclude         = c(time_col, splitCovariates))
 
 		# Add MeanSD, GeomCV, GeomSD columns
 		summary_stats <- .combinedStats(summary_stats)
 
 		# Validate and select metrics
-		descriptor_cols  <- c(time_col, covariates)
+		descriptor_cols  <- c(time_col, splitCovariates)
 		selected_metrics <- .validateAndSelectMetrics(names(summary_stats), metrics, descriptor_cols)
 
 		# Filter columns
@@ -323,8 +323,8 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			names(final_df)[names(final_df) == time_col] <- "Time"
 			time_col_name <- "Time"
 
-			# Identify metric columns (everything except Time and covariates)
-			stat_cols <- setdiff(names(final_df), c("Time", covariates))
+			# Identify metric columns (everything except Time and splitCovariates)
+			stat_cols <- setdiff(names(final_df), c("Time", splitCovariates))
 
 			# Convert all metric columns to character (handles mixed numeric/character like MeanSD)
 			final_df <- final_df %>%
@@ -347,7 +347,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			if (include_id) {
 				final_df <- .addIndividuals(
 					summary_stats  = final_df,
-					covariates     = covariates,
+					splitCovariates     = splitCovariates,
 					resultType     = "ncaConcentration",
 					params         = NULL,
 					roundDigits    = roundDigits,
@@ -360,8 +360,8 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			# Apply pretty labels for wide format
 			# ----------------------------------------------------------------------
 			if (isTRUE(prettyLabels)) {
-				# Get time columns (numeric column names, excluding Statistic, Section, and covariates)
-				exclude_cols <- c("Statistic", "Section", covariates)
+				# Get time columns (numeric column names, excluding Statistic, Section, and splitCovariates)
+				exclude_cols <- c("Statistic", "Section", splitCovariates)
 				time_cols <- setdiff(names(final_df), exclude_cols)
 
 				# Apply "Time = " prefix to time columns
@@ -410,10 +410,10 @@ tableNCAConcentration <- function(projectFile      = NULL,
 				final_df <- .prettyLabels(final_df)
 			}
 
-			# Sort by covariates (if present and not stratified), then by Time
-			if (!stratify_columns && !is.null(covariates) && length(covariates) > 0) {
+			# Sort by splitCovariates (if present and not stratified), then by Time
+			if (!stratify_columns && !is.null(splitCovariates) && length(splitCovariates) > 0) {
 				final_df <- final_df %>%
-					dplyr::arrange(dplyr::across(dplyr::all_of(covariates)),
+					dplyr::arrange(dplyr::across(dplyr::all_of(splitCovariates)),
 												 suppressWarnings(as.numeric(!!rlang::sym(time_col))))
 			} else if (time_col %in% names(final_df)) {
 				final_df <- final_df %>%
@@ -459,7 +459,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   If `NULL` (default), uses the currently loaded project. The function will load the
 #'   specified project if it differs from the currently active one.
 #'
-#' @param covariates Character vector of covariate names to stratify by
+#' @param splitCovariates Character vector of covariate names to stratify by
 #'   (e.g., `"TREAT"`, `"FOOD"`, or `c("TREAT","FOOD")`). If `NULL`
 #'   (default), no stratification is applied and overall summaries are returned.
 #'
@@ -480,16 +480,16 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'
 #' @param stratify_columns Logical; if `TRUE`, creates a stratified table layout with
 #'   separate columns for each covariate combination plus an "Overall" column. If `FALSE`
-#'   (default), covariates appear as separate columns on the left side of the table.
-#'   Only applicable when `covariates` is specified.
+#'   (default), splitCovariates appear as separate columns on the left side of the table.
+#'   Only applicable when `splitCovariates` is specified.
 #'
-#' @param covariate_labels Character vector of custom labels for covariates, must be the
-#'   same length as `covariates`. If `NULL` (default), the original covariate names are
+#' @param covariate_labels Character vector of custom labels for splitCovariates, must be the
+#'   same length as `splitCovariates`. If `NULL` (default), the original covariate names are
 #'   used. These labels appear in column headers when `stratify_columns = TRUE`.
 #'
 #' @param include_id Logical. If `TRUE` and `use_wide_format = FALSE`, adds individual
 #'   subject IDs and their parameter values below the summary statistics in the
-#'   "Statistic" column. When stratified by covariates, individual IDs are grouped
+#'   "Statistic" column. When stratified by splitCovariates, individual IDs are grouped
 #'   by their covariate values and listed after the corresponding summary metrics.
 #'   Default is `FALSE`. Only works when `use_wide_format = FALSE`.
 #'
@@ -520,7 +520,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'
 #' # Stratified by a categorical covariate, selected parameters, vertical layout
 #' # tableNCAParameters(
-#' #   covariates = "FORM",
+#' #   splitCovariates = "FORM",
 #' #   NCAparams  = c("AUCINF_obs", "AUClast", "Cmax"),
 #' #   roundDigits = 2,
 #' #   use_wide_format = FALSE
@@ -535,13 +535,13 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'
 #' # Stratified with individual IDs
 #' # tableNCAParameters(
-#' #   covariates = "TREAT",
+#' #   splitCovariates = "TREAT",
 #' #   use_wide_format = FALSE,
 #' #   include_id = TRUE
 #' # )
 #'
 tableNCAParameters <- function(projectFile      = NULL,
-															 covariates       = NULL,
+															 splitCovariates       = NULL,
 															 NCAparams        = NULL,
 															 metrics          = NULL,
 															 use_wide_format  = TRUE,
@@ -560,7 +560,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 
 	# DEBUG EXAMPLE
 	# projectFile      = NULL
-	# covariates       = c("ATRTNCA","AVISIT_OCC")
+	# splitCovariates       = c("ATRTNCA","AVISIT_OCC")
 	# NCAparams        = c("AUClast", "Cmax", "C0")
 	# metrics          = c("min", "MeanSD", "max")
 	# use_wide_format  = FALSE
@@ -582,10 +582,10 @@ tableNCAParameters <- function(projectFile      = NULL,
 	# Validate availability of analysis results
 	.validateProjectResultsAvailability(software = "pkanalix", resultType = "nca")
 
-	# Validate covariates, stratification and covariate label arguments
-	.validateCovariateSelection(covariates, ratio = FALSE)
-	stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
-	covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
+	# Validate splitCovariates, stratification and covariate label arguments
+	.validateCovariateSelection(splitCovariates, ratio = FALSE)
+	stratify_columns <- .validateStratificationArgs(splitCovariates, stratify_columns)
+	covariate_labels <- .validateCovariateLabels(splitCovariates, covariate_labels)
 
 	# Validate covariate and id filters
 	.validateFilters(covariate_filter, id_filter, resultType = "nca")
@@ -616,13 +616,13 @@ tableNCAParameters <- function(projectFile      = NULL,
 	# Apply covariate and ID filters
 	indiv_params <- .applyFilters(indiv_params, covariate_filter, id_filter, id_col = "id")
 
-	# Get ALL covariates from project (catcov + contcov + occ) for column identification
+	# Get ALL splitCovariates from project (catcov + contcov + occ) for column identification
 	project_data   <- lixoftConnectors::getData()
-	all_covariates <- project_data$header[project_data$headerTypes %in% c("catcov", "contcov", "occ")]
+	all_splitCovariates <- project_data$header[project_data$headerTypes %in% c("catcov", "contcov", "occ")]
 	occ_vars       <- project_data$header[project_data$headerTypes == "occ"]
 
-	# Identify parameter columns (exclude id and ALL covariates including occasions)
-	param_cols <- setdiff(names(indiv_params), c("id", all_covariates))
+	# Identify parameter columns (exclude id and ALL splitCovariates including occasions)
+	param_cols <- setdiff(names(indiv_params), c("id", all_splitCovariates))
 
 	# Filter to requested NCAparams if specified
 	if (!is.null(NCAparams)) {
@@ -635,8 +635,8 @@ tableNCAParameters <- function(projectFile      = NULL,
 	# ==========================================================================
 	# PREPARE LONG-FORMAT DATA FOR STATS CALCULATION
 
-	# Select columns for pivoting: id, user covariates, occasion vars, and parameters
-	cols_to_select <- c("id", covariates, occ_vars, param_cols)
+	# Select columns for pivoting: id, user splitCovariates, occasion vars, and parameters
+	cols_to_select <- c("id", splitCovariates, occ_vars, param_cols)
 	cols_to_select <- intersect(cols_to_select, names(indiv_params))
 
 	# Pivot to long format
@@ -667,8 +667,8 @@ tableNCAParameters <- function(projectFile      = NULL,
 			user_metrics <- metrics
 		}
 
-		# Calculate stratified stats (group by parameter + covariates)
-		group_by_vars <- c("parameter", covariates)
+		# Calculate stratified stats (group by parameter + splitCovariates)
+		group_by_vars <- c("parameter", splitCovariates)
 
 		summary_stats <- .calculateDescriptiveStats(
 			data      = indiv_long,
@@ -681,7 +681,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 			to_round        = summary_stats,
 			digits          = roundDigits,
 			rounding_method = roundMethod,
-			exclude         = c("parameter", covariates))
+			exclude         = c("parameter", splitCovariates))
 
 		# Add combined metrics (MeanSD, GeomCV, GeomSD)
 		summary_stats <- .combinedStats(summary_stats)
@@ -693,14 +693,14 @@ tableNCAParameters <- function(projectFile      = NULL,
 
 		# Validate metrics
 		param_col <- "parameter"
-		descriptor_cols  <- c(param_col, covariates)  # N/Nobs are optional metrics
+		descriptor_cols  <- c(param_col, splitCovariates)  # N/Nobs are optional metrics
 		selected_metrics <- .validateAndSelectMetrics(
 			available_cols = names(summary_stats),
 			user_metrics   = user_metrics,
 			descriptors    = descriptor_cols)
 
-		# Calculate overall stats (no covariate grouping) if covariates provided
-		if (!is.null(covariates)) {
+		# Calculate overall stats (no covariate grouping) if splitCovariates provided
+		if (!is.null(splitCovariates)) {
 			overall_stats <- .calculateDescriptiveStats(
 				data      = indiv_long,
 				value_col = "value",
@@ -734,7 +734,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 		summary_stats <- .buildStratifiedTable(
 			summary_stats    = summary_stats,
 			overall_stats    = overall_stats,
-			covariates       = covariates,
+			splitCovariates       = splitCovariates,
 			selected_metrics = selected_metrics,
 			param_col        = param_col,
 			covariate_labels = covariate_labels)
@@ -744,8 +744,8 @@ tableNCAParameters <- function(projectFile      = NULL,
 		# NON-STRATIFIED CASE
 		# ----------------------------------------------------------------------
 
-		# Calculate stats with covariates as grouping (if present)
-		group_by_vars <- if (!is.null(covariates)) c("parameter", covariates) else "parameter"
+		# Calculate stats with splitCovariates as grouping (if present)
+		group_by_vars <- if (!is.null(splitCovariates)) c("parameter", splitCovariates) else "parameter"
 
 		summary_stats <- .calculateDescriptiveStats(
 			data      = indiv_long,
@@ -758,7 +758,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 			to_round        = summary_stats,
 			digits          = roundDigits,
 			rounding_method = roundMethod,
-			exclude         = c("parameter", covariates))
+			exclude         = c("parameter", splitCovariates))
 
 		# Add combined metrics (MeanSD, GeomCV, GeomSD)
 		summary_stats <- .combinedStats(summary_stats)
@@ -775,7 +775,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 		}
 
 		# Validate and select metrics
-		descriptor_cols  <- c(param_col, covariates)  # N/Nobs are optional metrics
+		descriptor_cols  <- c(param_col, splitCovariates)  # N/Nobs are optional metrics
 		selected_metrics <- .validateAndSelectMetrics(
 			available_cols = names(summary_stats),
 			user_metrics   = metrics,
@@ -790,7 +790,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 			summary_stats <- .pivotToVertical(
 				summary_stats = summary_stats,
 				param_col     = param_col,
-				covariates    = covariates)
+				splitCovariates    = splitCovariates)
 		}
 	}
 
@@ -800,7 +800,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 	if (!use_wide_format && include_id) {
 		summary_stats <- .addIndividuals(
 			summary_stats = summary_stats,
-			covariates    = covariates,
+			splitCovariates    = splitCovariates,
 			resultType    = "ncaParameters",
 			params        = NCAparams,
 			roundDigits   = roundDigits,
@@ -812,15 +812,15 @@ tableNCAParameters <- function(projectFile      = NULL,
 	}
 
 	# ==========================================================================
-	# SORT BY COVARIATES (for vertical tables with numeric-valued categorical covariates)
+	# SORT BY COVARIATES (for vertical tables with numeric-valued categorical splitCovariates)
 
-	if (!use_wide_format && !stratify_columns && !is.null(covariates) && length(covariates) > 0) {
+	if (!use_wide_format && !stratify_columns && !is.null(splitCovariates) && length(splitCovariates) > 0) {
 		# Only sort if Section doesn't exist
 		# (if Section exists, .addIndividuals() already set correct order)
 		if (!"Section" %in% names(summary_stats)) {
 			summary_stats <- summary_stats %>%
 				dplyr::arrange(dplyr::across(
-					dplyr::all_of(covariates),
+					dplyr::all_of(splitCovariates),
 					~{
 						num <- suppressWarnings(as.numeric(.x))
 						if(all(is.na(num))) .x else num
@@ -864,7 +864,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 #' tableNCARatios
 #'
 #' Create a summary table of individual NCA ratio results with optional
-#' stratification by covariates (e.g., DOSE, VISIT).
+#' stratification by splitCovariates (e.g., DOSE, VISIT).
 #'
 #' The function:
 #'  1. Pulls individual ratios (`lixoftConnectors::getNCAIndividualRatios()`) and ratio info (`lixoftConnectors::getNCARatios()`).
@@ -873,7 +873,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 #'  4. Summarises across subjects to provide descriptive statistics (N, Min, Q1, Mean, Median, Q3, Max).
 #'  5. Returns results either in wide format (one row per Parameter × group) or long format (Statistic/Value pairs).
 #'
-#' @param covariates character vector of column names to stratify by (must be in indivratio but not id/ratio columns).
+#' @param splitCovariates character vector of column names to stratify by (must be in indivratio but not id/ratio columns).
 #' @param digits number of digits to round numeric statistics (default = 3).
 #' @param use_wide_format logical; if TRUE (default) results are wide; if FALSE, results are pivoted to long format.
 #'
@@ -884,13 +884,13 @@ tableNCAParameters <- function(projectFile      = NULL,
 #' tableNCARatios()
 #'
 #' # Stratified by DOSE, results in wide format:
-#' tableNCARatios(covariates = "DOSE", use_wide_format = TRUE)
+#' tableNCARatios(splitCovariates = "DOSE", use_wide_format = TRUE)
 #'
 #' # Stratified by DOSE and VISIT, results in long format:
-#' tableNCARatios(covariates = c("DOSE", "VISIT"), use_wide_format = FALSE)
+#' tableNCARatios(splitCovariates = c("DOSE", "VISIT"), use_wide_format = FALSE)
 #'
 tableNCARatios <- function(projectFile      = NULL,
-													 covariates       = NULL,
+													 splitCovariates       = NULL,
 													 stratify_columns = FALSE,
 													 covariate_labels = NULL,
 													 ratioParams      = NULL,
@@ -918,10 +918,10 @@ tableNCARatios <- function(projectFile      = NULL,
 	# Validate filter arguments
 	.validateFilters(covariate_filter, id_filter, resultType = "ncaRatio")
 
-	# Validate covariates, stratification and covariate label arguments
-	.validateCovariateSelection(covariates, ratio = TRUE)
-	stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
-	covariate_labels <- .validateCovariateLabels(covariates, covariate_labels)
+	# Validate splitCovariates, stratification and covariate label arguments
+	.validateCovariateSelection(splitCovariates, ratio = TRUE)
+	stratify_columns <- .validateStratificationArgs(splitCovariates, stratify_columns)
+	covariate_labels <- .validateCovariateLabels(splitCovariates, covariate_labels)
 
 	# Validate set parameters
 	.validateNCAParametersSelection(ratioParams, ratio = TRUE)  # Early validation
@@ -974,7 +974,7 @@ tableNCARatios <- function(projectFile      = NULL,
 	# ==========================================================================
 	# SUMMARIZE & FORMAT
 
-	if (stratify_columns && !is.null(covariates)) {
+	if (stratify_columns && !is.null(splitCovariates)) {
 		# Default to GeomCV for stratified tables if no metrics specified
 		if (is.null(metrics)) {
 			metrics <- "GeomCV"
@@ -986,20 +986,20 @@ tableNCARatios <- function(projectFile      = NULL,
 			data      = long_df,
 			value_col = "Ratio",
 			id_col    = "id",
-			group_by  = c(covariates, "Parameter"))
+			group_by  = c(splitCovariates, "Parameter"))
 
 		# Apply rounding
 		summary_stats <- .round_num(
 			to_round        = summary_stats,
 			digits          = roundDigits,
 			rounding_method = roundMethod,
-			exclude         = c("Parameter", covariates))
+			exclude         = c("Parameter", splitCovariates))
 
 		# Add combined metrics
 		summary_stats <- .combinedStats(summary_stats)
 
 		# Validate metrics
-		descriptor_cols <- c("Parameter", covariates)  # N/Nobs are optional metrics
+		descriptor_cols <- c("Parameter", splitCovariates)  # N/Nobs are optional metrics
 		selected_metrics <- .validateAndSelectMetrics(
 			available_cols = names(summary_stats),
 			user_metrics   = metrics,
@@ -1026,7 +1026,7 @@ tableNCARatios <- function(projectFile      = NULL,
 		summary_tbl <- .buildStratifiedTable(
 			summary_stats    = summary_stats,
 			overall_stats    = overall_stats,
-			covariates       = covariates,
+			splitCovariates       = splitCovariates,
 			selected_metrics = selected_metrics,
 			param_col        = "Parameter",
 			covariate_labels = covariate_labels)
@@ -1037,12 +1037,12 @@ tableNCARatios <- function(projectFile      = NULL,
 		# -----------------------------------------------------------------------
 
 		# Calculate summary stats
-		if (length(covariates) > 0) {
+		if (length(splitCovariates) > 0) {
 			summary_tbl <- .calculateDescriptiveStats(
 				data      = long_df,
 				value_col = "Ratio",
 				id_col    = "id",
-				group_by  = c(covariates, "Parameter"))
+				group_by  = c(splitCovariates, "Parameter"))
 		} else {
 			summary_tbl <- .calculateDescriptiveStats(
 				data      = long_df,
@@ -1056,14 +1056,14 @@ tableNCARatios <- function(projectFile      = NULL,
 			to_round        = summary_tbl,
 			digits          = roundDigits,
 			rounding_method = roundMethod,
-			exclude         = c("Parameter", covariates))
+			exclude         = c("Parameter", splitCovariates))
 
 		# Add combined metrics
 		summary_tbl <- .combinedStats(summary_tbl)
 
 		# Validate & select metrics
 		# Note: .calculateDescriptiveStats() returns both N and Nobs (both are optional metrics)
-		descriptor_cols <- c("Parameter", covariates)
+		descriptor_cols <- c("Parameter", splitCovariates)
 
 		selected_metrics <- .validateAndSelectMetrics(
 			available_cols = names(summary_tbl),
@@ -1076,7 +1076,7 @@ tableNCARatios <- function(projectFile      = NULL,
 		if (use_wide_format == FALSE) {
 			# Use helper function for vertical pivot
 			param_col   <- intersect(names(summary_tbl), c("parameter", "Parameter"))
-			summary_tbl <- .pivotToVertical(summary_tbl, param_col, covariates)
+			summary_tbl <- .pivotToVertical(summary_tbl, param_col, splitCovariates)
 		}
 	}
 
@@ -1086,7 +1086,7 @@ tableNCARatios <- function(projectFile      = NULL,
 	if (!use_wide_format && include_id && !stratify_columns) {
 		summary_tbl <- .addIndividuals(
 			summary_stats = summary_tbl,
-			covariates    = covariates,
+			splitCovariates    = splitCovariates,
 			resultType    = "ncaRatio",
 			params        = ratioParams,
 			roundDigits   = roundDigits,
@@ -1126,15 +1126,15 @@ tableNCARatios <- function(projectFile      = NULL,
 	}
 
 	# ==========================================================================
-	# SORT BY COVARIATES (for vertical tables with numeric-valued categorical covariates)
+	# SORT BY COVARIATES (for vertical tables with numeric-valued categorical splitCovariates)
 
-	if (!use_wide_format && !stratify_columns && !is.null(covariates) && length(covariates) > 0) {
+	if (!use_wide_format && !stratify_columns && !is.null(splitCovariates) && length(splitCovariates) > 0) {
 		# Only sort if Section doesn't exist
 		# (if Section exists, .addIndividuals() already sorted correctly)
 		if (!"Section" %in% names(summary_tbl)) {
 			summary_tbl <- summary_tbl %>%
 				dplyr::arrange(dplyr::across(
-					dplyr::all_of(covariates),
+					dplyr::all_of(splitCovariates),
 					~{
 						num <- suppressWarnings(as.numeric(.x))
 						if(all(is.na(num))) .x else num
@@ -1369,12 +1369,12 @@ listingAbbreviation <- function(data,
 #' listingNCAConcentration
 #'
 #' Creates a long-format listing of individual concentrations by time, with
-#' optional stratification columns (\code{covariates}). Summary metric rows are
+#' optional stratification columns (\code{splitCovariates}). Summary metric rows are
 #' removed, and the listing is left-joined with used concentration data
 #' (including censoring flags). Occasion-level identifiers are concatenated to
 #' form unique subject IDs when applicable.
 #'
-#' @param covariates Character vector of covariate names to include as
+#' @param splitCovariates Character vector of covariate names to include as
 #'   stratification columns (e.g., \code{c("TREAT","FOOD")}); \code{NULL} for no
 #'   stratification.
 #'
@@ -1395,7 +1395,7 @@ listingAbbreviation <- function(data,
 #' @details
 #'   The function first resets stratification via
 #'   \code{lixoftConnectors::setNCAResultsStratification()} and optionally splits results by
-#'   \code{covariates}.
+#'   \code{splitCovariates}.
 #'
 #'   - **Actual time:** Always extracted via
 #'   \code{lixoftConnectors::getNCAConcentrations(displayIndividualProfiles = TRUE,
@@ -1414,10 +1414,10 @@ listingAbbreviation <- function(data,
 #'   time points were used in the lambda-z calculation and provides censoring
 #'   flags.
 #'
-#'   - If occasion-level covariates exist, they are concatenated to the subject
+#'   - If occasion-level splitCovariates exist, they are concatenated to the subject
 #'   ID using \code{sep = "#"} to ensure unique identifiers.
 #'
-#' @return A data frame in long format containing (if present) \code{covariates},
+#' @return A data frame in long format containing (if present) \code{splitCovariates},
 #'   \code{id}, \code{ActualTime}, \code{NominalTime} (if available),
 #'   \code{Concentration}, \code{UsedConc}, and \code{Censoring}.
 #'
@@ -1425,14 +1425,14 @@ listingAbbreviation <- function(data,
 #' # Default: actual time only
 #' listingNCAConcentration()
 #'
-#' # With covariates
-#' listingNCAConcentration(covariates = c("TREAT", "FOOD"))
+#' # With splitCovariates
+#' listingNCAConcentration(splitCovariates = c("TREAT", "FOOD"))
 #'
 #' # Include nominal time if available
-#' listingNCAConcentration(covariates = c("TREAT", "FOOD"), useNominalTime = TRUE)
+#' listingNCAConcentration(splitCovariates = c("TREAT", "FOOD"), useNominalTime = TRUE)
 #'
 listingNCAConcentration <- function(projectFile      = NULL,
-																		covariates       = NULL,
+																		splitCovariates       = NULL,
 																		useNominalTime   = FALSE,
 																		covariate_filter = NULL,
 																		id_filter        = NULL,
@@ -1449,16 +1449,16 @@ listingNCAConcentration <- function(projectFile      = NULL,
 	# Validate filter arguments
 	.validateFilters(covariate_filter, id_filter, resultType = "nca")
 
-	# Validate set covariates
-	.validateCovariateSelection(covariates, ratio = FALSE)
+	# Validate set splitCovariates
+	.validateCovariateSelection(splitCovariates, ratio = FALSE)
 
 	# Get occasion variables from data and add to stratification
 	project_data <- lixoftConnectors::getData()
 	occ_vars     <- project_data$header[project_data$headerTypes == "occ"]
 
-	# Add occasion variables to covariates
+	# Add occasion variables to splitCovariates
 	if (length(occ_vars) > 0) {
-		covariates <- unique(c(covariates, occ_vars))
+		splitCovariates <- unique(c(splitCovariates, occ_vars))
 	}
 
 	has_time    <- any(project_data$headerTypes == "time")
@@ -1480,8 +1480,8 @@ listingNCAConcentration <- function(projectFile      = NULL,
 	lixoftConnectors::setNCAResultsStratification()
 
 	# Set stratification
-	if (!is.null(covariates)) {
-		lixoftConnectors::setNCAResultsStratification(split = covariates)
+	if (!is.null(splitCovariates)) {
+		lixoftConnectors::setNCAResultsStratification(split = splitCovariates)
 	}
 
 	# Extract time data
@@ -1493,26 +1493,26 @@ listingNCAConcentration <- function(projectFile      = NULL,
 		df_actual <- lixoftConnectors::getNCAConcentrations(displayIndividualProfiles = TRUE, useNominalTime = FALSE)
 	}
 	# Always extract ACTUAL time version (baseline)
-	df_actual     <- .fixNCAConcentrationsColumnSwap(df_actual, covariates)
+	df_actual     <- .fixNCAConcentrationsColumnSwap(df_actual, splitCovariates)
 	metrics       <- lixoftConnectors::getNCAConcentrations()$metric
 	metric_labels <- as.character(metrics[!is.na(metrics)])
 
 	# Process actual time data
 	indiv_actual <- df_actual %>%
 		dplyr::filter(!(subject %in% metric_labels)) %>% # drop summary rows
-		dplyr::mutate(dplyr::across(setdiff(names(.), c("subject", covariates)), as.character)) %>%
+		dplyr::mutate(dplyr::across(setdiff(names(.), c("subject", splitCovariates)), as.character)) %>%
 		tidyr::pivot_longer(
-			cols = setdiff(names(.), c("subject", covariates)), # pivot from wide format to long
+			cols = setdiff(names(.), c("subject", splitCovariates)), # pivot from wide format to long
 			names_to = "ActualTimeLabel",
 			values_to = "Concentration") %>%
-		dplyr::group_by(subject, dplyr::across(dplyr::all_of(covariates))) %>%
+		dplyr::group_by(subject, dplyr::across(dplyr::all_of(splitCovariates))) %>%
 		dplyr::filter(Concentration != "") %>% # drop empty cells
 		dplyr::mutate(row_id = row_number()) %>% # assign row index (per subject)
 		dplyr::ungroup() %>%
 		dplyr::mutate(
 			Time = as.numeric(ActualTimeLabel), # numeric actual time
 			id   = as.character(subject)) %>%
-		dplyr::relocate(dplyr::any_of(covariates), id, Time, Concentration, row_id) %>%
+		dplyr::relocate(dplyr::any_of(splitCovariates), id, Time, Concentration, row_id) %>%
 		dplyr::select(-subject)
 
 
@@ -1527,28 +1527,28 @@ listingNCAConcentration <- function(projectFile      = NULL,
 			df_nom <- lixoftConnectors::getNCAConcentrations(
 				displayIndividualProfiles = TRUE,
 				useNominalTime = TRUE)
-			df_nom <- .fixNCAConcentrationsColumnSwap(df_nom, covariates)
+			df_nom <- .fixNCAConcentrationsColumnSwap(df_nom, splitCovariates)
 
 			indiv_nom <- df_nom %>%
 				dplyr::filter(!(subject %in% metric_labels)) %>%
-				dplyr::mutate(dplyr::across(setdiff(names(.), c("subject", covariates)), as.character)) %>%
+				dplyr::mutate(dplyr::across(setdiff(names(.), c("subject", splitCovariates)), as.character)) %>%
 				tidyr::pivot_longer(
-					cols = setdiff(names(.), c("subject", covariates)),
+					cols = setdiff(names(.), c("subject", splitCovariates)),
 					names_to = "NominalTimeLabel",
 					values_to = "dummyConc") %>%
-				dplyr::group_by(subject, dplyr::across(dplyr::all_of(covariates))) %>%
+				dplyr::group_by(subject, dplyr::across(dplyr::all_of(splitCovariates))) %>%
 				dplyr::filter(dummyConc != "") %>%
 				dplyr::mutate(row_id = row_number()) %>% # align by row_id (same column order)
 				dplyr::ungroup() %>%
 				dplyr::mutate(
 					NominalTime = as.numeric(NominalTimeLabel),
 					id = as.character(subject)) %>%
-				dplyr::relocate(dplyr::any_of(covariates), id, NominalTime, row_id) %>%
+				dplyr::relocate(dplyr::any_of(splitCovariates), id, NominalTime, row_id) %>%
 				dplyr::select(-subject)
 
 			# Join actual + nominal
 			indiv <- indiv_actual %>%
-				dplyr::left_join(indiv_nom, by = c("id", covariates, "row_id")) %>%
+				dplyr::left_join(indiv_nom, by = c("id", splitCovariates, "row_id")) %>%
 				dplyr::select(-row_id, -ActualTimeLabel, -NominalTimeLabel, -dummyConc)
 		} else {
 			# User requested nominal time but it's not available ← ADD THIS CASE
@@ -1583,7 +1583,7 @@ listingNCAConcentration <- function(projectFile      = NULL,
 			id            = sub("#.*", "", id), # Remove # and everything after it
 			Concentration = as.character(Concentration),
 			Censoring     = dplyr::case_when(is.na(BLQ) & Concentration != "" ~ 1, TRUE ~ BLQ)) %>%
-		dplyr::mutate(dplyr::across(dplyr::all_of(covariates), as.character)) %>%
+		dplyr::mutate(dplyr::across(dplyr::all_of(splitCovariates), as.character)) %>%
 		dplyr::select(-BLQ, -includedForLambdaZ)
 
 	# Rename Time column. Depends on ifactual time is available in dataset
@@ -1641,8 +1641,8 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #'
 #' @param projectFile Character string. Path to the PKanalix project file (.pkx).
 #'   If NULL, uses the currently loaded project.
-#' @param covariates Character vector. Covariates to include and sort by. If specified,
-#'   the table is sorted by these covariates in the order provided.
+#' @param splitCovariates Character vector. Covariates to include and sort by. If specified,
+#'   the table is sorted by these splitCovariates in the order provided.
 #' @param NCAparams Character vector. NCA parameters to include. If NULL (default),
 #'   all computed NCA parameters are included.
 #' @param roundDigits Numeric. Number of digits for rounding (default: 3).
@@ -1651,10 +1651,10 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #' @param aliases Logical. If TRUE (default), parameter names are replaced with their aliases.
 #'
 #' @return A data frame containing individual NCA parameter values with columns for ID,
-#'   covariates (if specified), and NCA parameters.
+#'   splitCovariates (if specified), and NCA parameters.
 #'
 #' @details
-#' The function validates that NCA analysis has been run and that specified covariates
+#' The function validates that NCA analysis has been run and that specified splitCovariates
 #' and parameters exist in the project. Parameter names can be formatted with units
 #' and/or aliases for improved readability.
 #'
@@ -1668,7 +1668,7 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #' # With covariate stratification and parameter filtering
 #' params <- listingNCAParameters(
 #'   projectFile = "path/to/project.pkx",
-#'   covariates = c("SEX", "DOSE"),
+#'   splitCovariates = c("SEX", "DOSE"),
 #'   NCAparams = c("AUC", "Cmax", "Tmax"),
 #'   roundDigits = 2,
 #'   units = TRUE,
@@ -1676,7 +1676,7 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #' )
 #' }
 listingNCAParameters <- function(projectFile      = NULL,
-																 covariates       = NULL,
+																 splitCovariates       = NULL,
 																 NCAparams        = NULL,
 																 covariate_filter = NULL,
 																 id_filter        = NULL,
@@ -1696,8 +1696,8 @@ listingNCAParameters <- function(projectFile      = NULL,
 	# Validate filter arguments
 	.validateFilters(covariate_filter, id_filter, resultType = "nca")
 
-	# Validate set covariates
-	.validateCovariateSelection(covariates, ratio = FALSE)
+	# Validate set splitCovariates
+	.validateCovariateSelection(splitCovariates, ratio = FALSE)
 	# Validate set parameters
 	.validateNCAParametersSelection(NCAparams, ratio = FALSE)
 
@@ -1706,14 +1706,14 @@ listingNCAParameters <- function(projectFile      = NULL,
 	# Apply filters
 	indivNCA <- .applyFilters(indivNCA, covariate_filter, id_filter, id_col = "id")
 
-	# Get ALL available covariates from data
+	# Get ALL available splitCovariates from data
 	project_data <- lixoftConnectors::getData()
-	all_covariates <- project_data$header[project_data$headerTypes %in% c("catcov","contcov", "occ")]
+	all_splitCovariates <- project_data$header[project_data$headerTypes %in% c("catcov","contcov", "occ")]
 
 	# Filter to selected parameters if NCAparams is specified
 	if (!is.null(NCAparams)) {
-		# Keep id, all covariates, and selected parameters only
-		cols_to_keep <- c("id", all_covariates, NCAparams)
+		# Keep id, all splitCovariates, and selected parameters only
+		cols_to_keep <- c("id", all_splitCovariates, NCAparams)
 		# Only keep columns that exist in the data
 		cols_to_keep <- intersect(cols_to_keep, names(indivNCA))
 		indivNCA <- indivNCA %>% dplyr::select(dplyr::all_of(cols_to_keep))
@@ -1724,10 +1724,10 @@ listingNCAParameters <- function(projectFile      = NULL,
 		to_round        = indivNCA,
 		digits          = roundDigits,
 		rounding_method = roundMethod,
-		exclude         = c("id", all_covariates))
+		exclude         = c("id", all_splitCovariates))
 
-	# Identify parameter columns (exclude id and all covariates present in data)
-	param_cols <- setdiff(names(indivNCA), c("id", all_covariates))
+	# Identify parameter columns (exclude id and all splitCovariates present in data)
+	param_cols <- setdiff(names(indivNCA), c("id", all_splitCovariates))
 
 	# Create temporary data frame with parameter names
 	temp_df <- data.frame(parameter = param_cols, stringsAsFactors = FALSE)
@@ -1743,14 +1743,14 @@ listingNCAParameters <- function(projectFile      = NULL,
 														name_mapping[names(indivNCA)],
 														names(indivNCA))
 
-	if (!is.null(covariates)) {
-		# Get remaining columns (parameters and non-selected covariates)
-		remaining_cols <- setdiff(names(indivNCA), c("id", covariates))
+	if (!is.null(splitCovariates)) {
+		# Get remaining columns (parameters and non-selected splitCovariates)
+		remaining_cols <- setdiff(names(indivNCA), c("id", splitCovariates))
 
-		# Reorder: id, then covariates in specified order, then rest
+		# Reorder: id, then splitCovariates in specified order, then rest
 		indivNCA <- indivNCA %>%
-			dplyr::select("id", dplyr::all_of(covariates), dplyr::all_of(remaining_cols)) %>%
-			dplyr::arrange(!!!rlang::syms(covariates))
+			dplyr::select("id", dplyr::all_of(splitCovariates), dplyr::all_of(remaining_cols)) %>%
+			dplyr::arrange(!!!rlang::syms(splitCovariates))
 	}
 	attr(indivNCA, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	return(indivNCA)
@@ -1762,8 +1762,8 @@ listingNCAParameters <- function(projectFile      = NULL,
 #'
 #' @param projectFile Character string. Path to the PKanalix project file (.pkx).
 #'   If NULL, uses the currently loaded project.
-#' @param covariates Character vector. Covariates to include and sort by. If specified,
-#'   the table is sorted by these covariates in the order provided.
+#' @param splitCovariates Character vector. Covariates to include and sort by. If specified,
+#'   the table is sorted by these splitCovariates in the order provided.
 #' @param ratioParams Character vector. Ratio parameters to include. If NULL (default),
 #'   all available ratio parameters are included.
 #' @param roundDigits Numeric. Number of digits for rounding (default: 3).
@@ -1771,13 +1771,13 @@ listingNCAParameters <- function(projectFile      = NULL,
 #' @param aliases Logical. If TRUE (default), parameter names are replaced with their aliases.
 #'
 #' @return A data frame containing individual NCA ratio values with columns for ID,
-#'   covariates (if specified), and ratio parameters.
+#'   splitCovariates (if specified), and ratio parameters.
 #'
 #' @details
 #' The function validates that:
 #' - NCA analysis has been run (required for ratios)
 #' - NCA ratio module is configured
-#' - Specified covariates and parameters exist in the project
+#' - Specified splitCovariates and parameters exist in the project
 #'
 #' @export
 #'
@@ -1789,13 +1789,13 @@ listingNCAParameters <- function(projectFile      = NULL,
 #' # With covariate stratification and parameter filtering
 #' ratios <- listingNCARatios(
 #'   projectFile = "path/to/project.pkx",
-#'   covariates = c("SEX", "DOSE"),
+#'   splitCovariates = c("SEX", "DOSE"),
 #'   ratioParams = c("AUC_ratio", "Cmax_ratio"),
 #'   roundDigits = 2
 #' )
 #' }
 listingNCARatios <- function(projectFile      = NULL,
-														 covariates       = NULL,
+														 splitCovariates       = NULL,
 														 ratioParams      = NULL,
 														 covariate_filter = NULL,
 														 id_filter        = NULL,
@@ -1814,8 +1814,8 @@ listingNCARatios <- function(projectFile      = NULL,
 	# Validate filter arguments
 	.validateFilters(covariate_filter, id_filter, resultType = "ncaRatio")
 
-	# Validate set covariates
-	.validateCovariateSelection(covariates, ratio = TRUE)
+	# Validate set splitCovariates
+	.validateCovariateSelection(splitCovariates, ratio = TRUE)
 	# Validate set parameters
 	.validateNCAParametersSelection(ratioParams, ratio = TRUE)
 
@@ -1824,16 +1824,16 @@ listingNCARatios <- function(projectFile      = NULL,
 	# Apply filters
 	indivRatios <- .applyFilters(indivRatios, covariate_filter, id_filter, id_col = "id")
 
-	# Get ALL available covariates from data
+	# Get ALL available splitCovariates from data
 	project_data   <- lixoftConnectors::getData()
-	all_covariates <- project_data$header[project_data$headerTypes %in% c("catcov","contcov", "occ")]
-	#intersection between all covariates available in data and in ratios listing
-	all_covariates <- intersect(all_covariates, names(indivRatios))
+	all_splitCovariates <- project_data$header[project_data$headerTypes %in% c("catcov","contcov", "occ")]
+	#intersection between all splitCovariates available in data and in ratios listing
+	all_splitCovariates <- intersect(all_splitCovariates, names(indivRatios))
 
 	# Filter to selected parameters if ratioParams is specified
 	if (!is.null(ratioParams)) {
-		# Keep id, all covariates, and selected parameters only
-		cols_to_keep <- c("id", all_covariates, ratioParams)
+		# Keep id, all splitCovariates, and selected parameters only
+		cols_to_keep <- c("id", all_splitCovariates, ratioParams)
 		# Only keep columns that exist in the data
 		cols_to_keep <- intersect(cols_to_keep, names(indivRatios))
 		indivRatios <- indivRatios %>% dplyr::select(dplyr::all_of(cols_to_keep))
@@ -1844,10 +1844,10 @@ listingNCARatios <- function(projectFile      = NULL,
 		to_round        = indivRatios,
 		digits          = roundDigits,
 		rounding_method = roundMethod,
-		exclude         = c("id", all_covariates))
+		exclude         = c("id", all_splitCovariates))
 
-	# Identify parameter columns (exclude id and all covariates present in data)
-	param_cols <- setdiff(names(indivRatios), c("id", all_covariates))
+	# Identify parameter columns (exclude id and all splitCovariates present in data)
+	param_cols <- setdiff(names(indivRatios), c("id", all_splitCovariates))
 
 	# Create temporary data frame with parameter names
 	temp_df <- data.frame(parameter = param_cols, stringsAsFactors = FALSE)
@@ -1864,14 +1864,14 @@ listingNCARatios <- function(projectFile      = NULL,
 															 name_mapping[names(indivRatios)],
 															 names(indivRatios))
 
-	if (!is.null(covariates)) {
-		# Get remaining columns (parameters and non-selected covariates)
-		remaining_cols <- setdiff(names(indivRatios), c("id", covariates))
+	if (!is.null(splitCovariates)) {
+		# Get remaining columns (parameters and non-selected splitCovariates)
+		remaining_cols <- setdiff(names(indivRatios), c("id", splitCovariates))
 
-		# Reorder: id, then covariates in specified order, then rest
+		# Reorder: id, then splitCovariates in specified order, then rest
 		indivRatios <- indivRatios %>%
-			dplyr::select("id", dplyr::all_of(covariates), dplyr::all_of(remaining_cols)) %>%
-			dplyr::arrange(!!!rlang::syms(covariates))
+			dplyr::select("id", dplyr::all_of(splitCovariates), dplyr::all_of(remaining_cols)) %>%
+			dplyr::arrange(!!!rlang::syms(splitCovariates))
 	}
 	attr(indivRatios, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	return(indivRatios)

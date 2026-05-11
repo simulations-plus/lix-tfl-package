@@ -251,11 +251,11 @@ tableCategoricalCovariateSummary <- function(projectFile,
 #' Statistics include: N, min, max, mean, SD, CV, median, Q1, Q3, 5th/95th percentiles,
 #' as well as a combined Mean (SD) column.
 #'
-#' @param covariates A character vector of categorical covariate(s) for stratification
+#' @param splitCovariates A character vector of categorical covariate(s) for stratification
 #'   (must come from `headerTypes == 'catcov'`). If `NULL`, only overall statistics are reported.
 #'   Multiple covariates will be combined into a single strata label.
-#' @param covariate_labels A character vector of labels for the `covariates` covariates.
-#'   Must be the same length as `covariates`. If `NULL`, covariate names are used.
+#' @param splitCovariate_labels A character vector of labels for the `splitCovariates` covariates.
+#'   Must be the same length as `splitCovariates`. If `NULL`, covariate names are used.
 #' @param digits Integer. Number of decimal places to round statistics. Default is 2.
 #' @param horizontal Logical. If `TRUE` (default), results are returned in wide layout
 #'   (variables in rows, statistics in columns). Ignored when `stratify_columns = TRUE`.
@@ -272,26 +272,26 @@ tableCategoricalCovariateSummary <- function(projectFile,
 #' CovariateSummary_Table()
 #'
 #' # Stratify by one covariate (SEX)
-#' CovariateSummary_Table(covariates = "SEX")
+#' CovariateSummary_Table(splitCovariates = "SEX")
 #'
 #' # Stratify by multiple covariates with custom labels
 #' CovariateSummary_Table(
-#'     covariates = c("SEX", "TINFCAT"),
-#'     covariate_labels = c("Sex", "Inf. Dur.")
+#'     splitCovariates = c("SEX", "TINFCAT"),
+#'     splitCovariate_labels = c("Sex", "Inf. Dur.")
 #' )
 #'
 #' # Vertical layout
 #' CovariateSummary_Table(horizontal = FALSE)
 #'
 #' # Always by strata (with Overall column)
-#' CovariateSummary_Table(covariates = "SEX", stratify_columns = TRUE)
+#' CovariateSummary_Table(splitCovariates = "SEX", stratify_columns = TRUE)
 #'
 CovariateSummary_Table <- function(projectFile = NULL,
-                                   covariates = NULL,
+                                   splitCovariates = NULL,
                                    metrics = NULL,
                                    horizontal = TRUE,
                                    stratify_columns = FALSE,
-                                   covariate_labels = NULL,
+                                   splitCovariate_labels = NULL,
                                    roundDigits = 3,
                                    roundMethod = c("monolix", "signif"),
                                    prettyLabels = TRUE,
@@ -303,8 +303,8 @@ CovariateSummary_Table <- function(projectFile = NULL,
     .checkProjectFile(projectFile, c("pkanalix", "monolix"))
     .ensureProjectLoaded(projectFile)
 
-    # Validate Stratification Logic: if stratify=TRUE but covariates=NULL -> resets stratify to FALSE and warns.
-    stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
+    # Validate Stratification Logic: if stratify=TRUE but splitCovariates=NULL -> resets stratify to FALSE and warns.
+    stratify_columns <- .validateStratificationArgs(splitCovariates, stratify_columns)
 
     header_info <- lixoftConnectors::getData()
     cont_cols <- header_info$header[header_info$headerTypes == "contcov"]
@@ -314,16 +314,16 @@ CovariateSummary_Table <- function(projectFile = NULL,
         stop("No continuous covariates found in the dataset (headerTypes == 'contcov').")
     }
 
-    # Prepare final_labels (will remain NULL if covariates is NULL)
+    # Prepare final_labels (will remain NULL if splitCovariates is NULL)
     final_labels <- NULL
 
-    if (!is.null(covariates)) {
-        if (!all(covariates %in% cat_cols)) {
-            stop("`covariates` must be categorical covariates (headerTypes == 'catcov').")
+    if (!is.null(splitCovariates)) {
+        if (!all(splitCovariates %in% cat_cols)) {
+            stop("`splitCovariates` must be categorical covariates (headerTypes == 'catcov').")
         }
 
         # --- Validate Labels using Helper ---
-        final_labels <- .validateCovariateLabels(covariates, covariate_labels)
+        final_labels <- .validateSplitCovariateLabels(splitCovariates, splitCovariate_labels)
     }
 
     # ==========================================================================
@@ -338,14 +338,14 @@ CovariateSummary_Table <- function(projectFile = NULL,
         }
 
         # Get Stratified Data
-        summary_stats <- .prepareCovariateSummaryStats(projectFile, covariates, cont_cols, roundDigits, roundMethod)
+        summary_stats <- .prepareCovariateSummaryStats(projectFile, splitCovariates, cont_cols, roundDigits, roundMethod)
 
         if (is.null(summary_stats)) stop("Failed to calculate statistics for continuous covariates.")
 
         var_col <- "variable"
 
         # Determine Metrics
-        descriptor_cols <- c(var_col, covariates, "Nobs")
+        descriptor_cols <- c(var_col, splitCovariates, "Nobs")
 
         selected_metrics <- .validateAndSelectMetrics(
             available_cols = names(summary_stats),
@@ -354,7 +354,7 @@ CovariateSummary_Table <- function(projectFile = NULL,
         )
 
         # Stratified summary (requires Overall)
-        if (!is.null(covariates)) {
+        if (!is.null(splitCovariates)) {
             overall_stats <- .prepareCovariateSummaryStats(projectFile, NULL, cont_cols, roundDigits, roundMethod)
 
             # Safety check
@@ -368,7 +368,7 @@ CovariateSummary_Table <- function(projectFile = NULL,
             df_prepared <- summary_stats %>%
                 dplyr::rowwise() %>%
                 dplyr::mutate(header = {
-                    values <- dplyr::c_across(dplyr::all_of(covariates))
+                    values <- dplyr::c_across(dplyr::all_of(splitCovariates))
                     pieces <- paste0(final_labels, "=", as.character(values))
                     paste(pieces, collapse = "\n")
                 }) %>%
@@ -446,14 +446,14 @@ CovariateSummary_Table <- function(projectFile = NULL,
         }
     } else {
         # Standard format: HORIZONTAL/VERTICAL
-        summary_stats <- .prepareCovariateSummaryStats(projectFile, covariates, cont_cols, roundDigits, roundMethod)
+        summary_stats <- .prepareCovariateSummaryStats(projectFile, splitCovariates, cont_cols, roundDigits, roundMethod)
 
         if (is.null(summary_stats)) stop("Failed to calculate statistics for continuous covariates.")
 
         var_col <- "variable"
 
         # Determine Metrics using Helper
-        descriptor_cols <- c(var_col, covariates, "Nobs")
+        descriptor_cols <- c(var_col, splitCovariates, "Nobs")
 
         selected_metrics <- .validateAndSelectMetrics(
             available_cols = names(summary_stats),
@@ -466,16 +466,16 @@ CovariateSummary_Table <- function(projectFile = NULL,
 
         if (horizontal) {
             summary_stats <- summary_stats %>%
-                dplyr::mutate(dplyr::across(-dplyr::all_of(c(var_col, covariates)), as.character))
+                dplyr::mutate(dplyr::across(-dplyr::all_of(c(var_col, splitCovariates)), as.character))
 
             names(summary_stats)[names(summary_stats) == var_col] <- "Subject characteristics"
 
-            if (!is.null(covariates)) {
+            if (!is.null(splitCovariates)) {
                 # Apply validated final_labels to column names
-                names(summary_stats)[names(summary_stats) %in% covariates] <- final_labels
+                names(summary_stats)[names(summary_stats) %in% splitCovariates] <- final_labels
             }
         } else {
-            pivot_id_cols <- if (is.null(covariates)) var_col else c(var_col, covariates)
+            pivot_id_cols <- if (is.null(splitCovariates)) var_col else c(var_col, splitCovariates)
             stat_cols <- setdiff(names(summary_stats), pivot_id_cols)
             stat_order <- stat_cols
 
@@ -492,9 +492,9 @@ CovariateSummary_Table <- function(projectFile = NULL,
                     values_from = Value
                 )
 
-            if (!is.null(covariates)) {
+            if (!is.null(splitCovariates)) {
                 # Apply validated final_labels to column names
-                names(summary_stats)[names(summary_stats) %in% covariates] <- final_labels
+                names(summary_stats)[names(summary_stats) %in% splitCovariates] <- final_labels
             }
         }
     }
@@ -511,7 +511,7 @@ CovariateSummary_Table <- function(projectFile = NULL,
             exclusion_vector <- c("Subject characteristics", final_labels)
         }
 
-        # Clean exclusion vector (remove NULLs/blanks introduced by final_labels if covariates=NULL)
+        # Clean exclusion vector (remove NULLs/blanks introduced by final_labels if splitCovariates=NULL)
         exclusion_vector <- exclusion_vector[!is.null(exclusion_vector) & exclusion_vector != ""]
 
         # Execute the mock helper
@@ -557,11 +557,11 @@ CovariateSummary_Table <- function(projectFile = NULL,
 #' For each covariate and modality, the function reports the number of subjects
 #' and the corresponding percentage within each stratum or overall population.
 #'
-#' @param covariates A character vector of categorical covariate(s) for stratification
+#' @param splitCovariates A character vector of categorical covariate(s) for stratification
 #'   (must come from `headerTypes == 'catcov'`). If `NULL`, only overall frequencies are reported.
 #'   Multiple stratifiers will be combined into a single stratum header.
-#' @param covariate_labels A character vector of labels for the `covariates` covariates.
-#'   Must be the same length as `covariates`. If `NULL`, covariate names are used.
+#' @param covariate_labels A character vector of labels for the `splitCovariates` covariates.
+#'   Must be the same length as `splitCovariates`. If `NULL`, covariate names are used.
 #' @param digits Integer. Number of decimal places to round percentages. Default is 2.
 #' @param stratify_columns Logical. If `TRUE`, forces output by strata (columns for each stratum + Overall).
 #'   Default is `FALSE`.
@@ -580,27 +580,27 @@ CovariateSummary_Table <- function(projectFile = NULL,
 #'
 #' @return A `data.frame` containing counts and percentages for categorical covariates:
 #'   - If `stratify_columns = TRUE`: Columns for each stratum + Overall.
-#'   - If `stratify_columns = FALSE` and `covariates = NULL`: Simple frequency table.
-#'   - If `stratify_columns = FALSE` and `covariates` is set: Long format table with stratifier(s) in rows.
+#'   - If `stratify_columns = FALSE` and `splitCovariates = NULL`: Simple frequency table.
+#'   - If `stratify_columns = FALSE` and `splitCovariates` is set: Long format table with stratifier(s) in rows.
 #'
 #' @examples
 #' # Overall frequencies only
 #' CovariateFrequency_Table()
 #'
 #' # Stratify frequencies by SEX (long format)
-#' CovariateFrequency_Table(covariates = "SEX")
+#' CovariateFrequency_Table(splitCovariates = "SEX")
 #'
 #' # Multiple stratifiers with custom labels
 #' CovariateFrequency_Table(
-#'     covariates = c("SEX", "TINFCAT"),
+#'     splitCovariates = c("SEX", "TINFCAT"),
 #'     covariate_labels = c("Sex", "Inf. Dur.")
 #' )
 #'
 #' # By strata layout: one column per stratum + Overall
-#' CovariateFrequency_Table(covariates = "SEX", stratify_columns = TRUE)
+#' CovariateFrequency_Table(splitCovariates = "SEX", stratify_columns = TRUE)
 #'
 CovariateFrequency_Table <- function(projectFile = NULL,
-                                     covariates = NULL,
+                                     splitCovariates = NULL,
                                      stratify_columns = FALSE,
                                      covariate_labels = NULL,
                                      roundDigits = 3,
@@ -614,26 +614,26 @@ CovariateFrequency_Table <- function(projectFile = NULL,
     .checkProjectFile(projectFile, c("pkanalix", "monolix"))
     .ensureProjectLoaded(projectFile)
 
-    # Validate Stratification Logic: if stratify=TRUE but covariates=NULL -> resets stratify to FALSE and warns.
-    stratify_columns <- .validateStratificationArgs(covariates, stratify_columns)
+    # Validate Stratification Logic: if stratify=TRUE but splitCovariates=NULL -> resets stratify to FALSE and warns.
+    stratify_columns <- .validateStratificationArgs(splitCovariates, stratify_columns)
 
     header_info <- lixoftConnectors::getData()
     catcov_col <- header_info$header[header_info$headerTypes == "catcov"]
 
     if (length(catcov_col) == 0) stop("No categorical covariates found.")
 
-    if (!is.null(covariates)) {
-        if (!all(covariates %in% catcov_col)) {
-            stop("All variables in `covariates` must be categorical covariates (headerTypes == 'catcov').")
+    if (!is.null(splitCovariates)) {
+        if (!all(splitCovariates %in% catcov_col)) {
+            stop("All variables in `splitCovariates` must be categorical covariates (headerTypes == 'catcov').")
         }
-        if (length(setdiff(catcov_col, covariates)) == 0) {
+        if (length(setdiff(catcov_col, splitCovariates)) == 0) {
             stop("All categorical covariates were used as stratifiers; none remain to summarize.")
         }
     }
 
     # Validate Labels
-    final_labels <- .validateCovariateLabels(covariates, covariate_labels)
-    if (is.null(final_labels) && !is.null(covariates)) final_labels <- covariates
+    final_labels <- .validateCovariateLabels(splitCovariates, covariate_labels)
+    if (is.null(final_labels) && !is.null(splitCovariates)) final_labels <- splitCovariates
 
     df_cov <- getCovariateInformation()$covariate
 
@@ -643,32 +643,32 @@ CovariateFrequency_Table <- function(projectFile = NULL,
     if (stratify_columns) {
         # STRATIFIED (WIDE)
 
-        vars_to_summarize <- setdiff(catcov_col, covariates)
+        vars_to_summarize <- setdiff(catcov_col, splitCovariates)
 
         df_long_all <- df_cov %>%
             tidyr::pivot_longer(cols = dplyr::all_of(catcov_col), names_to = "variable", values_to = "value")
 
         # Overall summary
         overall_raw <- df_long_all %>%
-            dplyr::filter(!variable %in% covariates) %>%
+            dplyr::filter(!variable %in% splitCovariates) %>%
             .calculate_raw_freq()
 
         overall <- overall_raw %>%
             .format_frequency_table(roundDigits, roundMethod, exclude_cols = c("variable", "Modalities", "N")) %>%
             dplyr::rename(Overall = `N (%)`)
 
-        if (is.null(covariates)) {
+        if (is.null(splitCovariates)) {
             summary_stats <- overall %>% dplyr::rename(`Subject characteristics` = variable)
         } else {
             # Stratified Data
             df_long <- df_cov %>%
-                dplyr::select(id, dplyr::all_of(covariates), dplyr::all_of(catcov_col)) %>%
+                dplyr::select(id, dplyr::all_of(splitCovariates), dplyr::all_of(catcov_col)) %>%
                 tidyr::pivot_longer(cols = dplyr::all_of(vars_to_summarize), names_to = "variable", values_to = "value")
 
             stratified_df <- df_long %>%
                 dplyr::rowwise() %>%
                 dplyr::mutate(header = {
-                    pieces <- purrr::map2_chr(final_labels, covariates, ~ paste0(.x, "=", as.character(dplyr::pick(dplyr::all_of(.y)))))
+                    pieces <- purrr::map2_chr(final_labels, splitCovariates, ~ paste0(.x, "=", as.character(dplyr::pick(dplyr::all_of(.y)))))
                     paste(pieces, collapse = "\n")
                 }) %>%
                 dplyr::ungroup()
@@ -683,35 +683,35 @@ CovariateFrequency_Table <- function(projectFile = NULL,
             names(summary_stats)[1] <- "Subject characteristics"
         }
     } else {
-        remaining_catcov <- if (is.null(covariates)) catcov_col else setdiff(catcov_col, covariates)
+        remaining_catcov <- if (is.null(splitCovariates)) catcov_col else setdiff(catcov_col, splitCovariates)
 
         df_long <- df_cov %>%
-            dplyr::select(id, dplyr::all_of(c(remaining_catcov, covariates))) %>%
+            dplyr::select(id, dplyr::all_of(c(remaining_catcov, splitCovariates))) %>%
             tidyr::pivot_longer(cols = dplyr::all_of(remaining_catcov), names_to = "variable", values_to = "value")
 
         # Calculate Stats
         result_raw <- df_long %>%
-            dplyr::group_by(!!!rlang::syms(covariates), variable, value) %>%
+            dplyr::group_by(!!!rlang::syms(splitCovariates), variable, value) %>%
             dplyr::summarise(Count = dplyr::n(), .groups = "drop") %>%
             dplyr::left_join(
                 df_long %>%
                     dplyr::filter(!is.na(value)) %>%
-                    dplyr::group_by(!!!rlang::syms(covariates), variable) %>%
+                    dplyr::group_by(!!!rlang::syms(splitCovariates), variable) %>%
                     dplyr::summarise(N = dplyr::n_distinct(id), .groups = "drop"),
-                by = c(covariates, "variable")
+                by = c(splitCovariates, "variable")
             ) %>%
             dplyr::mutate(Percentage = (Count / N) * 100) %>%
-            dplyr::select(!!!rlang::syms(covariates), variable, Modalities = value, Count, Percentage, N)
+            dplyr::select(!!!rlang::syms(splitCovariates), variable, Modalities = value, Count, Percentage, N)
 
         # Format
         summary_stats <- result_raw %>%
-            .format_frequency_table(roundDigits, roundMethod, c(covariates, "variable", "Modalities", "Count", "N")) %>%
-            dplyr::select(!!!rlang::syms(covariates), `Subject characteristics` = variable, Modalities, Frequency = `N (%)`) %>%
-            dplyr::arrange(dplyr::across(dplyr::any_of(covariates)), `Subject characteristics`, Modalities)
+            .format_frequency_table(roundDigits, roundMethod, c(splitCovariates, "variable", "Modalities", "Count", "N")) %>%
+            dplyr::select(!!!rlang::syms(splitCovariates), `Subject characteristics` = variable, Modalities, Frequency = `N (%)`) %>%
+            dplyr::arrange(dplyr::across(dplyr::any_of(splitCovariates)), `Subject characteristics`, Modalities)
 
         # Apply labels to grouping columns
-        if (!is.null(covariates)) {
-            names(summary_stats)[names(summary_stats) %in% covariates] <- final_labels
+        if (!is.null(splitCovariates)) {
+            names(summary_stats)[names(summary_stats) %in% splitCovariates] <- final_labels
         }
     }
 
@@ -755,7 +755,7 @@ CovariateFrequency_Table <- function(projectFile = NULL,
 #' observations, and per-subject statistics (mean, min, max). The table can be
 #' returned in horizontal (wide) or vertical (long) format.
 #'
-#' @param covariates A character vector of covariates to stratify the summary by.
+#' @param splitCovariates A character vector of covariates to stratify the summary by.
 #'                Must correspond to dataset columns with headerTypes of
 #'                'catcov', 'contcov', 'occ', or 'time'. If NULL, an overall
 #'                summary (no stratification) is provided.
@@ -773,11 +773,11 @@ CovariateFrequency_Table <- function(projectFile = NULL,
 #' Exclusion_Table()
 #'
 #' # Stratified summary by visit
-#' Exclusion_Table(covariates = "VISIT")
+#' Exclusion_Table(splitCovariates = "VISIT")
 #'
 #' # Stratified summary by visit and food status, in vertical format
-#' Exclusion_Table(covariates = c("VISIT", "FOOD"), horizontal = FALSE)
-Exclusion_Table <- function(projectFile = NULL, covariates = NULL, horizontal = TRUE) { # or shall I call it covariates to be more consistent with other helpers?
+#' Exclusion_Table(splitCovariates = c("VISIT", "FOOD"), horizontal = FALSE)
+Exclusion_Table <- function(projectFile = NULL, splitCovariates = NULL, horizontal = TRUE) {
 
     .checkProjectFile(projectFile, c("pkanalix", "monolix"))
     .ensureProjectLoaded(projectFile)
@@ -799,9 +799,9 @@ Exclusion_Table <- function(projectFile = NULL, covariates = NULL, horizontal = 
 
     allowed <- hdr$col[hdr$type %in% allow_types]
 
-    # sanitize requested covariates
-    if (!is.null(covariates)) {
-        bad <- setdiff(covariates, allowed)
+    # sanitize requested splitCovariates
+    if (!is.null(splitCovariates)) {
+        bad <- setdiff(splitCovariates, allowed)
         if (length(bad)) {
             stop(
                 "Unsupported grouping column(s): ", paste(bad, collapse = ", "),
@@ -809,14 +809,14 @@ Exclusion_Table <- function(projectFile = NULL, covariates = NULL, horizontal = 
             )
         }
     } else {
-        covariates <- character(0)
+        splitCovariates <- character(0)
     }
 
     listing_clean <- listing %>%
         # dplyr::mutate(dplyr::across(dplyr::all_of(obs), ~ dplyr::na_if(., "."))) %>%
         dplyr::filter(obs != "." & !is.na(obs))
 
-    subject_group_vars <- c(id, covariates)
+    subject_group_vars <- c(id, splitCovariates)
 
     per_subject <- listing_clean %>%
         dplyr::group_by(dplyr::across(dplyr::all_of(subject_group_vars))) %>%
@@ -824,9 +824,9 @@ Exclusion_Table <- function(projectFile = NULL, covariates = NULL, horizontal = 
 
 
     # Create summary table
-    if (length(covariates) > 0) {
+    if (length(splitCovariates) > 0) {
         summary_tbl <- as.data.frame(per_subject) %>%
-            dplyr::group_by(dplyr::across(dplyr::all_of(covariates))) %>%
+            dplyr::group_by(dplyr::across(dplyr::all_of(splitCovariates))) %>%
             dplyr::summarise(
                 `Number of Subjects` = dplyr::n_distinct(.data[[id]]),
                 `Total Number of Obs.` = sum(n_obs),
@@ -835,8 +835,8 @@ Exclusion_Table <- function(projectFile = NULL, covariates = NULL, horizontal = 
                 `Max. No. of Obs./Subject` = max(n_obs),
                 .groups = "drop"
             ) %>%
-            dplyr::relocate(dplyr::all_of(covariates), .before = 1) %>%
-            dplyr::arrange(dplyr::across(dplyr::all_of(covariates)))
+            dplyr::relocate(dplyr::all_of(splitCovariates), .before = 1) %>%
+            dplyr::arrange(dplyr::across(dplyr::all_of(splitCovariates)))
     } else {
         # Overall summary (no grouping)
         summary_tbl <- as.data.frame(per_subject) %>%
