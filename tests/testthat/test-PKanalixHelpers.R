@@ -50,7 +50,7 @@ test_that("tableNCAConcentration with covariates (stratify_columns = FALSE)", {
 	# Test with covariates but no column stratification - use long format to get Time column
 	table <- tableNCAConcentration(
 		projectFile      = pkx_project_1,
-		covariates       = "TINFCAT",
+		splitCovariates  = "TINFCAT",
 		stratify_columns = FALSE,
 		use_wide_format  = FALSE)
 
@@ -70,7 +70,7 @@ test_that("tableNCAConcentration with column stratification (stratify_columns = 
 	# Note: stratify_columns = TRUE requires use_wide_format = FALSE
 	table <- tableNCAConcentration(
 		projectFile      = pkx_project_1,
-		covariates       = "TINFCAT",
+		splitCovariates  = "TINFCAT",
 		stratify_columns = TRUE,
 		use_wide_format  = FALSE)
 
@@ -98,7 +98,7 @@ test_that("tableNCAConcentration with specific metrics (single metric)", {
 	# Test with single metric
 	table <- tableNCAConcentration(
 		projectFile      = pkx_project_1,
-		covariates       = "TINFCAT",
+		splitCovariates  = "TINFCAT",
 		stratify_columns = TRUE,
 		use_wide_format  = FALSE,
 		metrics          = "MeanSD")
@@ -115,7 +115,7 @@ test_that("tableNCAConcentration with specific metrics (multiple metrics)", {
 	# Test with multiple metrics
 	table <- tableNCAConcentration(
 		projectFile      = pkx_project_1,
-		covariates       = "TINFCAT",
+		splitCovariates  = "TINFCAT",
 		stratify_columns = TRUE,
 		use_wide_format  = FALSE,
 		metrics          = c("MeanSD", "GeomCV"))
@@ -151,7 +151,7 @@ test_that("tableNCAConcentration with covariate_labels", {
 	# Test with custom covariate labels
 	table <- tableNCAConcentration(
 		projectFile      = pkx_project_1,
-		covariates       = "TINFCAT",
+		splitCovariates  = "TINFCAT",
 		covariate_labels = "Infusion Category",
 		stratify_columns = TRUE,
 		use_wide_format  = FALSE)
@@ -225,7 +225,7 @@ test_that("tableNCAConcentration errors", {
 	expect_error(
 		tableNCAConcentration(
 			projectFile = pkx_project_1,
-			covariates = "NONEXISTENT_COVARIATE"
+			splitCovariates = "NONEXISTENT_COVARIATE"
 		)
 	)
 })
@@ -294,7 +294,7 @@ test_that("tableNCAParameters with stratification (stratify_columns = FALSE)", {
 	# Test with covariates but no column stratification
 	table <- tableNCAParameters(
 		projectFile      = pkx_project_1,
-		covariates       = "TINFCAT",
+		splitCovariates  = "TINFCAT",
 		NCAparams        = c("AUCINF_obs", "AUClast", "Cmax"),
 		stratify_columns = FALSE)
 
@@ -312,7 +312,7 @@ test_that("tableNCAParameters with column stratification (stratify_columns = TRU
 	# Test with covariates and column stratification
 	table <- tableNCAParameters(
 		projectFile      = pkx_project_1,
-		covariates       = "TINFCAT",
+		splitCovariates  = "TINFCAT",
 		NCAparams        = c("AUCINF_obs", "AUClast", "Cmax"),
 		stratify_columns = TRUE,
 		use_wide_format = FALSE)
@@ -336,7 +336,7 @@ test_that("tableNCAParameters with column stratification and specific metric", {
 	# Test with single metric (should suppress Statistic column based on concentration tests)
 	table <- tableNCAParameters(
 		projectFile      = pkx_project_1,
-		covariates       = "TINFCAT",
+		splitCovariates  = "TINFCAT",
 		NCAparams        = c("AUCINF_obs", "AUClast", "Cmax"),
 		stratify_columns = TRUE,
 		metrics          = "GeomCV",
@@ -353,7 +353,7 @@ test_that("tableNCAParameters with column stratification and multiple metrics", 
 	# Test with multiple metrics
 	table <- tableNCAParameters(
 		projectFile      = pkx_project_1,
-		covariates       = "TINFCAT",
+		splitCovariates  = "TINFCAT",
 		NCAparams        = c("AUCINF_obs", "AUClast", "Cmax"),
 		stratify_columns = TRUE,
 		use_wide_format  = FALSE,
@@ -389,7 +389,7 @@ test_that("tableNCAParameters vertical layout with covariates", {
 	table <- tableNCAParameters(
 		projectFile = pkx_project_1,
 		NCAparams   = c("AUCINF_obs", "AUClast", "Cmax"),
-		covariates  = "TINFCAT",
+		splitCovariates  = "TINFCAT",
 		use_wide_format  = FALSE,
 		metrics     = c("min", "MeanSD", "median", "GeomCV", "max"))
 
@@ -407,7 +407,7 @@ test_that("tableNCAParameters with multiple covariates", {
 	table <- tableNCAParameters(
 		projectFile      = pkx_project_3,
 		NCAparams        = c("AUCINF_obs", "Cmax"),
-		covariates       = c("DOSE_mg", "ROUTE"),
+		splitCovariates  = c("DOSE_mg", "ROUTE"),
 		stratify_columns = TRUE,
 		use_wide_format  = FALSE,
 		metrics          = c("MeanSD", "GeomCV"))
@@ -424,7 +424,7 @@ test_that("tableNCAParameters with covariate_labels", {
 	# Test with custom covariate labels
 	table <- tableNCAParameters(
 		projectFile      = pkx_project_1,
-		covariates       = "TINFCAT",
+		splitCovariates  = "TINFCAT",
 		covariate_labels = "Infusion Category",
 		NCAparams        = c("AUCINF_obs", "Cmax"),
 		stratify_columns = TRUE,
@@ -442,7 +442,7 @@ test_that("tableNCAParameters with multiple covariate_labels", {
 	table <- tableNCAParameters(
 		projectFile      = pkx_project_3,
 		NCAparams        = c("AUCINF_obs", "Cmax"),
-		covariates       = c("DOSE_mg", "ROUTE"),  # Changed from "DOSE" to "DOSE_mg"
+		splitCovariates  = c("DOSE_mg", "ROUTE"),  # Changed from "DOSE" to "DOSE_mg"
 		covariate_labels = c("Dose Level", "Route of Administration"),
 		stratify_columns = TRUE,
 		use_wide_format  = FALSE,
@@ -553,7 +553,7 @@ test_that("tableNCAParameters errors", {
 	expect_error(
 		tableNCAParameters(
 			projectFile = pkx_project_1,
-			covariates  = "NONEXISTENT_COVARIATE"))
+			splitCovariates = "NONEXISTENT_COVARIATE"))
 
 	# Test with invalid NCA parameters
 	expect_error(
@@ -570,8 +570,8 @@ test_that("tableNCAParameters complex scenario", {
 		projectFile      = pkx_project_1,
 		metrics          = c("GeomCV", "MeanSD", "Q3"),
 		NCAparams        = c("AUCINF_obs", "AUClast", "Cmax"),
-		covariates       = "TINFCAT",
-		use_wide_format       = FALSE,
+		splitCovariates  = "TINFCAT",
+		use_wide_format  = FALSE,
 		stratify_columns = TRUE,
 		roundDigits      = 2,
 		roundMethod      = "signif",
@@ -634,7 +634,7 @@ test_that("tableNCAParameters roundMethod with stratification", {
 		table <- tableNCAParameters(
 			projectFile      = pkx_project_1,
 			NCAparams        = c("Cmax"),
-			covariates       = "TINFCAT",
+			splitCovariates  = "TINFCAT",
 			stratify_columns = TRUE,
 			use_wide_format  = FALSE,
 			roundDigits      = 3,
@@ -654,7 +654,7 @@ test_that("tableNCAParameters all arguments combined", {
 	# Test with all arguments specified (comprehensive test)
 	table <- tableNCAParameters(
 		projectFile      = pkx_project_1,
-		covariates       = "TINFCAT",
+		splitCovariates  = "TINFCAT",
 		NCAparams        = c("AUCINF_obs", "AUClast", "Cmax"),
 		metrics          = c("min", "MeanSD", "median", "GeomCV", "max"),
 		use_wide_format       = FALSE,
@@ -698,7 +698,7 @@ test_that("tableNCAParameters with all flags TRUE", {
 	table <- tableNCAParameters(
 		projectFile      = pkx_project_1,
 		NCAparams        = c("Cmax"),
-		covariates       = "TINFCAT",
+		splitCovariates  = "TINFCAT",
 		use_wide_format  = TRUE,
 		stratify_columns = FALSE,  # Can't have both use_wide_format=TRUE and stratify_columns=TRUE
 		units            = TRUE,
@@ -761,7 +761,7 @@ test_that("tableNCAParameters with metrics = NULL (default metrics)", {
 	table <- tableNCAParameters(
 		projectFile      = pkx_project_1,
 		NCAparams        = c("Cmax"),
-		covariates       = "TINFCAT",
+		splitCovariates  = "TINFCAT",
 		stratify_columns = TRUE,
 		use_wide_format  = FALSE,
 		metrics          = NULL  # Should use default metric
@@ -842,7 +842,7 @@ test_that("tableNCAParameters with include_id and single covariate", {
 	table <- tableNCAParameters(
 		projectFile  = pkx_project_1,
 		use_wide_format   = FALSE,
-		covariates   = "TINFCAT",
+		splitCovariates   = "TINFCAT",
 		NCAparams    = c("Cmax", "AUClast", "Lambda_z"),
 		metrics      = c("min", "MeanSD", "median", "GeomCV", "max"),
 		include_id   = TRUE,
@@ -872,8 +872,8 @@ test_that("tableNCAParameters with include_id and multiple covariates", {
 	# Test include_id with multiple covariates
 	table <- tableNCAParameters(
 		projectFile  = pkx_project_3,
-		use_wide_format   = FALSE,
-		covariates   = c("DOSE_mg", "ROUTE"),
+		use_wide_format = FALSE,
+		splitCovariates = c("DOSE_mg", "ROUTE"),
 		NCAparams    = c("Cmax", "AUClast"),
 		metrics      = c("MeanSD", "GeomCV"),
 		include_id   = TRUE,
@@ -941,7 +941,7 @@ test_that("tableNCAParameters with include_id validation: stratify_columns = TRU
 			projectFile      = pkx_project_1,
 			use_wide_format  = FALSE,
 			stratify_columns = TRUE,  # This should trigger warning
-			covariates       = "TINFCAT",
+			splitCovariates  = "TINFCAT",
 			NCAparams        = c("Cmax"),
 			include_id       = TRUE),
 		"include_id = TRUE is not compatible with stratify_columns = TRUE. Setting include_id to FALSE.")
@@ -970,7 +970,7 @@ test_that("tableNCAParameters with include_id = FALSE (default behavior)", {
 	statistic_values <- table$Statistic
 	summary_stats <- c("mean", "SD", "CV", "SE", "geoMean", "geoCV", "geoSD", "geoSE",
 	                   "median", "min", "max", "Q1", "Q3", "N", "Nobs", "Ntot", "Nmiss",
-	                   "P05", "P95", "MeanSD", "MeanSE", "GeomCV", "GeomSD", "GeomSE", "harmMean")
+	                   "P05", "P95", "MeanSD", "MeanSE", "MeanCV", "GeomCV", "GeomSD", "GeomSE", "harmMean")
 
 	# All statistic values should be recognized summary statistics
 	expect_true(all(statistic_values %in% summary_stats),
@@ -1037,8 +1037,8 @@ test_that("tableNCAParameters with include_id comprehensive test", {
 
 	# Comprehensive test with all compatible features
 	table <- tableNCAParameters(
-		projectFile  = pkx_project_1,
-		covariates   = "TINFCAT",
+		projectFile     = pkx_project_1,
+		splitCovariates = "TINFCAT",
 		NCAparams    = c("Cmax", "AUClast", "Lambda_z"),
 		metrics      = c("min", "MeanSD", "median", "GeomCV", "max"),
 		use_wide_format   = FALSE,
@@ -1096,7 +1096,7 @@ test_that("tableNCAParameters with include_id and numeric categorical covariate"
 	table <- tableNCAParameters(
 		projectFile  = pkx_project_3,
 		use_wide_format   = FALSE,
-		covariates   = "DOSE_mg",
+		splitCovariates   = "DOSE_mg",
 		NCAparams    = c("Cmax", "AUClast"),
 		include_id   = TRUE,
 		prettyLabels = FALSE
@@ -1132,7 +1132,7 @@ test_that("listingNCAParameters works with covariates", {
 
 	result <- listingNCAParameters(
 		projectFile = pkx_project_1,
-		covariates = c("SEX", "TINFCAT")
+		splitCovariates = c("SEX", "TINFCAT")
 	)
 
 	# Check covariates are present and in correct order
@@ -1148,7 +1148,7 @@ test_that("listingNCAParameters filters to selected parameters", {
 
 	result <- listingNCAParameters(
 		projectFile = pkx_project_2,
-		covariates = c("FOOD", "TREAT"),
+		splitCovariates = c("FOOD", "TREAT"),
 		NCAparams = selected_params,
 		roundDigits = 2,
 		roundMethod = "signif"
@@ -1238,7 +1238,7 @@ test_that("listingNCAParameters sorts by covariates in specified order", {
 
 	result <- listingNCAParameters(
 		projectFile = pkx_project_5,
-		covariates = c("SEQ", "TRT")
+		splitCovariates = c("SEQ", "TRT")
 	)
 
 	expect_s3_class(result, "data.frame")
@@ -1255,7 +1255,7 @@ test_that("listingNCAParameters validates invalid covariates", {
 	expect_error(
 		listingNCAParameters(
 			projectFile = pkx_project_1,
-			covariates = c("INVALID_COVARIATE")
+			splitCovariates = c("INVALID_COVARIATE")
 		),
 		"Invalid covariate"
 	)
@@ -1294,7 +1294,7 @@ test_that("listingNCAParameters works with occasions and covariates", {
 
 	result <- listingNCAParameters(
 		projectFile = pkx_project_2,
-		covariates = c("FOOD", "TREAT"),
+		splitCovariates = c("FOOD", "TREAT"),
 		NCAparams = c("Clast", "Cmax", "AUClast", "AUCINF_obs")
 	)
 
@@ -1338,7 +1338,7 @@ test_that("listingNCAParameters returns correct column order", {
 
 	result <- listingNCAParameters(
 		projectFile = pkx_project_2,
-		covariates = c("TREAT", "FOOD")  # Specify order
+		splitCovariates = c("TREAT", "FOOD")  # Specify order
 	)
 
 	# First columns should be: id, TREAT, FOOD (in that order)
@@ -1371,7 +1371,7 @@ test_that("listingNCAConcentration works with covariates", {
 
 	result <- listingNCAConcentration(
 		projectFile = pkx_project_2,
-		covariates = c("FOOD", "TREAT")
+		splitCovariates = c("FOOD", "TREAT")
 	)
 
 	expect_s3_class(result, "data.frame")
@@ -1460,7 +1460,7 @@ test_that("listingNCAConcentration handles occasions", {
 
 	result <- listingNCAConcentration(
 		projectFile = pkx_project_2,
-		covariates = c("FOOD", "TREAT")
+		splitCovariates = c("FOOD", "TREAT")
 	)
 
 	expect_s3_class(result, "data.frame")
@@ -1474,7 +1474,7 @@ test_that("listingNCAConcentration validates invalid covariates", {
 	expect_error(
 		listingNCAConcentration(
 			projectFile = pkx_project_2,
-			covariates = c("INVALID_COV")
+			splitCovariates = c("INVALID_COV")
 		),
 		"Invalid covariate"
 	)
@@ -1495,7 +1495,7 @@ test_that("listingNCAConcentration includes covariates in correct order", {
 
 	result <- listingNCAConcentration(
 		projectFile = pkx_project_2,
-		covariates = c("FOOD", "TREAT")
+		splitCovariates = c("FOOD", "TREAT")
 	)
 
 	expect_s3_class(result, "data.frame")
@@ -1554,7 +1554,7 @@ test_that("listingNCARatios works with covariates", {
 
 	result <- listingNCARatios(
 		projectFile = pkx_project_5,
-		covariates = c("SEQ")
+		splitCovariates = c("SEQ")
 	)
 
 	# Check covariates are present and in correct order
@@ -1575,7 +1575,7 @@ test_that("listingNCARatios filters to selected ratio parameters", {
 
 		result <- listingNCARatios(
 			projectFile = pkx_project_5,
-			covariates = c("SEQ"),
+			splitCovariates = c("SEQ"),
 			ratioParams = selected_ratios,
 			roundDigits = 2,
 			roundMethod = "signif"
@@ -1656,7 +1656,7 @@ test_that("listingNCARatios sorts by covariates in specified order", {
 
 	result <- listingNCARatios(
 		projectFile = pkx_project_5,
-		covariates = c("SEQ")
+		splitCovariates = c("SEQ")
 	)
 
 	expect_s3_class(result, "data.frame")
@@ -1673,7 +1673,7 @@ test_that("listingNCARatios validates invalid covariates", {
 	expect_error(
 		listingNCARatios(
 			projectFile = pkx_project_5,
-			covariates = c("INVALID_COVARIATE")
+			splitCovariates = c("INVALID_COVARIATE")
 		),
 		"Invalid covariate"
 	)
@@ -1716,7 +1716,7 @@ test_that("listingNCARatios works with occasions and covariates", {
 
 	result <- listingNCARatios(
 		projectFile = pkx_project_5,
-		covariates = c("SEQ")
+		splitCovariates = c("SEQ")
 	)
 
 	expect_s3_class(result, "data.frame")
@@ -1759,7 +1759,7 @@ test_that("listingNCARatios returns correct column order", {
 
 	result <- listingNCARatios(
 		projectFile = pkx_project_5,
-		covariates = c("SEQ")  # Specify order
+		splitCovariates = c("SEQ")  # Specify order
 	)
 
 	# First columns should be: id, TRT, SEQ (in that order)
@@ -1862,7 +1862,7 @@ test_that("tableNCARatios with stratification (stratify_columns = FALSE)", {
 	# Test with covariates but no column stratification
 	table <- tableNCARatios(
 		projectFile      = pkx_project_5,
-		covariates       = "SEQ",
+		splitCovariates  = "SEQ",
 		stratify_columns = FALSE
 	)
 
@@ -1881,7 +1881,7 @@ test_that("tableNCARatios with column stratification (stratify_columns = TRUE)",
 	# Test with covariates and column stratification
 	table <- tableNCARatios(
 		projectFile      = pkx_project_5,
-		covariates       = "SEQ",
+		splitCovariates  = "SEQ",
 		stratify_columns = TRUE,
 		use_wide_format  = FALSE)
 
@@ -1902,7 +1902,7 @@ test_that("tableNCARatios with column stratification and single metric", {
 	# Test with single metric (should suppress Statistic column)
 	table <- tableNCARatios(
 		projectFile      = pkx_project_5,
-		covariates       = "SEQ",
+		splitCovariates       = "SEQ",
 		stratify_columns = TRUE,
 		use_wide_format  = FALSE,
 		metrics          = "GeomCV"
@@ -1920,7 +1920,7 @@ test_that("tableNCARatios with column stratification and multiple metrics", {
 	# Test with multiple metrics
 	table <- tableNCARatios(
 		projectFile      = pkx_project_5,
-		covariates       = "SEQ",
+		splitCovariates       = "SEQ",
 		stratify_columns = TRUE,
 		use_wide_format  = FALSE,
 		metrics          = c("MeanSD", "GeomCV")
@@ -1953,7 +1953,7 @@ test_that("tableNCARatios vertical layout with covariates", {
 	# Test vertical layout with covariates
 	table <- tableNCARatios(
 		projectFile     = pkx_project_5,
-		covariates      = "SEQ",
+		splitCovariates      = "SEQ",
 		use_wide_format = FALSE,
 		metrics         = c("min", "MeanSD", "median", "GeomCV", "max")
 	)
@@ -2004,7 +2004,7 @@ test_that("tableNCARatios with covariate_labels", {
 	# Test with custom covariate labels
 	table <- tableNCARatios(
 		projectFile      = pkx_project_5,
-		covariates       = "SEQ",
+		splitCovariates       = "SEQ",
 		covariate_labels = "Sequence",
 		stratify_columns = TRUE,
 		use_wide_format  = FALSE
@@ -2056,7 +2056,7 @@ test_that("tableNCARatios errors", {
 	expect_error(
 		tableNCARatios(
 			projectFile = pkx_project_5,
-			covariates  = "NONEXISTENT_COVARIATE"
+			splitCovariates = "NONEXISTENT_COVARIATE"
 		)
 	)
 
@@ -2167,7 +2167,7 @@ test_that("tableNCARatios with include_id and single covariate", {
 		table <- tableNCARatios(
 			projectFile     = pkx_project_5,
 			use_wide_format = FALSE,
-			covariates      = "SEQ",
+			splitCovariates = "SEQ",
 			ratioParams     = selected_ratios,
 			metrics         = c("min", "MeanSD", "median", "GeomCV", "max"),
 			include_id      = TRUE,
@@ -2210,7 +2210,7 @@ test_that("tableNCARatios with include_id validation: stratify_columns = TRUE", 
 			projectFile      = pkx_project_5,
 			use_wide_format  = FALSE,
 			stratify_columns = TRUE,  # This should trigger warning
-			covariates       = "SEQ",
+			splitCovariates  = "SEQ",
 			include_id       = TRUE
 		),
 		"include_id = TRUE is not compatible with stratify_columns = TRUE"
@@ -2248,7 +2248,7 @@ test_that("tableNCARatios with include_id = FALSE (default behavior)", {
 		statistic_values <- table$Statistic
 		summary_stats <- c("mean", "SD", "CV", "SE", "geoMean", "geoCV", "geoSD", "geoSE",
 		                   "median", "min", "max", "Q1", "Q3", "N", "Nobs", "Ntot", "Nmiss",
-		                   "P05", "P95", "MeanSD", "MeanSE", "GeomCV", "GeomSD", "GeomSE", "harmMean")
+		                   "P05", "P95", "MeanSD", "MeanSE", "MeanCV", "GeomCV", "GeomSD", "GeomSE", "harmMean")
 
 		# All statistic values should be recognized summary statistics
 		expect_true(all(statistic_values %in% summary_stats),
@@ -2310,7 +2310,7 @@ test_that("tableNCARatios all arguments combined", {
 		# Test with all arguments specified (comprehensive test)
 		table <- tableNCARatios(
 			projectFile      = pkx_project_5,
-			covariates       = "SEQ",
+			splitCovariates  = "SEQ",
 			ratioParams      = selected_ratios,
 			metrics          = c("min", "MeanSD", "median", "GeomCV", "max"),
 			use_wide_format  = FALSE,
@@ -2339,7 +2339,7 @@ test_that("tableNCAConcentration with covariate_filter", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get unique TINFCAT values first
-	listing <- listingNCAConcentration(projectFile = pkx_project_1, covariates = "TINFCAT")
+	listing <- listingNCAConcentration(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing$TINFCAT)
 
 	if (length(tinfcat_values) >= 2) {
@@ -2348,13 +2348,13 @@ test_that("tableNCAConcentration with covariate_filter", {
 		# Test with covariate filter
 		table_filtered <- tableNCAConcentration(
 			projectFile      = pkx_project_1,
-			covariates       = "TINFCAT",
+			splitCovariates  = "TINFCAT",
 			covariate_filter = list(TINFCAT = filter_value)
 		)
 
 		table_unfiltered <- tableNCAConcentration(
 			projectFile = pkx_project_1,
-			covariates  = "TINFCAT"
+			splitCovariates  = "TINFCAT"
 		)
 
 		# Filtered table should have fewer or equal rows
@@ -2398,7 +2398,7 @@ test_that("tableNCAConcentration with combined covariate_filter and id_filter", 
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get data to find valid filter combinations
-	listing <- listingNCAConcentration(projectFile = pkx_project_1, covariates = "TINFCAT")
+	listing <- listingNCAConcentration(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing$TINFCAT)
 	available_ids <- unique(listing$id)
 
@@ -2409,7 +2409,7 @@ test_that("tableNCAConcentration with combined covariate_filter and id_filter", 
 		# Test with both filters
 		table <- tableNCAConcentration(
 			projectFile      = pkx_project_1,
-			covariates       = "TINFCAT",
+			splitCovariates  = "TINFCAT",
 			covariate_filter = list(TINFCAT = filter_value),
 			id_filter        = selected_ids
 		)
@@ -2423,7 +2423,7 @@ test_that("tableNCAConcentration with covariate_filter and include_id", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get unique TINFCAT values first
-	listing <- listingNCAConcentration(projectFile = pkx_project_1, covariates = "TINFCAT")
+	listing <- listingNCAConcentration(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing$TINFCAT)
 
 	if (length(tinfcat_values) >= 2) {
@@ -2434,7 +2434,7 @@ test_that("tableNCAConcentration with covariate_filter and include_id", {
 		table <- tableNCAConcentration(
 			projectFile      = pkx_project_1,
 			use_wide_format  = TRUE,
-			covariates       = "TINFCAT",
+			splitCovariates  = "TINFCAT",
 			covariate_filter = list(TINFCAT = filter_value),
 			include_id       = TRUE
 		)
@@ -2481,7 +2481,7 @@ test_that("tableNCAParameters with covariate_filter", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get unique TINFCAT values first
-	listing <- listingNCAParameters(projectFile = pkx_project_1, covariates = "TINFCAT")
+	listing <- listingNCAParameters(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing$TINFCAT)
 
 	if (length(tinfcat_values) >= 2) {
@@ -2490,14 +2490,14 @@ test_that("tableNCAParameters with covariate_filter", {
 		# Test with covariate filter
 		table_filtered <- tableNCAParameters(
 			projectFile      = pkx_project_1,
-			covariates       = "TINFCAT",
+			splitCovariates  = "TINFCAT",
 			NCAparams        = c("Cmax"),
 			covariate_filter = list(TINFCAT = filter_value)
 		)
 
 		table_unfiltered <- tableNCAParameters(
 			projectFile = pkx_project_1,
-			covariates  = "TINFCAT",
+			splitCovariates  = "TINFCAT",
 			NCAparams   = c("Cmax")
 		)
 
@@ -2539,7 +2539,7 @@ test_that("tableNCAParameters with covariate_filter and include_id", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get unique TINFCAT values first
-	listing <- listingNCAParameters(projectFile = pkx_project_1, covariates = "TINFCAT")
+	listing <- listingNCAParameters(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing$TINFCAT)
 
 	if (length(tinfcat_values) >= 2) {
@@ -2549,7 +2549,7 @@ test_that("tableNCAParameters with covariate_filter and include_id", {
 		table <- tableNCAParameters(
 			projectFile      = pkx_project_1,
 			use_wide_format  = FALSE,
-			covariates       = "TINFCAT",
+			splitCovariates  = "TINFCAT",
 			NCAparams        = c("Cmax"),
 			covariate_filter = list(TINFCAT = filter_value),
 			include_id       = TRUE,
@@ -2567,7 +2567,7 @@ test_that("tableNCAParameters with combined covariate_filter and id_filter", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get available data first
-	listing <- listingNCAParameters(projectFile = pkx_project_1, covariates = "TINFCAT")
+	listing <- listingNCAParameters(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing$TINFCAT)
 	available_ids <- unique(listing$id)
 
@@ -2578,7 +2578,7 @@ test_that("tableNCAParameters with combined covariate_filter and id_filter", {
 		# Test with both filters combined
 		table_filtered <- tableNCAParameters(
 			projectFile      = pkx_project_1,
-			covariates       = "TINFCAT",
+			splitCovariates  = "TINFCAT",
 			NCAparams        = c("Cmax", "AUClast"),
 			covariate_filter = list(TINFCAT = filter_value),
 			id_filter        = selected_ids
@@ -2594,7 +2594,7 @@ test_that("tableNCAParameters with combined covariate_filter and id_filter", {
 		# Compare with unfiltered - should have fewer or equal rows
 		table_unfiltered <- tableNCAParameters(
 			projectFile = pkx_project_1,
-			covariates  = "TINFCAT",
+			splitCovariates = "TINFCAT",
 			NCAparams   = c("Cmax", "AUClast")
 		)
 		expect_lte(nrow(table_filtered), nrow(table_unfiltered))
@@ -2608,7 +2608,7 @@ test_that("tableNCARatios with covariate_filter", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get unique SEQ values first
-	listing <- listingNCARatios(projectFile = pkx_project_5, covariates = "SEQ")
+	listing <- listingNCARatios(projectFile = pkx_project_5, splitCovariates = "SEQ")
 	seq_values <- unique(listing$SEQ)
 
 	if (length(seq_values) >= 2) {
@@ -2617,13 +2617,13 @@ test_that("tableNCARatios with covariate_filter", {
 		# Test with covariate filter
 		table_filtered <- tableNCARatios(
 			projectFile      = pkx_project_5,
-			covariates       = "SEQ",
+			splitCovariates  = "SEQ",
 			covariate_filter = list(SEQ = filter_value)
 		)
 
 		table_unfiltered <- tableNCARatios(
 			projectFile = pkx_project_5,
-			covariates  = "SEQ"
+			splitCovariates = "SEQ"
 		)
 
 		# Filtered table should have fewer or equal rows
@@ -2663,7 +2663,7 @@ test_that("tableNCARatios with combined covariate_filter and id_filter", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get available data first
-	listing <- listingNCARatios(projectFile = pkx_project_5, covariates = "SEQ")
+	listing <- listingNCARatios(projectFile = pkx_project_5, splitCovariates = "SEQ")
 	seq_values <- unique(listing$SEQ)
 	available_ids <- unique(listing$id)
 
@@ -2674,7 +2674,7 @@ test_that("tableNCARatios with combined covariate_filter and id_filter", {
 		# Test with both filters combined
 		table_filtered <- tableNCARatios(
 			projectFile      = pkx_project_5,
-			covariates       = "SEQ",
+			splitCovariates  = "SEQ",
 			covariate_filter = list(SEQ = filter_value),
 			id_filter        = selected_ids
 		)
@@ -2689,7 +2689,7 @@ test_that("tableNCARatios with combined covariate_filter and id_filter", {
 		# Compare with unfiltered - should have fewer or equal rows
 		table_unfiltered <- tableNCARatios(
 			projectFile = pkx_project_5,
-			covariates  = "SEQ"
+			splitCovariates = "SEQ"
 		)
 		expect_lte(nrow(table_filtered), nrow(table_unfiltered))
 	}
@@ -2700,7 +2700,7 @@ test_that("tableNCARatios with covariate_filter and include_id", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get unique SEQ values first
-	listing <- listingNCARatios(projectFile = pkx_project_5, covariates = "SEQ")
+	listing <- listingNCARatios(projectFile = pkx_project_5, splitCovariates = "SEQ")
 	seq_values <- unique(listing$SEQ)
 
 	if (length(seq_values) >= 2) {
@@ -2710,7 +2710,7 @@ test_that("tableNCARatios with covariate_filter and include_id", {
 		table <- tableNCARatios(
 			projectFile      = pkx_project_5,
 			use_wide_format  = FALSE,
-			covariates       = "SEQ",
+			splitCovariates  = "SEQ",
 			covariate_filter = list(SEQ = filter_value),
 			include_id       = TRUE
 		)
@@ -2734,7 +2734,7 @@ test_that("listingNCAConcentration with covariate_filter", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	# Get unique FOOD values first
-	listing_all <- listingNCAConcentration(projectFile = pkx_project_2, covariates = "FOOD")
+	listing_all <- listingNCAConcentration(projectFile = pkx_project_2, splitCovariates = "FOOD")
 	food_values <- unique(listing_all$FOOD)
 
 	if (length(food_values) >= 2) {
@@ -2743,7 +2743,7 @@ test_that("listingNCAConcentration with covariate_filter", {
 		# Test with covariate filter
 		listing_filtered <- listingNCAConcentration(
 			projectFile      = pkx_project_2,
-			covariates       = "FOOD",
+			splitCovariates  = "FOOD",
 			covariate_filter = list(FOOD = filter_value)
 		)
 
@@ -2787,7 +2787,7 @@ test_that("listingNCAConcentration with combined covariate_filter and id_filter"
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	# Get available data first
-	listing_all <- listingNCAConcentration(projectFile = pkx_project_2, covariates = "FOOD")
+	listing_all <- listingNCAConcentration(projectFile = pkx_project_2, splitCovariates = "FOOD")
 	food_values <- unique(listing_all$FOOD)
 	available_ids <- unique(listing_all$id)
 
@@ -2798,7 +2798,7 @@ test_that("listingNCAConcentration with combined covariate_filter and id_filter"
 		# Test with both filters combined
 		listing_filtered <- listingNCAConcentration(
 			projectFile      = pkx_project_2,
-			covariates       = "FOOD",
+			splitCovariates  = "FOOD",
 			covariate_filter = list(FOOD = filter_value),
 			id_filter        = selected_ids
 		)
@@ -2822,7 +2822,7 @@ test_that("listingNCAParameters with covariate_filter", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get unique TINFCAT values first
-	listing_all <- listingNCAParameters(projectFile = pkx_project_1, covariates = "TINFCAT")
+	listing_all <- listingNCAParameters(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing_all$TINFCAT)
 
 	if (length(tinfcat_values) >= 2) {
@@ -2831,7 +2831,7 @@ test_that("listingNCAParameters with covariate_filter", {
 		# Test with covariate filter
 		listing_filtered <- listingNCAParameters(
 			projectFile      = pkx_project_1,
-			covariates       = "TINFCAT",
+			splitCovariates  = "TINFCAT",
 			covariate_filter = list(TINFCAT = filter_value)
 		)
 
@@ -2875,7 +2875,7 @@ test_that("listingNCAParameters with combined filters", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get data to find valid filter combinations
-	listing_all <- listingNCAParameters(projectFile = pkx_project_1, covariates = "TINFCAT")
+	listing_all <- listingNCAParameters(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing_all$TINFCAT)
 	available_ids <- unique(listing_all$id)
 
@@ -2886,7 +2886,7 @@ test_that("listingNCAParameters with combined filters", {
 		# Test with both filters
 		listing_filtered <- listingNCAParameters(
 			projectFile      = pkx_project_1,
-			covariates       = "TINFCAT",
+			splitCovariates  = "TINFCAT",
 			covariate_filter = list(TINFCAT = filter_value),
 			id_filter        = selected_ids
 		)
@@ -2907,7 +2907,7 @@ test_that("listingNCARatios with covariate_filter", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get unique SEQ values first
-	listing_all <- listingNCARatios(projectFile = pkx_project_5, covariates = "SEQ")
+	listing_all <- listingNCARatios(projectFile = pkx_project_5, splitCovariates = "SEQ")
 	seq_values <- unique(listing_all$SEQ)
 
 	if (length(seq_values) >= 2) {
@@ -2916,7 +2916,7 @@ test_that("listingNCARatios with covariate_filter", {
 		# Test with covariate filter
 		listing_filtered <- listingNCARatios(
 			projectFile      = pkx_project_5,
-			covariates       = "SEQ",
+			splitCovariates  = "SEQ",
 			covariate_filter = list(SEQ = filter_value)
 		)
 
@@ -2960,7 +2960,7 @@ test_that("listingNCARatios with combined covariate_filter and id_filter", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get available data first
-	listing_all <- listingNCARatios(projectFile = pkx_project_5, covariates = "SEQ")
+	listing_all <- listingNCARatios(projectFile = pkx_project_5, splitCovariates = "SEQ")
 	seq_values <- unique(listing_all$SEQ)
 	available_ids <- unique(listing_all$id)
 
@@ -2971,7 +2971,7 @@ test_that("listingNCARatios with combined covariate_filter and id_filter", {
 		# Test with both filters combined
 		listing_filtered <- listingNCARatios(
 			projectFile      = pkx_project_5,
-			covariates       = "SEQ",
+			splitCovariates  = "SEQ",
 			covariate_filter = list(SEQ = filter_value),
 			id_filter        = selected_ids
 		)
@@ -3032,7 +3032,7 @@ test_that("filter with multiple covariate values", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get unique TINFCAT values first
-	listing <- listingNCAParameters(projectFile = pkx_project_1, covariates = "TINFCAT")
+	listing <- listingNCAParameters(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing$TINFCAT)
 
 	if (length(tinfcat_values) >= 2) {
@@ -3041,7 +3041,7 @@ test_that("filter with multiple covariate values", {
 		# Test with multiple values for one covariate
 		table <- tableNCAParameters(
 			projectFile      = pkx_project_1,
-			covariates       = "TINFCAT",
+			splitCovariates  = "TINFCAT",
 			NCAparams        = c("Cmax"),
 			covariate_filter = list(TINFCAT = filter_values)
 		)
@@ -3088,7 +3088,7 @@ test_that("tableNCAConcentration with include_id and single covariate", {
 	table <- tableNCAConcentration(
 		projectFile     = pkx_project_1,
 		use_wide_format = TRUE,
-		covariates      = "TINFCAT",
+		splitCovariates = "TINFCAT",
 		metrics         = c("min", "MeanSD", "median", "GeomCV", "max"),
 		include_id      = TRUE,
 		prettyLabels    = FALSE
@@ -3131,7 +3131,7 @@ test_that("tableNCAConcentration with include_id validation: stratify_columns = 
 			projectFile      = pkx_project_1,
 			use_wide_format  = TRUE,
 			stratify_columns = TRUE,
-			covariates       = "TINFCAT",
+			splitCovariates  = "TINFCAT",
 			include_id       = TRUE
 		),
 		"stratify_columns = TRUE is only compatible with use_wide_format = FALSE"
@@ -3167,8 +3167,8 @@ test_that("tableNCAConcentration with include_id = FALSE (default behavior)", {
 	statistic_values <- table$Statistic
 	summary_stats <- c("mean", "SD", "CV", "SE", "geoMean", "geoCV", "geoSD", "geoSE",
 	                   "median", "min", "max", "Q1", "Q3", "N", "Nobs", "Ntot", "Nmiss",
-	                   "P05", "P95", "MeanSD", "MeanSE", "GeomCV", "GeomSD", "GeomSE",
-	                   "harmMean", "Arithmetric\nMean (SD)", "Geometric\nCV%")
+	                   "P05", "P95", "MeanSD", "MeanSE", "MeanCV", "GeomCV", "GeomSD", "GeomSE",
+	                   "harmMean", "Arithmetric\nMean (SD)", "Arithmetric\nMean (CV %)", "Geometric\nCV%")
 
 	# All statistic values should be recognized summary statistics
 	expect_true(all(statistic_values %in% summary_stats),
