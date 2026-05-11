@@ -312,6 +312,7 @@ utils::globalVariables(c("."))
 		"GeomCV"              = "Geometric\nMean (CV %)",
 		"GeomSD"              = "Geometric\nMean (SD)",
 		"MeanSD"              = "Arithmetric\nMean (SD)",
+		"MeanCV"              = "Arithmetric\nMean (CV %)",
 		"harmMean"            = "Harmonic\nMean",
 		"P05"                 = "5th Percentile",
 		"P95"                 = "95th Percentile",
