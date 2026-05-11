@@ -556,9 +556,9 @@
 	df %>%
 		dplyr::mutate(
 			MeanSD = paste0(.data$mean, " (", .data$SD, ")"),
+			MeanCV = paste0(.data$mean, " (", .data$CV, ")"),
 			GeomCV = paste0(.data$geoMean, " (", .data$geoCV, ")"),
-			GeomSD = paste0(.data$geoMean, " (", .data$geoSD, ")")
-		)
+			GeomSD = paste0(.data$geoMean, " (", .data$geoSD, ")"))
 }
 
 ##################################################################################
