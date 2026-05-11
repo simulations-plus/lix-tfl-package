@@ -1950,7 +1950,7 @@
 
 
 ##################################################################################
-#' calculate_raw_freq
+#' .calculateCategoricalFrequencies
 #'
 #' Calculates raw frequency counts and percentages for categorical variables.
 #' For each unique value (modality) within each variable, computes the count,
@@ -1992,7 +1992,7 @@
 #' #                  value = c("M", "F", "M", "White", "White", "Asian"))
 #' # .calculate_raw_freq(df)
 #'
-.calculate_raw_freq <- function(df_input) {
+.calculateCategoricalFrequencies <- function(df_input) {
 	# This logic assumes df_input has columns: id, variable, value
 	subject_counts <- df_input %>%
 		dplyr::group_by(variable) %>%
@@ -2008,7 +2008,7 @@
 
 
 ##################################################################################
-#' format_frequency_table
+#' formatFrequencyTable
 #'
 #' Formats a frequency table by applying rounding and creating a combined
 #' display metric showing count and percentage together as "N (%)".
