@@ -115,8 +115,7 @@ tableRunHistory <- function(sycomoreProjectFile,
 	dfw <- stats::reshape(df,
 												idvar     = "X1",
 												timevar   = "X2",
-												direction = "wide"
-	)
+												direction = "wide")
 	# rename columns
 	dfw <- dfw %>%
 		dplyr::rename(Index  = "X1",
@@ -244,14 +243,11 @@ tableRunHistory <- function(sycomoreProjectFile,
 
 
 #' Creates a table combining population parameter estimates with information on their uncertainties.
-#' The nameMapping data.frame provides the mapping between the Monolix parameter name (`Parameter`), the parameter
-#' display name (`Label`) and the parameter units (`Unit`).
 #'
-#' The display names or units can include special characters
-#' by using the Unicode code (e.g., `\U03C9` for omega). The order of the rows also controls the order of the parameters
-#' in the table. The results will always be grouped into sections of fixed effects, random effects,
-#' and error parameters, in that order, with a column Section identifying the parameter type.
-#' See the function [createNameMapping()] to more easily create the `nameMapping` data.frame.
+#' Use `custom_aliases` to provide display names for parameters and `custom_units` to append units.
+#' Display names or units can include special characters using Unicode (e.g., `\U03C9` for omega).
+#' The results are grouped into sections of fixed effects, random effects, and error parameters,
+#' with a column Section identifying the parameter type.
 #' @details
 #' **Table Format:**
 #' The function supports two output formats controlled by `use_wide_format`:
@@ -280,10 +276,14 @@ tableRunHistory <- function(sycomoreProjectFile,
 #' headers to improve table readability.
 #'
 #' @param projectFile Character string specifying the path to a Monolix .mlxtran project file, or `NULL` (default) to use the currently loaded project.
-#' @param nameMapping Data frame with columns `Parameter`, `Label`, and optionally `Unit`
-#'   to specify the display name and units for each Monolix parameter name. If `NULL` (default),
-#'   parameter names are used as-is with "_pop" suffix removed. See [createNameMapping()] for
-#'   a helper function to create this mapping.
+#' @param custom_aliases Named vector or 2-column dataframe mapping parameter names to
+#'   custom display labels. Example: `c(ka_pop = "Absorption Rate", V_pop = "Volume")`.
+#'   Parameters not in the mapping keep their original names (with "_pop" suffix removed).
+#'   Supports special formatting syntax: `[[sub:text]]` for subscript, `[[sup:text]]` for
+#'   superscript, and `~text~` for italic. Example: `c(ka_pop = "K[[sub:a]]", Cl_pop = "CL~iv~")`.
+#' @param custom_units Named vector or 2-column dataframe mapping parameter names to
+#'   custom unit labels. Example: `c(ka_pop = "1/h", V_pop = "L", Cl_pop = "L/h")`.
+#'   Units are appended in parentheses: "Volume (L)".
 #' @param include_RSE Logical; if `TRUE` (default), includes relative standard error (RSE) columns in the table. Applies to both fixed effects and random effects in wide format.
 #' @param include_IIV Logical; if `TRUE` (default), includes inter-individual variability (IIV)
 #'   omega estimates in wide format tables. When `FALSE`, only fixed effect estimates are shown
@@ -334,7 +334,7 @@ tableRunHistory <- function(sycomoreProjectFile,
 #'   section headers when rendering the table.
 #'
 #' @export
-#' @seealso [createNameMapping()], [print_table_flex()]
+#' @seealso [print_table_flex()]
 #'
 #' @examples
 #' \dontrun{
@@ -349,13 +349,10 @@ tableRunHistory <- function(sycomoreProjectFile,
 #'   include_CV = TRUE)
 #' print_table_flex(pop_table_wide, color = c("RSE"), theme_fn = theme_booktabs)
 #'
-#' # With custom name mapping and confidence intervals
-#' name_map <- createNameMapping(
-#'   c("Cl_pop", "V_pop", "ka_pop"),
-#'   labels = c("Clearance", "Volume", "Absorption rate"),
-#'   units = c("L/h", "L", "1/h"))
+#' # With custom aliases and units
 #' pop_table <- tableParameterEstimates(
-#'   nameMapping = name_map,
+#'   custom_aliases = c(Cl_pop = "Clearance", V_pop = "Volume", ka_pop = "Absorption rate"),
+#'   custom_units = c(Cl_pop = "L/h", V_pop = "L", ka_pop = "1/h"),
 #'   include_CI = TRUE,
 #'   include_RSE = TRUE)
 #'
@@ -366,7 +363,8 @@ tableRunHistory <- function(sycomoreProjectFile,
 #' pop_table_simple <- tableParameterEstimates(prettyLabels = FALSE)
 #' }
 tableParameterEstimates <- function(projectFile        = NULL,
-																		nameMapping        = NULL,
+																		custom_aliases     = NULL,
+																		custom_units       = NULL,
 																		include_RSE        = TRUE,
 																		include_IIV        = TRUE,
 																		include_IOV        = TRUE,
@@ -380,22 +378,6 @@ tableParameterEstimates <- function(projectFile        = NULL,
 																		roundingMethod     = c("monolix", "signif", "none"),
 																		prettyLabels       = TRUE) {
 
-
-	# projectFile =prj10
-	# nameMapping = NULL
-	# include_RSE = TRUE
-	# include_IIV = TRUE
-	# include_IOV = TRUE
-	# include_CV =TRUE
-	# include_CI= TRUE
-	# include_FEcategory = FALSE
-	# include_bootstrap  = TRUE
-	# use_wide_format = TRUE
-	# std_err_method  = ""
-	# roundDigits     = 3
-	# roundingMethod  = "signif"
-	# prettyLabels = FALSE
-
 	roundingMethod <- match.arg(roundingMethod)
 
 	.checkProjectFile(projectFile, "monolix")
@@ -403,37 +385,6 @@ tableParameterEstimates <- function(projectFile        = NULL,
 
 	# Validate availability of analysis results
 	.validateProjectResultsAvailability(software = "monolix", resultType = "pop")
-
-	availableParam <- names(lixoftConnectors::getEstimatedPopulationParameters(coefficientsOfVariation = include_CV,
-																																						 withValuesByGroups      = include_FEcategory))
-
-	if (is.null(nameMapping)) {
-		nameMapping <- data.frame(Parameter = availableParam, Label = sub("_pop$", "", availableParam))
-	}
-	if (!is.data.frame(nameMapping)) {
-		stop("The argument 'nameMapping' must be a dataframe.", call. = FALSE)
-	}
-
-	if (!("Parameter" %in% names(nameMapping)) || !("Label" %in% names(nameMapping))) {
-		stop(paste0(
-			"The argument 'nameMapping' must contain the headers 'Parameter', 'Label' and optionally 'Unit', in this order. Found headers are: ",
-			paste(names(nameMapping), collapse = ", ")
-		), call. = FALSE)
-	}
-
-	# if (is.null(availableParam) | length(availableParam) < 1) {
-	#   stop("The Monolix project does not contain valid results.", call. = FALSE)
-	# }
-
-	param_renaming <- nameMapping$parameter
-	wrong_param_renaming <- param_renaming[!(param_renaming %in% availableParam)]
-	if (length(wrong_param_renaming) > 0) {
-		warning(paste0(
-			"The column 'parameter' of the argument 'nameMapping' contains the following parameters which do not appear in the project: ",
-			paste(wrong_param_renaming, collapse = ", "), ". They will be ignored."
-		), call. = FALSE)
-	}
-
 
 	pop <- data.frame(lixoftConnectors::getEstimatedPopulationParameters(coefficientsOfVariation = include_CV,
 																																			 withValuesByGroups      = include_FEcategory))
@@ -577,9 +528,9 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	}
 
 	# Get parameters WITHOUT fixed effects by category
-	params_no_FEcategory<- names(lixoftConnectors::getEstimatedPopulationParameters(coefficientsOfVariation = include_CV, withValuesByGroups = FALSE))
+	params_no_FEcategory <- names(lixoftConnectors::getEstimatedPopulationParameters(coefficientsOfVariation = include_CV, withValuesByGroups = FALSE))
 	# Set difference gives the category-specific FE parameters
-	FE_category_params <- setdiff(availableParam, params_no_FEcategory)
+	FE_category_params <- setdiff(pop$Parameter, params_no_FEcategory)
 
 
 	pop$Section <- ""
@@ -592,11 +543,6 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	pop$Section[pop$Parameter %in% c("a", "b", "c")]   <- "RES_ERR"
 	pop$Section[grep("plcat_",     pop$Parameter)]     <- "LAT"
 	pop$Section[pop$Parameter %in% FE_category_params] <- "FE_CAT"
-
-	# Restrict to just the requested parameters in specified order
-	pop <- pop[match(nameMapping$Parameter, pop$Parameter), ]
-
-	pop <- dplyr::right_join(nameMapping, pop, by = "Parameter")
 
 	# Add CV column in long format if requested (only when NOT using wide format)
 	# Must be done before RSE join to get correct column order: Estimate -> CV -> RSE -> CI
@@ -753,7 +699,7 @@ tableParameterEstimates <- function(projectFile        = NULL,
 		}
 		#---------------------------------------------------------------------------
 		# Reorder columns: group Monolix estimates first, then Bootstrap estimates
-		col_order <- c("Section", "Parameter", "Label")
+		col_order <- c("Section", "Parameter")
 
 		# SAEM FE columns: Estimate -> CI -> RSE
 		col_order <- c(col_order, "FE_Estimate")
@@ -826,8 +772,15 @@ tableParameterEstimates <- function(projectFile        = NULL,
 		}
 	}
 
-	pop <- dplyr::select(pop, -"Parameter") %>%
-		dplyr::rename(Parameter = "Label")
+	# Apply custom aliases and units directly to Parameter column
+	aliases_df <- .normalizeAliasMapping(custom_aliases, "aliases")
+	units_df   <- .normalizeAliasMapping(custom_units, "units")
+	if (!is.null(aliases_df) || !is.null(units_df)) {
+		pop <- .applyCustomAliasesUnits(pop,
+																		param_col  = "Parameter",
+																		aliases_df = aliases_df,
+																		units_df   = units_df)
+	}
 
 	# Set Section as factor with desired order
 	pop$Section <- factor(pop$Section,
@@ -840,7 +793,7 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	pop <- pop %>%
 		dplyr::arrange(.data$Section) %>%
 		dplyr::relocate("Section")
-	pop <- .round_num(pop, roundDigits, exclude = c("Section", "Parameter", "Label") , rounding_method = roundingMethod)
+	pop <- .round_num(pop, roundDigits, exclude = c("Section", "Parameter"), rounding_method = roundingMethod)
 
 	# Apply pretty labels if requested for nice column names display
 	if (prettyLabels) {
@@ -855,105 +808,4 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	attr(pop, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	return(pop)
 
-	# TODO move this to flextable function (and need to adapt row insertion to be based on new section column)
-
-	# iFirstRan <- suppressWarnings(min(which(
-	# 	grepl("omega_|corr_", pop$parameter) == TRUE
-	# )))
-	# iFirstRes <- suppressWarnings(min(which(
-	# 	grepl("omega_|corr_|_pop|beta_", pop$parameter) == FALSE
-	# )))
-	#
-	# if (iFirstRes != Inf) {
-	# 	pop <- pop %>% dplyr::add_row(label = "Residual error", .before = iFirstRes)
-	# }
-	# if (iFirstRan != Inf) {
-	# 	pop <- pop %>% dplyr::add_row(label = "Random effects", .before = iFirstRan)
-	# }
-	# pop <- pop %>% dplyr::add_row(label = "Fixed effects",	.before = 1)
-	#
-	# iFix <- which(pop$label == "Fixed effects")
-	# iRan <- which(pop$label == "Random effects")
-	# iRes <- which(pop$label == "Residual error")
-	#
-	# last_col <- if (include_CI) { "ULCI" }
-	# else if (include_RSE) { "rse" }
-	# else { "Estimate" }
-	#
-	# ft_est <- flextable(pop) %>%
-	# 	merge_h_range(i = iFix , j1 = "label", j2 = last_col) %>%
-	# 	hline(i = iFix, part = "body") %>%
-	# 	bold(part = "header") %>%
-	# 	bold(i = iFix, part = "body")
-	#
-	# if (length(iRes) > 0) {
-	# 	ft_est <- ft_est %>%
-	# 		merge_h_range(i = iRes) %>%
-	# 		hline(i = iRes - 1, part = "body") %>%
-	# 		hline(i = iRes, part = "body") %>%
-	# 		bold(i = iRes, part = "body")
-	# }
-	# if (length(iRan) > 0) {
-	# 	ft_est <- ft_est %>%
-	# 		merge_h_range(i = iRan, j1 = "label", j2 = last_col) %>%
-	# 		hline(i = iRan - 1, part = "body") %>%
-	# 		hline(i = iRan, part = "body") %>%
-	# 		bold(i = iRan, part = "body")
-	# }
-	#
-	# ft_est <- ft_est %>%
-	# 	set_header_labels(rse = "RSE(%)", label = "Parameter", parameter = "Monolix name", unit = "Unit") %>%
-	#
-	# return(ft_est)
-
-
-}
-
-#' Creates a mapping between parameter names used in the Monolix project and display names
-#'
-#' Creates a data.frame that can be used as the `nameMapping` argument to [tableParameterEstimates()] to specify mapping
-#' between the Monolix parameter name (`Parameter`), the parameter display name (`Label`) and the parameter units (`Unit`).
-#'
-#' The display names or units can include special characters by using the Unicode code (e.g., `\U03C9` for omega).
-#' The order of the rows also controls the order of the parameters in the table.
-#'
-#' @param ... a series a vectors with named arguments (`Parameter, Label, Unit`) or (`Parameter, Label`)
-#'
-#' @returns a data.frame that can be passed to [tableParameterEstimates()]
-#' @export
-#' @seealso [tableParameterEstimates()]
-#'
-#' @examples
-#'
-#' createNameMapping(
-#'     c(Parameter = "V_pop", Label = "V", Unit = "L"),
-#'     c(Parameter = "Cl_pop", Label = "Cl", Unit = "L/h"),
-#'     c(Parameter = "ka_pop", Label = "ka")
-#' )
-#'
-createNameMapping <- function(...) {
-    items <- list(...)
-
-    if (!all(sapply(items, is.vector)) | !all(sapply(items, is.character))) {
-        stop("Arguments must be all vectors of type character specifying (Parameter, Label, Unit)", call. = FALSE)
-    }
-    if (!all(sapply(items, length) %in% 2:3)) {
-        stop("Each vector must specify (Parameter, Label, Unit) or (Parameter, Label)", call. = FALSE)
-    }
-    if (any(sapply(sapply(items, names), is.null))) {
-        stop("Each vector must be named, e.g. c(Parameter = 'V_pop', Label = 'V', Unit = 'L')", call. = FALSE)
-    }
-
-    parameterMapping <- dplyr::bind_rows(lapply(items, as.data.frame.list))
-    parameterMapping[is.na(parameterMapping)] <- ""
-
-    if (!all(names(parameterMapping) %in% c("Parameter", "Label", "Unit"))) {
-        stop("Each vector must specify (Parameter, Label, Unit) or (Parameter, Label)", call. = FALSE)
-    }
-
-    if (!all(c("Parameter", "Label") %in% names(parameterMapping))) {
-        stop("Each vector must specify at minimum (Parameter, Label)", call. = FALSE)
-    }
-
-    return(parameterMapping)
 }
