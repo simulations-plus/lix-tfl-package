@@ -591,9 +591,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 		include_id <- FALSE
 	}
 
-	# ==========================================================================
-	# NORMALIZE CUSTOM ALIASES/UNITS (NEW)
-
+	# Normalize custom alias/unit mappings
 	aliases_df <- .normalizeAliasMapping(custom_aliases, "aliases")
 	units_df   <- .normalizeAliasMapping(custom_units, "units")
 
@@ -733,7 +731,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 
 		summary_stats <- .combinedStats(summary_stats)
 
-		# MODIFIED: Pass custom dataframes
+		# apply aliases and units
 		if (isTRUE(units) || isTRUE(aliases)) {
 			summary_stats <- .addUnitsAliases(
 				summary_stats,
@@ -889,7 +887,7 @@ tableNCARatios <- function(projectFile      = NULL,
 	stratify_columns <- .validateStratificationArgs(splitCovariates, stratify_columns)
 	covariate_labels <- .validateCovariateLabels(splitCovariates, covariate_labels)
 
-	# Normalize custom alias mapping (no units for ratios - they are dimensionless)
+	# Normalize custom alias mapping
 	aliases_df <- .normalizeAliasMapping(custom_aliases, "aliases")
 
 	# Validate set parameters
@@ -1234,10 +1232,6 @@ tableBEResults <- function(projectFile    = NULL,
 
 	roundMethod <- match.arg(roundMethod)
 
-	# Normalize custom alias/unit mappings
-	aliases_df <- .normalizeAliasMapping(custom_aliases, "aliases")
-	units_df   <- .normalizeAliasMapping(custom_units, "units")
-
 	# Ensure the correct project is loaded
 	.checkProjectFile(projectFile, "pkanalix")
 	.ensureProjectLoaded(projectFile)
@@ -1246,7 +1240,11 @@ tableBEResults <- function(projectFile    = NULL,
 	.validateProjectResultsAvailability(software = "pkanalix", resultType = "be")
 
 	# Validate set parameters
-	.validateNCAParametersSelection(BEParams, ratio = FALSE, be = TRUE)  # Early validation
+	.validateNCAParametersSelection(BEParams, ratio = FALSE, be = TRUE)
+
+	# Normalize custom alias/unit mappings
+	aliases_df <- .normalizeAliasMapping(custom_aliases, "aliases")
+	units_df   <- .normalizeAliasMapping(custom_units, "units")
 	#-----------------------------------------------------------------------------
 	# GET BE RESULTS AND SETTINGS
 	be_results  <- lixoftConnectors::getBioequivalenceResults()
@@ -1704,14 +1702,16 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #' )
 #' }
 listingNCAParameters <- function(projectFile      = NULL,
-																 splitCovariates       = NULL,
+																 splitCovariates  = NULL,
 																 NCAparams        = NULL,
 																 covariate_filter = NULL,
 																 id_filter        = NULL,
 																 roundDigits      = 3,
 																 roundMethod      = c("monolix", "signif", "none"),
 																 units            = TRUE,
-																 aliases          = TRUE){
+																 aliases          = TRUE,
+																 custom_units     = NULL,
+																 custom_aliases   = NULL){
 
 	roundMethod <- match.arg(roundMethod)
 	# Ensure the correct project is loaded
@@ -1728,6 +1728,11 @@ listingNCAParameters <- function(projectFile      = NULL,
 	.validateCovariateSelection(splitCovariates, ratio = FALSE)
 	# Validate set parameters
 	.validateNCAParametersSelection(NCAparams, ratio = FALSE)
+
+	# Normalize custom alias/unit mappings
+	aliases_df <- .normalizeAliasMapping(custom_aliases, "aliases")
+	units_df   <- .normalizeAliasMapping(custom_units, "units")
+	#-----------------------------------------------------------------------------
 
 	indivNCA <- lixoftConnectors::getNCAIndividualParameters()$parameter
 
@@ -1761,7 +1766,14 @@ listingNCAParameters <- function(projectFile      = NULL,
 	temp_df <- data.frame(parameter = param_cols, stringsAsFactors = FALSE)
 
 	# Apply units/aliases formatting
-	temp_df_formatted <- .addUnitsAliases(temp_df, add_units = units, add_aliases = aliases)
+	if (isTRUE(units) || isTRUE(aliases)) {
+		temp_df_formatted <- .addUnitsAliases(
+			temp_df,
+			add_units   = units,
+			add_aliases = aliases,
+			units_df    = units_df,
+			aliases_df  = aliases_df)
+	}
 
 	# Create mapping: original name -> formatted name
 	name_mapping <- setNames(temp_df_formatted$parameter, param_cols)
@@ -1823,13 +1835,14 @@ listingNCAParameters <- function(projectFile      = NULL,
 #' )
 #' }
 listingNCARatios <- function(projectFile      = NULL,
-														 splitCovariates       = NULL,
+														 splitCovariates  = NULL,
 														 ratioParams      = NULL,
 														 covariate_filter = NULL,
 														 id_filter        = NULL,
 														 roundDigits      = 3,
 														 roundMethod      = c("monolix", "signif", "none"),
-														 aliases          = TRUE){
+														 aliases          = TRUE,
+														 custom_aliases   = NULL){
 
 	roundMethod <- match.arg(roundMethod)
 	# Ensure the correct project is loaded
@@ -1846,6 +1859,9 @@ listingNCARatios <- function(projectFile      = NULL,
 	.validateCovariateSelection(splitCovariates, ratio = TRUE)
 	# Validate set parameters
 	.validateNCAParametersSelection(ratioParams, ratio = TRUE)
+
+	# Normalize custom alias mapping
+	aliases_df <- .normalizeAliasMapping(custom_aliases, "aliases")
 
 	indivRatios <- lixoftConnectors::getNCAIndividualRatios()
 
@@ -1882,7 +1898,12 @@ listingNCARatios <- function(projectFile      = NULL,
 
 	# line 111 to 120 usefull in case aliases would be available for ratio parameters
 	# Apply units/aliases formatting
-	temp_df_formatted <- .addUnitsAliases(temp_df, add_units = FALSE, add_aliases = aliases)
+	temp_df_formatted <- .addUnitsAliases(
+		temp_df,
+		add_units   = FALSE,
+		add_aliases = aliases,
+		units_df    = NULL,
+		aliases_df  = aliases_df)
 
 	# Create mapping: original name -> formatted name
 	name_mapping <- setNames(temp_df_formatted$parameter, param_cols)
