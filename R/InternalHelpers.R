@@ -565,3 +565,89 @@ utils::globalVariables(c("."))
 
 	return(df)
 }
+
+
+################################################################################
+#' .applyCustomAliasesUnits
+#'
+#' Software-independent helper to apply custom aliases and/or units to a parameter
+#' column in a dataframe. This function does NOT fetch aliases/units from any
+#' project - it only applies the custom mappings provided.
+#'
+#' @param df A dataframe containing a parameter column.
+#' @param param_col Character string specifying the name of the parameter column.
+#'   Default is "parameter".
+#' @param aliases_df Optional dataframe with columns "parameter" and "aliases".
+#'   If provided, parameter values are replaced with their aliases.
+#' @param units_df Optional dataframe with columns "parameter" and "units".
+#'   If provided, units are appended to parameter names in parentheses.
+#' @param orig_param_col Optional character string specifying a column containing
+#'   original parameter names for unit lookup (useful when aliases have already
+#'   been applied). If NULL, uses param_col for lookup.
+#'
+#' @return A dataframe with the parameter column updated with aliases and/or units.
+#'
+#' @details
+#' The function applies transformations in order:
+#' 1. Aliases are applied first (parameter values are replaced)
+#' 2. Units are appended second (in parentheses after the parameter name)
+#'
+#' If both aliases and units are provided, the final format is: "alias (unit)"
+#'
+#' @noRd
+.applyCustomAliasesUnits <- function(df,
+																		 param_col      = "parameter",
+																		 aliases_df     = NULL,
+																		 units_df       = NULL,
+																		 orig_param_col = NULL) {
+
+	# Nothing to do if both are NULL
+	if (is.null(aliases_df) && is.null(units_df)) {
+		return(df)
+	}
+
+	# Determine lookup column for units (before aliases change param_col values)
+	if (is.null(orig_param_col)) {
+		# Store original parameter values for unit lookup
+		orig_params <- df[[param_col]]
+	} else {
+		orig_params <- df[[orig_param_col]]
+	}
+
+	# Apply aliases (replace parameter values)
+	if (!is.null(aliases_df)) {
+		alias_map <- setNames(aliases_df$aliases, aliases_df$parameter)
+		# Apply mapping, keeping original value if no alias defined
+		df[[param_col]] <- sapply(df[[param_col]], function(p) {
+			if (p %in% names(alias_map) && !is.na(alias_map[p])) {
+				alias_map[p]
+			} else {
+				p
+			}
+		}, USE.NAMES = FALSE)
+	}
+
+	# Apply units (append to parameter names)
+	if (!is.null(units_df)) {
+		units_map <- setNames(units_df$units, units_df$parameter)
+		# Append units using original parameter names for lookup
+		df[[param_col]] <- sapply(seq_len(nrow(df)), function(i) {
+			orig_p <- orig_params[i]
+			current_p <- df[[param_col]][i]
+			unit <- units_map[orig_p]
+
+			if (!is.na(unit) && nchar(trimws(unit)) > 0) {
+				paste0(current_p, " (", unit, ")")
+			} else {
+				current_p
+			}
+		}, USE.NAMES = FALSE)
+	}
+
+	# Remove orig_param_col if it was provided and exists
+	if (!is.null(orig_param_col) && orig_param_col %in% names(df) && orig_param_col != param_col) {
+		df[[orig_param_col]] <- NULL
+	}
+
+	return(df)
+}
