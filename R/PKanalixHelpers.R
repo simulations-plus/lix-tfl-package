@@ -1192,6 +1192,14 @@ tableNCARatios <- function(projectFile      = NULL,
 #' @param aliases Logical; if `TRUE` (default), uses parameter aliases instead of
 #'   raw parameter names (e.g., "AUC[[sub:0-tlast]]" instead of "AUClast").
 #'
+#' @param custom_units Named vector or 2-column dataframe mapping parameter names
+#'   to custom unit labels. Example: `c(Cmax = "ng/mL", AUClast = "h*ng/mL")`.
+#'   If provided, these override units from the PKanalix project.
+#'
+#' @param custom_aliases Named vector or 2-column dataframe mapping parameter names
+#'   to custom alias labels. Example: `c(Cmax = "C[[sub:max]]", AUClast = "AUC[[sub:0-tlast]]")`.
+#'   If provided, these override aliases from the PKanalix project.
+#'
 #' @param BELimits Logical; if `TRUE`, includes a column showing the BE acceptance
 #'   criteria interval (e.g., "(80;125)"). Default is `FALSE`. Limits are retrieved
 #'   from the project's BE settings.
@@ -1212,17 +1220,23 @@ tableNCARatios <- function(projectFile      = NULL,
 #' parameters are automatically identified and labeled with "ln()" prefix.
 #'
 #' @export
-tableBEResults <- function(projectFile  = NULL,
-													 BEParams     = NULL,
-													 roundDigits  = 3,
-													 roundMethod  = c("monolix", "signif", "none"),
-													 units        = TRUE,
-													 aliases      = TRUE,
-													 BELimits     = FALSE,
-													 BEConclusion = TRUE,
-													 prettyLabels = TRUE){
+tableBEResults <- function(projectFile    = NULL,
+													 BEParams       = NULL,
+													 roundDigits    = 3,
+													 roundMethod    = c("monolix", "signif", "none"),
+													 units          = TRUE,
+													 aliases        = TRUE,
+													 custom_units   = NULL,
+													 custom_aliases = NULL,
+													 BELimits       = FALSE,
+													 BEConclusion   = TRUE,
+													 prettyLabels   = TRUE){
 
 	roundMethod <- match.arg(roundMethod)
+
+	# Normalize custom alias/unit mappings
+	aliases_df <- .normalizeAliasMapping(custom_aliases, "aliases")
+	units_df   <- .normalizeAliasMapping(custom_units, "units")
 
 	# Ensure the correct project is loaded
 	.checkProjectFile(projectFile, "pkanalix")
@@ -1274,14 +1288,19 @@ tableBEResults <- function(projectFile  = NULL,
 	}
 
 	# Apply aliases only (no units)
-	result <- .addUnitsAliases(result, add_units = FALSE, add_aliases = aliases)
+	result <- .addUnitsAliases(
+		result,
+		add_units   = FALSE,
+		add_aliases = aliases,
+		units_df    = NULL,
+		aliases_df  = aliases_df)
 
 	# Apply ln() wrapper
 	result <- .applyLogTransformLabel(result, log_transform_map)
 
 	# Add units and remove Original_Parameter
 	if (units) {
-		result <- .addUnitsOnly(result)
+		result <- .addUnitsOnly(result, units_df = units_df)
 	} else {
 		result$Original_Parameter <- NULL
 	}

@@ -2592,24 +2592,34 @@
 #' @seealso \code{\link{.addUnitsAliases}}, \code{\link{.applyLogTransformLabel}}
 #'
 #' @keywords internal
-.addUnitsOnly <- function(df, orig_col = "Original_Parameter", param_col = "parameter") {
-	# Retrieve all parameters from project
-	allparams <- lixoftConnectors::getNCASettings()$computedncaparameters
+.addUnitsOnly <- function(df, orig_col = "Original_Parameter", param_col = "parameter", units_df = NULL) {
 
-	NCAParamSummary_info <- lixoftConnectors::getNCAParameterStatistics(parameters = allparams)$information %>%
-		tibble::rownames_to_column(var = "parameter")
+	# ---------------------------------------------------------------------------
+	# UNITS: Use custom data or fetch from PKanalix
+	# ---------------------------------------------------------------------------
+	if (!is.null(units_df)) {
+		# Use custom units (already normalized to parameter/units columns)
+		# Apply .formatUnits() to ensure consistent formatting
+		units_df <- units_df %>%
+			dplyr::mutate(units = sapply(units, .formatUnits))
+	} else {
+		# Fetch from PKanalix project (existing behavior)
+		# Check if units are enabled in project
+		if (!isTRUE(lixoftConnectors::getDataSettings()$enableunits)) {
+			warning("Units were requested but are not enabled in the current project. Skipping unit retrieval.")
+			df[[orig_col]] <- NULL
+			return(df)
+		}
 
-	# Check if units are enabled in project
-	if (!isTRUE(lixoftConnectors::getDataSettings()$enableunits)) {
-		warning("Units were requested but are not enabled in the current project. Skipping unit retrieval.")
-		df[[orig_col]] <- NULL
-		return(df)
+		allparams <- lixoftConnectors::getNCASettings()$computedncaparameters
+
+		NCAParamSummary_info <- lixoftConnectors::getNCAParameterStatistics(parameters = allparams)$information %>%
+			tibble::rownames_to_column(var = "parameter")
+
+		units_df <- NCAParamSummary_info %>%
+			dplyr::select(parameter, units) %>%
+			dplyr::mutate(units = sapply(units, .formatUnits))
 	}
-
-	# Extract and format units
-	units_df <- NCAParamSummary_info %>%
-		dplyr::select(parameter, units) %>%
-		dplyr::mutate(units = sapply(units, .formatUnits))
 
 	# Create lookup map
 	units_map <- setNames(units_df$units, units_df$parameter)
