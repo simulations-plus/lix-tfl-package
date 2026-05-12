@@ -507,7 +507,9 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   instead of internal parameter codes.
 #'
 #' @param custom_aliases Named vector or 2-column dataframe mapping parameter names
-#'   to custom alias labels. Example: c(Cmax = "`C[[sub:max]]`", AUClast = "`AUC[[sub:0-tlast]]`")
+#'   to custom alias labels. Example: `c(Cmax = "C[[sub:max]]", AUClast = "AUC[[sub:0-tlast]]")`.
+#'   Supports special formatting syntax: `[[sub:text]]` for subscript, `[[sup:text]]` for
+#'   superscript, and `~text~` for italic.
 #'
 #' @param custom_units Named vector or 2-column dataframe mapping parameter names
 #'   to custom unit labels. Example: c(Cmax = "ng/mL", AUClast = "h*ng/mL")
@@ -1197,6 +1199,8 @@ tableNCARatios <- function(projectFile      = NULL,
 #' @param custom_aliases Named vector or 2-column dataframe mapping parameter names
 #'   to custom alias labels. Example: `c(Cmax = "C[[sub:max]]", AUClast = "AUC[[sub:0-tlast]]")`.
 #'   If provided, these override aliases from the PKanalix project.
+#'   Supports special formatting syntax: `[[sub:text]]` for subscript, `[[sup:text]]` for
+#'   superscript, and `~text~` for italic.
 #'
 #' @param BELimits Logical; if `TRUE`, includes a column showing the BE acceptance
 #'   criteria interval (e.g., "(80;125)"). Default is `FALSE`. Limits are retrieved
@@ -1896,7 +1900,6 @@ listingNCARatios <- function(projectFile      = NULL,
 	# Create temporary data frame with parameter names
 	temp_df <- data.frame(parameter = param_cols, stringsAsFactors = FALSE)
 
-	# line 111 to 120 usefull in case aliases would be available for ratio parameters
 	# Apply units/aliases formatting
 	temp_df_formatted <- .addUnitsAliases(
 		temp_df,
