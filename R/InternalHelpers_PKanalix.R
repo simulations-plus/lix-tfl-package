@@ -50,6 +50,57 @@
 		dplyr::mutate(!!"aliases" := vapply(.data[["aliases"]], convert_sub_and_sup, character(1)))
 }
 
+
+##################################################################################
+#  .normalizeAliasMapping()
+#' Normalize alias/unit mapping input to a standardized dataframe format
+#'
+#' Accepts either a named vector or a 2-column dataframe and converts it to
+#' a standardized dataframe with columns "parameter" and the specified value column.
+#'
+#' @param mapping A named vector (e.g., c(Cmax = "C~max~")) or a 2-column dataframe
+#'   where the first column contains parameter names and the second contains values.
+#' @param value_col Character string specifying the name of the value column in the
+#'   output dataframe. Default is "aliases".
+#'
+#' @return A dataframe with columns "parameter" and \code{value_col}, or NULL if
+#'   input is NULL.
+#'
+.normalizeAliasMapping <- function(mapping, value_col = "aliases") {
+	# Return NULL if input is NULL
+	if (is.null(mapping)) {
+		return(NULL)
+	}
+
+	# Case 1: Named vector -> convert to dataframe
+	if (is.vector(mapping) && !is.data.frame(mapping) && !is.null(names(mapping))) {
+		result <- data.frame(
+			parameter = names(mapping),
+			value = unname(mapping),
+			stringsAsFactors = FALSE
+		)
+		names(result) <- c("parameter", value_col)
+		return(result)
+	}
+
+	# Case 2: Dataframe -> rename columns
+	if (is.data.frame(mapping)) {
+		if (ncol(mapping) < 2) {
+			stop("custom_aliases/custom_units dataframe must have at least 2 columns.", call. = FALSE)
+		}
+		# Take first two columns and rename
+		result <- mapping[, 1:2, drop = FALSE]
+		names(result) <- c("parameter", value_col)
+		# Ensure character type
+		result$parameter <- as.character(result$parameter)
+		result[[value_col]] <- as.character(result[[value_col]])
+		return(result)
+	}
+
+	# Invalid input
+	stop("custom_aliases/custom_units must be a named vector or a 2-column dataframe.", call. = FALSE)
+}
+
 ###############################################################################
 #' .formatUnits
 #'
@@ -115,106 +166,113 @@
 #' Enhances parameter data frames by adding units and aliases to create formatted
 #' display names. Combines parameter names with their corresponding units and aliases
 #' to generate publication-ready parameter labels with proper fallback handling.
+#' @param df A data frame containing a 'parameter' column.
+#' @param add_units Logical; if TRUE, adds units to display names.
+#' @param add_aliases Logical; if TRUE, adds aliases to display names.
+#' @param units_df Optional dataframe with columns "parameter" and "units".
+#'   If provided, uses these instead of fetching from PKanalix project.
+#' @param aliases_df Optional dataframe with columns "parameter" and "aliases".
+#'   If provided, uses these instead of fetching from PKanalix project.
 #'
-#' @param df_param A data frame containing parameter information with a 'parameter' column.
-#' @param df_units A data frame containing parameter units with 'parameter' and 'units' columns.
-#'                 If NULL, no units are added.
-#' @param df_aliases A data frame containing parameter aliases with 'parameter' and 'aliases' columns.
-#'                   If NULL, no aliases are added.
-#'
-#' @return A data frame with formatted display names that combine aliases and units,
-#'         maintaining the original parameter order.
-#'
-#' @examples
-#' # Example usage:
-#' # df_param <- data.frame(parameter = c("AUC", "Cmax"))
-#' # df_units <- data.frame(parameter = c("AUC", "Cmax"), units = c("ng*h/mL", "ng/mL"))
-#' # df_aliases <- data.frame(parameter = c("AUC", "Cmax"), aliases = c("AUC₀₋ₜ", "Cₘₐₓ"))
-#' # AddUnitsAliases(df_param, df_units, df_aliases)
-#'
+#' @return A data frame with the 'parameter' column replaced by formatted display names.
 #' #
-.addUnitsAliases <- function(df, add_units = TRUE, add_aliases = TRUE) {
-	# Retrieve all parameters from project
-	allparams <- lixoftConnectors::getNCASettings()$computedncaparameters
+.addUnitsAliases <- function(df, add_units = TRUE, add_aliases = TRUE, units_df = NULL, aliases_df = NULL) {
 
-	NCAParamSummary_info <- lixoftConnectors::getNCAParameterStatistics(parameters = allparams)$information %>%
-		tibble::rownames_to_column(var = "parameter")
-
-
-	# Check and retrieve units information (if requested)
+	# ---------------------------------------------------------------------------
+	# UNITS: Use custom data or fetch from PKanalix
+	# ---------------------------------------------------------------------------
 	if (isTRUE(add_units)) {
-		# extract units if active in project
-		if (isTRUE(lixoftConnectors::getDataSettings()$enableunits)) {
-			units_df <- NCAParamSummary_info %>%
-				dplyr::select(parameter, units) %>%
+		if (!is.null(units_df)) {
+			# Use custom units (already normalized to parameter/units columns)
+			# Apply .formatUnits() to ensure consistent formatting
+			units_df <- units_df %>%
 				dplyr::mutate(units = sapply(units, .formatUnits))
 		} else {
-			# warning if units are requested but not enabled
-			warning("Units were requested (units=TRUE) but are not enabled in the current project. Skipping unit retrieval.")
-			units_df <- NULL
+			# Fetch from PKanalix project (existing behavior)
+			allparams <- lixoftConnectors::getNCASettings()$computedncaparameters
+
+			NCAParamSummary_info <- lixoftConnectors::getNCAParameterStatistics(parameters = allparams)$information %>%
+				tibble::rownames_to_column(var = "parameter")
+
+			if (isTRUE(lixoftConnectors::getDataSettings()$enableunits)) {
+				units_df <- NCAParamSummary_info %>%
+					dplyr::select(parameter, units) %>%
+					dplyr::mutate(units = sapply(units, .formatUnits))
+			} else {
+				warning("Units were requested (units=TRUE) but are not enabled in the current project. Skipping unit retrieval.")
+				units_df <- NULL
+			}
 		}
 	} else {
 		units_df <- NULL
 	}
 
-	# Check and retrieve aliases information (if requested)
-	# ----------------------------------------------------------
+	# ---------------------------------------------------------------------------
+	# ALIASES: Use custom data or fetch from PKanalix
+	# ---------------------------------------------------------------------------
 	if (isTRUE(add_aliases)) {
-		if ("aliases" %in% names(NCAParamSummary_info)) {
-			aliases_df <- NCAParamSummary_info %>%
-				dplyr::select(parameter, aliases) %>%
-				.convertHtmlAliasesForFlextable()
+		if (!is.null(aliases_df)) {
+			# Use custom aliases (already normalized to parameter/aliases columns)
+			# Apply HTML conversion so users can use <sub>text</sub> syntax
+			aliases_df <- .convertHtmlAliasesForFlextable(aliases_df)
 		} else {
-			warning("Aliases were requested (aliases=TRUE) but are not available in the current project. Skipping alias retrieval.")
-			aliases_df <- NULL
+			# Fetch from PKanalix project (existing behavior)
+			if (!exists("NCAParamSummary_info")) {
+				allparams <- lixoftConnectors::getNCASettings()$computedncaparameters
+				NCAParamSummary_info <- lixoftConnectors::getNCAParameterStatistics(parameters = allparams)$information %>%
+					tibble::rownames_to_column(var = "parameter")
+			}
+
+			if ("aliases" %in% names(NCAParamSummary_info)) {
+				aliases_df <- NCAParamSummary_info %>%
+					dplyr::select(parameter, aliases) %>%
+					.convertHtmlAliasesForFlextable()
+			} else {
+				warning("Aliases were requested (aliases=TRUE) but are not available in the current project. Skipping alias retrieval.")
+				aliases_df <- NULL
+			}
 		}
 	} else {
 		aliases_df <- NULL
 	}
 
-	# Save original order for later restoration
+	# ---------------------------------------------------------------------------
+	# MERGE AND BUILD DISPLAY NAMES (unchanged from original)
+	# ---------------------------------------------------------------------------
+
 	original_order <- unique(df$parameter)
 
-	# Merge units if provided
 	if (!is.null(units_df)) {
 		units_df <- units_df %>% dplyr::mutate(
 			parameter = as.character(parameter),
-			units = as.character(units)
-		)
+			units     = as.character(units))
 		df <- dplyr::left_join(df, units_df, by = "parameter")
 	} else {
 		df$units <- NA_character_
 	}
 
-	# Merge aliases if provided
 	if (!is.null(aliases_df)) {
 		aliases_df <- aliases_df %>% dplyr::mutate(
 			parameter = as.character(parameter),
-			aliases = as.character(aliases)
-		)
+			aliases   = as.character(aliases))
 		df <- dplyr::left_join(df, aliases_df, by = "parameter")
 	} else {
 		df$aliases <- NA_character_
 	}
 
-	# Coerce all relevant columns to character to prevent paste0() errors
 	df <- df %>%
 		dplyr::mutate(
 			parameter = as.character(parameter),
-			aliases = as.character(aliases),
-			units = as.character(units)
-		)
+			aliases   = as.character(aliases),
+			units     = as.character(units))
 
-	# Build display name with proper fallback handling
 	df <- df %>%
 		dplyr::mutate(display_name = dplyr::case_when(
 			!is.na(aliases) & !is.na(units) & units != "" ~ paste0(aliases, "\n(", units, ")"),
 			!is.na(aliases) ~ aliases,
 			is.na(aliases) & !is.na(units) & units != "" ~ paste0(parameter, "\n(", units, ")"),
-			TRUE ~ parameter
-		))
+			TRUE ~ parameter))
 
-	# Restore original order and finalize structure
 	df <- df %>%
 		dplyr::mutate(parameter = factor(parameter, levels = original_order)) %>%
 		dplyr::arrange(parameter) %>%
@@ -1326,15 +1384,18 @@
 #' @noRd
 ################################################################################
 .addIndividuals <- function(summary_stats,
-														splitCovariates     = NULL,
+														splitCovariates= NULL,
 														resultType     = c("ncaParameters", "ncaRatio", "ncaConcentration"),
 														params         = NULL,
 														roundDigits    = 3,
 														roundMethod    = "monolix",
 														units          = TRUE,
+														units_df       = NULL,
 														aliases        = TRUE,
+														aliases_df     = NULL,
 														useNominalTime = TRUE,
-														indiv_data     = NULL) {
+														indiv_data     = NULL
+														) {
 
 	resultType <- match.arg(resultType)
 
@@ -1377,10 +1438,25 @@
 		# Apply units/aliases FIRST to create mapping (before any pivoting)
 		# This ensures parameter names match param_order from summary_stats
 		# ==========================================================================
-		if (resultType == "ncaParameters" && (units || aliases)) {
+		# For ncaParameters: use units/aliases flags
+		# For ncaRatio: use custom aliases_df only (ratios are dimensionless, no units)
+		should_apply_aliases <- (resultType == "ncaParameters" && (units || aliases)) ||
+		                        (resultType == "ncaRatio" && !is.null(aliases_df))
+
+		if (should_apply_aliases) {
 			temp_df <- data.frame(parameter = cols_to_keep, stringsAsFactors = FALSE)
-			temp_df_formatted <- .addUnitsAliases(temp_df, add_units = units, add_aliases = aliases)
+			temp_df_formatted <- .addUnitsAliases(
+				temp_df,
+				add_units   = if (resultType == "ncaRatio") FALSE else units,
+				add_aliases = if (resultType == "ncaRatio") TRUE else aliases,
+				units_df    = units_df,
+				aliases_df  = aliases_df)
 			name_mapping <- setNames(temp_df_formatted$parameter, cols_to_keep)
+
+			# For ncaRatio: update param_order to use aliased names (summary_stats has original names)
+			if (resultType == "ncaRatio") {
+				param_order <- unname(name_mapping)
+			}
 		} else {
 			name_mapping <- setNames(cols_to_keep, cols_to_keep)  # identity mapping
 		}
