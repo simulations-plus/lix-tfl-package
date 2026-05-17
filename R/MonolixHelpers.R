@@ -489,10 +489,10 @@ tableParameterEstimates <- function(projectFile        = NULL,
 
 		# Calculate percentiles based on interval level
 		boot_lower_p     <- (100 - boot_interval_level) / 2
-		boot_upper_p     <-  100 - lower_p
-		boot_lower_col   <- paste0("P", lower_p)
-		boot_upper_col   <- paste0("P", upper_p)
-		boot_ci_col_name <- paste0("CI_", lower_p, "_", upper_p)
+		boot_upper_p     <-  100 - boot_lower_p
+		boot_lower_col   <- paste0("P", boot_lower_p)
+		boot_upper_col   <- paste0("P", boot_upper_p)
+		boot_ci_col_name <- paste0("Boot_CI_", boot_lower_p, "_", boot_upper_p)
 
 		bootstrap <- lixoftConnectors::getBootstrapResults()$populationSummary
 		if (is.null(bootstrap)) {
