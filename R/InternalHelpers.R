@@ -652,6 +652,33 @@ utils::globalVariables(c("."))
 	return(df)
 }
 
+#' Get IOV variability parameter names from the currently loaded Monolix project
+#'
+#' Returns the names of inter-occasion variability parameters (gamma_<param>)
+#' for parameters with variability enabled at any non-id level in the individual
+#' parameter model. Returns an empty character vector for projects without IOV.
+#'
+#' Querying the model directly avoids misclassifying user-defined parameters
+#' whose names happen to start with "gamma_" (e.g. a gamma_pop shape parameter)
+#' as IOV variability parameters.
+#'
+#' @noRd
+.getIOVParameters <- function() {
+	ipm <- try(lixoftConnectors::getIndividualParameterModel(), silent = TRUE)
+	if (inherits(ipm, "try-error") || is.null(ipm$variability)) {
+		return(character(0))
+	}
+
+	iov_levels <- setdiff(names(ipm$variability), "id")
+	iov_bases <- unique(unlist(lapply(iov_levels, function(lvl) {
+		v <- ipm$variability[[lvl]]
+		names(v)[is.logical(v) & v]
+	})))
+
+	if (length(iov_bases) == 0) return(character(0))
+	paste0("gamma_", iov_bases)
+}
+
 #' Get residual error parameter names from the currently loaded Monolix project
 #'
 #' Returns the names of all residual error parameters across continuous outputs,

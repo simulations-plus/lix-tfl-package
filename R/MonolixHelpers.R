@@ -533,12 +533,17 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	FE_category_params <- setdiff(pop$Parameter, params_no_FEcategory)
 
 
+	# IOV variability parameters are discovered dynamically from the individual
+	# parameter model so that user-defined parameters whose names happen to start
+	# with "gamma_" (e.g. a gamma_pop shape parameter) are not misclassified.
+	iov_params <- .getIOVParameters()
+
 	pop$Section <- ""
 	pop$Section[grep("_pop|beta_", pop$Parameter)]     <- "FE"
 	pop$Section[grep("omega_",     pop$Parameter)]     <- "IIV"
 	pop$Section[grep("^corr_",     pop$Parameter)]     <- "CORR"
 	pop$Section[grep("^corr1_",    pop$Parameter)]     <- "CORR_IIV"
-	pop$Section[grep("gamma_",     pop$Parameter)]     <- "IOV"
+	pop$Section[pop$Parameter %in% iov_params]         <- "IOV"
 	pop$Section[grep("^corr2_",    pop$Parameter)]     <- "CORR_IOV"
 	# Residual error parameters are discovered dynamically from the continuous
 	# observation model so that multi-output projects (a1, b1, a2, b2, ...) and
@@ -648,7 +653,9 @@ tableParameterEstimates <- function(projectFile        = NULL,
 		}
 
 		# Add IOV columns if requested (default TRUE)
-		gamma_idx    <- grep("gamma_", pop$Parameter)
+		# Match against iov_params (and their _CV variants) rather than grepping
+		# "gamma_", to avoid catching user-defined parameters with that prefix.
+		gamma_idx    <- which(pop$Parameter %in% c(iov_params, paste0(iov_params, "_CV")))
 		gamma_cv_idx <- NULL
 
 		if (include_IOV && length(gamma_idx) > 0) {
