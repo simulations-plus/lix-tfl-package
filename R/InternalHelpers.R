@@ -651,3 +651,38 @@ utils::globalVariables(c("."))
 
 	return(df)
 }
+
+#' Get residual error parameter names from the currently loaded Monolix project
+#'
+#' Returns the names of all residual error parameters across continuous outputs,
+#' including autocorrelation parameters (r, r1, r2, ...) for outputs with
+#' autocorrelation enabled. Returns an empty character vector for projects with
+#' no continuous observations (e.g. pure RTTE models).
+#'
+#' @noRd
+.getResidualErrorParameters <- function() {
+	obs_model <- try(lixoftConnectors::getContinuousObservationModel(), silent = TRUE)
+	if (inherits(obs_model, "try-error") || is.null(obs_model$parameters)) {
+		return(character(0))
+	}
+
+	res_err_params <- unlist(obs_model$parameters, use.names = FALSE)
+
+	# Add the autocorrelation parameter r<suffix> for each output where
+	# autocorrelation is enabled. The suffix matches that of the output's existing
+	# residual error parameters (e.g. "a1" -> "r1", "a" -> "r").
+	if (!is.null(obs_model$autocorrelation)) {
+		autocorr_outputs <- names(obs_model$autocorrelation)[
+			vapply(obs_model$autocorrelation, isTRUE, logical(1))
+		]
+		for (output_name in autocorr_outputs) {
+			output_params <- obs_model$parameters[[output_name]]
+			if (length(output_params) > 0) {
+				suffix <- sub("^[a-zA-Z]+", "", output_params[[1]])
+				res_err_params <- c(res_err_params, paste0("r", suffix))
+			}
+		}
+	}
+
+	res_err_params
+}

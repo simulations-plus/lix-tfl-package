@@ -540,7 +540,11 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	pop$Section[grep("^corr1_",    pop$Parameter)]     <- "CORR_IIV"
 	pop$Section[grep("gamma_",     pop$Parameter)]     <- "IOV"
 	pop$Section[grep("^corr2_",    pop$Parameter)]     <- "CORR_IOV"
-	pop$Section[pop$Parameter %in% c("a", "b", "c")]   <- "RES_ERR"
+	# Residual error parameters are discovered dynamically from the continuous
+	# observation model so that multi-output projects (a1, b1, a2, b2, ...) and
+	# autocorrelated error models (extra r parameter) are classified correctly.
+	res_err_params <- .getResidualErrorParameters()
+	pop$Section[pop$Parameter %in% res_err_params]     <- "RES_ERR"
 	pop$Section[grep("plcat_",     pop$Parameter)]     <- "LAT"
 	pop$Section[pop$Parameter %in% FE_category_params] <- "FE_CAT"
 
