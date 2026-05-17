@@ -293,6 +293,11 @@ tableRunHistory <- function(sycomoreProjectFile,
 #' @param include_CV Logical; if `TRUE`, includes coefficient of variation (CV%) for random effects.
 #'   Default is `FALSE`. In wide format, CV% is shown as an additional column alongside omega estimates
 #'   when `include_IIV = TRUE`.
+#' @param include_FEcategory Logical; if `TRUE`, includes separate rows for fixed-effect values by
+#'   categorical covariate level (the per-category estimates Monolix exposes via the
+#'   `withValuesByGroups` option of `getEstimatedPopulationParameters()`/`getEstimatedStandardErrors()`).
+#'   Each per-category row appears with `Section = "FE_CAT"` and is grouped immediately after the
+#'   parent fixed-effect rows. Default is `FALSE`.
 #' @param include_bootstrap Logical; if `TRUE`, includes bootstrap results: median estimate,
 #'   confidence interval (e.g., `Boot_CI_2.5_97.5`), and RSE (if available from bootstrap).
 #'   Bootstrap confidence interval levels automatically adapt to project settings (90%, 95%, 99%).
@@ -315,19 +320,26 @@ tableRunHistory <- function(sycomoreProjectFile,
 #'
 #' @return A data frame containing parameter estimates and uncertainties with the following structure:
 #'   \describe{
-#'     \item{Parameter}{Parameter name (or Label if provided in nameMapping)}
-#'     \item{Section}{Factor column identifying parameter type (FE, IIV, IOV, CORR_IIV, CORR_IOV, RES_ERR)}
+#'     \item{Parameter}{Parameter name (optionally replaced by a label from `custom_aliases`, with a unit appended in parentheses when supplied via `custom_units`)}
+#'     \item{Section}{Factor column identifying parameter type: `FE`, `FE_CAT`, `IIV`, `IOV`, `CORR`, `CORR_IIV`, `CORR_IOV`, `RES_ERR`, `LAT`}
 #'     \item{Estimate}{Parameter estimate (fixed effects) or variability estimate (random effects)}
 #'     \item{RSE}{Relative standard error (if `include_RSE = TRUE`)}
-#'     \item{P2.5, P97.5}{Confidence interval bounds (if `include_CI = TRUE`)}
-#'     \item{CV%}{Coefficient of variation for random effects (if `include_CV = TRUE`)}
+#'     \item{CI_<lower>_<upper>}{Single combined confidence interval column formatted as `"(lower; upper)"` (if `include_CI = TRUE`). The percentile bounds in the column name come from the project's standard-error interval-level setting (e.g., `CI_2.5_97.5` for a 95% interval).}
+#'     \item{CV}{Coefficient of variation for random effects (if `include_CV = TRUE`)}
+#'     \item{Boot_Median, Boot_CI_<lower>_<upper>, Boot_RSE}{Bootstrap summary columns (if `include_bootstrap = TRUE`). The bootstrap CI column name adapts to the bootstrap interval-level setting.}
 #'   }
+#'
+#'   In wide format (`use_wide_format = TRUE`), random-effect rows are pivoted into columns
+#'   alongside their parent fixed effect. The `Estimate` column is renamed `FE_Estimate` and analogous
+#'   `IIV_*` / `IOV_*` / `Boot_IIV_*` / `Boot_IOV_*` columns are added for the requested statistics.
 #'
 #'   The returned data frame includes attributes:
 #'   \describe{
-#'     \item{table_type}{"pop" - identifies this as a population parameter table}
-#'     \item{format}{"wide" or "long" - indicates the table format}
-#'     \item{include_IOV}{Logical - whether IOV parameters are included}
+#'     \item{table_type}{"pop" — identifies this as a population parameter table}
+#'     \item{format}{"wide" or "long" — indicates the table format}
+#'     \item{include_IIV}{Logical — `TRUE` only when wide format AND `include_IIV = TRUE`; signals that IIV columns are present}
+#'     \item{include_IOV}{Logical — `TRUE` only when wide format AND `include_IOV = TRUE`; signals that IOV columns are present}
+#'     \item{project_source}{Directory of the Monolix project that produced the table}
 #'   }
 #'
 #'   These attributes are used by [print_table_flex()] to automatically add
