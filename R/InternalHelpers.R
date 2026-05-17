@@ -654,9 +654,13 @@ utils::globalVariables(c("."))
 
 #' Get IOV variability parameter names from the currently loaded Monolix project
 #'
-#' Returns the names of inter-occasion variability parameters (gamma_<param>)
-#' for parameters with variability enabled at any non-id level in the individual
-#' parameter model. Returns an empty character vector for projects without IOV.
+#' Returns the names of inter-occasion variability parameters for parameters
+#' with variability enabled at any non-id level in the individual parameter
+#' model. Supports multiple nested IOV levels: the first non-id level maps to
+#' "gamma_<param>", the second to "gamma2_<param>", and so on (matching
+#' Monolix's naming convention for nested occasion variability).
+#'
+#' Returns an empty character vector for projects without IOV.
 #'
 #' Querying the model directly avoids misclassifying user-defined parameters
 #' whose names happen to start with "gamma_" (e.g. a gamma_pop shape parameter)
@@ -670,13 +674,17 @@ utils::globalVariables(c("."))
 	}
 
 	iov_levels <- setdiff(names(ipm$variability), "id")
-	iov_bases <- unique(unlist(lapply(iov_levels, function(lvl) {
-		v <- ipm$variability[[lvl]]
-		names(v)[is.logical(v) & v]
-	})))
 
-	if (length(iov_bases) == 0) return(character(0))
-	paste0("gamma_", iov_bases)
+	iov_params <- character(0)
+	for (j in seq_along(iov_levels)) {
+		v <- ipm$variability[[iov_levels[[j]]]]
+		bases <- names(v)[is.logical(v) & v]
+		if (length(bases) == 0) next
+		prefix <- if (j == 1) "gamma_" else paste0("gamma", j, "_")
+		iov_params <- c(iov_params, paste0(prefix, bases))
+	}
+
+	iov_params
 }
 
 #' Get residual error parameter names from the currently loaded Monolix project
