@@ -324,9 +324,9 @@ tableRunHistory <- function(sycomoreProjectFile,
 #'     \item{Section}{Factor column identifying parameter type: `FE`, `FE_CAT`, `IIV`, `IOV`, `CORR`, `CORR_IIV`, `CORR_IOV`, `RES_ERR`, `LAT`}
 #'     \item{Estimate}{Parameter estimate (fixed effects) or variability estimate (random effects)}
 #'     \item{RSE}{Relative standard error (if `include_RSE = TRUE`)}
-#'     \item{CI_<lower>_<upper>}{Single combined confidence interval column formatted as `"(lower; upper)"` (if `include_CI = TRUE`). The percentile bounds in the column name come from the project's standard-error interval-level setting (e.g., `CI_2.5_97.5` for a 95% interval).}
+#'     \item{CI_2.5_97.5}{Single combined confidence interval column formatted as `"(lower; upper)"` (if `include_CI = TRUE`). The percentile bounds in the column name come from the project's standard-error interval-level setting; e.g. `CI_2.5_97.5` for a 95% interval, `CI_5_95` for a 90% interval.}
 #'     \item{CV}{Coefficient of variation for random effects (if `include_CV = TRUE`)}
-#'     \item{Boot_Median, Boot_CI_<lower>_<upper>, Boot_RSE}{Bootstrap summary columns (if `include_bootstrap = TRUE`). The bootstrap CI column name adapts to the bootstrap interval-level setting.}
+#'     \item{Boot_Median / Boot_CI_2.5_97.5 / Boot_RSE}{Bootstrap summary columns (if `include_bootstrap = TRUE`). The bootstrap CI column name adapts to the bootstrap interval-level setting (e.g. `Boot_CI_5_95` for a 90% interval).}
 #'   }
 #'
 #'   In wide format (`use_wide_format = TRUE`), random-effect rows are pivoted into columns

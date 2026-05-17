@@ -89,9 +89,9 @@ A data frame containing parameter estimates and uncertainties with the following
 \item{Section}{Factor column identifying parameter type: \code{FE}, \code{FE_CAT}, \code{IIV}, \code{IOV}, \code{CORR}, \code{CORR_IIV}, \code{CORR_IOV}, \code{RES_ERR}, \code{LAT}}
 \item{Estimate}{Parameter estimate (fixed effects) or variability estimate (random effects)}
 \item{RSE}{Relative standard error (if \code{include_RSE = TRUE})}
-\item{CI_\if{html}{\out{<lower>}}\emph{\if{html}{\out{<upper>}}}{Single combined confidence interval column formatted as \code{"(lower; upper)"} (if \code{include_CI = TRUE}). The percentile bounds in the column name come from the project's standard-error interval-level setting (e.g., \code{CI_2.5_97.5} for a 95\% interval).}
+\item{CI_2.5_97.5}{Single combined confidence interval column formatted as \code{"(lower; upper)"} (if \code{include_CI = TRUE}). The percentile bounds in the column name come from the project's standard-error interval-level setting; e.g. \code{CI_2.5_97.5} for a 95\% interval, \code{CI_5_95} for a 90\% interval.}
 \item{CV}{Coefficient of variation for random effects (if \code{include_CV = TRUE})}
-\item{Boot_Median, Boot_CI}\if{html}{\out{<lower>}}_\if{html}{\out{<upper>}}, Boot_RSE}{Bootstrap summary columns (if \code{include_bootstrap = TRUE}). The bootstrap CI column name adapts to the bootstrap interval-level setting.}
+\item{Boot_Median / Boot_CI_2.5_97.5 / Boot_RSE}{Bootstrap summary columns (if \code{include_bootstrap = TRUE}). The bootstrap CI column name adapts to the bootstrap interval-level setting (e.g. \code{Boot_CI_5_95} for a 90\% interval).}
 }
 
 In wide format (\code{use_wide_format = TRUE}), random-effect rows are pivoted into columns
