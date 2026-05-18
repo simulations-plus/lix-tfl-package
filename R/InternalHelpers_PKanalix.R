@@ -175,7 +175,6 @@
 #'   If provided, uses these instead of fetching from PKanalix project.
 #'
 #' @return A data frame with the 'parameter' column replaced by formatted display names.
-#' #
 .addUnitsAliases <- function(df, add_units = TRUE, add_aliases = TRUE, units_df = NULL, aliases_df = NULL) {
 
 	# ---------------------------------------------------------------------------

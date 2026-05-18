@@ -198,7 +198,7 @@ utils::globalVariables(c("."))
 #'
 #' @param to_round number, vector or data frame to round
 #' @param digits number of digits to round to
-#' @exclude names of columns to exclude
+#' @param exclude names of columns to exclude
 #' @param rounding_method "monolix" (default), "signif", or "none"
 #'
 #' @returns rounded number
@@ -254,7 +254,6 @@ utils::globalVariables(c("."))
 #' @param value1 main metric
 #' @param value2 metric in parentheses
 #' @param digits number of digits to round to
-#' @exclude names of columns to exclude
 #' @param rounding_method "monolix" (default), "signif", or "none"
 #'
 #' @returns "value1 (value2)"
