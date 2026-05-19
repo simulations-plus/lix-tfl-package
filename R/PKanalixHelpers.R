@@ -1314,20 +1314,20 @@ tableBEResults <- function(projectFile    = NULL,
 		rounding_method = roundMethod,
 		exclude         = c("parameter", "Comparison", "BE"))
 
-	result <- result %>% mutate(CI = paste0("(",CILower,";",CIUpper,")")) %>%
-		select(Comparison, parameter, Ratio, CI, BE) %>%
-		arrange(Comparison)
+	result <- result %>% dplyr::mutate(CI = paste0("(",CILower,";",CIUpper,")")) %>%
+		dplyr::select(Comparison, parameter, Ratio, CI, BE) %>%
+		dplyr::arrange(Comparison)
 
 	if(isTRUE(BELimits)){
 		result <- result %>%
-			mutate(Criteria.interval = paste0("(",be_lower,";",be_upper,")")) %>%
+			dplyr::mutate(Criteria.interval = paste0("(",be_lower,";",be_upper,")")) %>%
 			dplyr::relocate(Criteria.interval, .before = BE)
 	}
 	if(isTRUE(BEConclusion)){
-		result <- result %>% mutate(Conclusion = case_when(BE == 0 ~ "Not bioequivalent",
-																											 BE == 1 ~ "Bioequivalent"))
+		result <- result %>% dplyr::mutate(Conclusion = dplyr::case_when(BE == 0 ~ "Not bioequivalent",
+																																		 BE == 1 ~ "Bioequivalent"))
 	}
-	result <- result %>% select(-BE)
+	result <- result %>% dplyr::select(-BE)
 
 	if (isTRUE(prettyLabels)) {
 		result <- .prettyLabels(result)
@@ -1381,7 +1381,7 @@ listingAbbreviation <- function(data,
 
 	# Build listing with optional renaming
 	abbrev_listing <- dt %>%
-		distinct(Abbreviation) %>%
+		dplyr::distinct(Abbreviation) %>%
 		dplyr::mutate(`Full Term` = NA_character_) %>%
 		dplyr::arrange(Abbreviation)
 
@@ -1537,7 +1537,7 @@ listingNCAConcentration <- function(projectFile      = NULL,
 			values_to = "Concentration") %>%
 		dplyr::group_by(subject, dplyr::across(dplyr::all_of(splitCovariates))) %>%
 		dplyr::filter(Concentration != "") %>% # drop empty cells
-		dplyr::mutate(row_id = row_number()) %>% # assign row index (per subject)
+		dplyr::mutate(row_id = dplyr::row_number()) %>% # assign row index (per subject)
 		dplyr::ungroup() %>%
 		dplyr::mutate(
 			Time = as.numeric(ActualTimeLabel), # numeric actual time
@@ -1568,7 +1568,7 @@ listingNCAConcentration <- function(projectFile      = NULL,
 					values_to = "dummyConc") %>%
 				dplyr::group_by(subject, dplyr::across(dplyr::all_of(splitCovariates))) %>%
 				dplyr::filter(dummyConc != "") %>%
-				dplyr::mutate(row_id = row_number()) %>% # align by row_id (same column order)
+				dplyr::mutate(row_id = dplyr::row_number()) %>% # align by row_id (same column order)
 				dplyr::ungroup() %>%
 				dplyr::mutate(
 					NominalTime = as.numeric(NominalTimeLabel),

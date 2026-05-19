@@ -472,7 +472,7 @@ CovariateSummary_Table <- function(projectFile = NULL,
                 dplyr::ungroup()
 
             n_per_stratum <- df_prepared %>%
-                distinct(header, Nobs) %>%
+                dplyr::distinct(header, Nobs) %>%
                 dplyr::mutate(header_N = paste0(header, "\n(N=", Nobs, ")"))
 
             if (length(selected_metrics) > 1) {

@@ -2364,7 +2364,7 @@
 
 		# Map headers to N counts
 		n_per_stratum <- df_prepared %>%
-			distinct(header, Nobs) %>%
+			dplyr::distinct(header, Nobs) %>%
 			dplyr::mutate(header_N = paste0(header, "\n(N=", Nobs, ")"))
 
 		# Prepare overall data if provided
