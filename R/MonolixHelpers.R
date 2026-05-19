@@ -816,6 +816,9 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	pop <- pop %>%
 		dplyr::arrange(.data$Section) %>%
 		dplyr::relocate("Section")
+	if (!use_wide_format) {
+		pop <- dplyr::relocate(pop, "Parameter", .after = "Section")
+	}
 	pop <- .round_num(pop, roundDigits, exclude = c("Section", "Parameter"), rounding_method = roundingMethod)
 
 	# Apply pretty labels if requested for nice column names display
