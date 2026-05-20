@@ -696,7 +696,7 @@ print_table_flex <- function(data.flex,
 														 header_level2    = NULL,
 														 header_level3    = NULL,
 														 color            = NULL,     # e.g. c("BE","DP","PVAL","RSE")
-														 theme_fn         = theme_box,
+														 theme_fn         = theme_booktabs,
 														 soften_amount    = 0.50,     # 0 = original, 1 = white
 														 html_alpha       = 0.18,     # only used for html rgba
 														 align_default    = "center", # global default alignment
@@ -1129,11 +1129,11 @@ print_table_flex <- function(data.flex,
 # Custom theme example
 my_custom_theme <- function(ft) {
 	ft <- flextable::border_remove(ft)
-	ft <- flextable::bg(ft, bg = "#F5F5F5", part = "header")
+	ft <- flextable::bg(ft, bg = "#AABFE4", part = "header")
 	ft <- flextable::bold(ft, part = "header")
-	ft <- flextable::fontsize(ft, size = 10, part = "all")
+	ft <- flextable::fontsize(ft, size = 12, part = "all")
 	ft <- flextable::hline_bottom(ft,
-																border = officer::fp_border(color = "black", width = 2),
+																border = officer::fp_border(color = "black", width = 2.5),
 																part = "header")
 	ft <- flextable::hline_bottom(ft,
 																border = officer::fp_border(color = "black", width = 1),
