@@ -690,20 +690,20 @@
 #'                  header_level1 = "Population PK Parameters",
 #'                  color = c("RSE"))
 #' }
-print_table_flex <- function(data.flex,
-														 grouping.columns = NULL,
-														 header_level1    = NULL,
-														 header_level2    = NULL,
-														 header_level3    = NULL,
-														 color            = NULL,     # e.g. c("BE","DP","PVAL","RSE")
-														 theme_fn         = theme_booktabs,
-														 soften_amount    = 0.50,     # 0 = original, 1 = white
-														 html_alpha       = 0.18,     # only used for html rgba
-														 align_default    = "center", # global default alignment
-														 align_grouping   = NULL,     # alignment for grouping columns (NULL = use default)
-														 align_cols       = NULL,     # named vector for column-specific alignments
-														 footnote         = NULL,     # manual footnote text
-														 autoFootnote     = TRUE)     # auto-detect footnotes from attributes
+style_tfl <- function(data.flex,
+											grouping.columns = NULL,
+											header_level1    = NULL,
+											header_level2    = NULL,
+											header_level3    = NULL,
+											color            = NULL,     # e.g. c("BE","DP","PVAL","RSE")
+											theme_fn         = theme_booktabs,
+											soften_amount    = 0.50,     # 0 = original, 1 = white
+											html_alpha       = 0.18,     # only used for html rgba
+											align_default    = "center", # global default alignment
+											align_grouping   = NULL,     # alignment for grouping columns (NULL = use default)
+											align_cols       = NULL,     # named vector for column-specific alignments
+											footnote         = NULL,     # manual footnote text
+											autoFootnote     = TRUE)     # auto-detect footnotes from attributes
 {
 	##############################################################################
 	# 0. Check required packages
@@ -1016,6 +1016,17 @@ print_table_flex <- function(data.flex,
 	}
 
 	ft <- flextable::align(ft, align = "center", part = "header")
+
+	# Re-apply column-specific header alignment so it isn't overridden by the
+	# header re-centering above (which is needed for any header lines added via
+	# add_header_lines()).
+	if (!is.null(align_cols)) {
+		for (col_name in names(align_cols)) {
+			if (col_name %in% colnames(data.flex)) {
+				ft <- flextable::align(ft, j = col_name, align = align_cols[[col_name]], part = "header")
+			}
+		}
+	}
 
 
 	# ---------------------------------------------------------------------------
