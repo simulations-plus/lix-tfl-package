@@ -52,178 +52,226 @@
 
 
 ##################################################################################
-#' PrettyLabels
+#  .normalizeAliasMapping()
+#' Normalize alias/unit mapping input to a standardized dataframe format
 #'
-#' Converts statistical parameter column names to human-readable, formatted labels
-#' for presentation in tables and reports. Maps common statistical abbreviations
-#' to their full, properly formatted names.
+#' Accepts either a named vector or a 2-column dataframe and converts it to
+#' a standardized dataframe with columns "parameter" and the specified value column.
 #'
-#' @param df A data frame containing statistical columns to be relabeled.
+#' @param mapping A named vector (e.g., c(Cmax = "C~max~")) or a 2-column dataframe
+#'   where the first column contains parameter names and the second contains values.
+#' @param value_col Character string specifying the name of the value column in the
+#'   output dataframe. Default is "aliases".
 #'
-#' @return A data frame with column names converted to pretty, human-readable labels.
+#' @return A dataframe with columns "parameter" and \code{value_col}, or NULL if
+#'   input is NULL.
 #'
-#' @examples
-#' # Example usage:
-#' # df <- data.frame(parameter = "AUC", mean = 100, sd = 20, CV = 15)
-#' # PrettyLabels(df)
-#'
-.prettyLabels_ <- function(df) {
-	# Mapping of common stat names to pretty labels
-	stat_labels <- c(
-		"parameter"           = "Parameter",
-		"mean"                = "Mean",
-		"sd"                  = "SD",
-		"se"                  = "SE",
-		"CV"                  = "CV (%)",
-		"min"                 = "Minimum",
-		"max"                 = "Maximum",
-		"median"              = "Median",
-		"geoMean"             = "Geometric\nMean",
-		"GeoMean"             = "Geometric\nMean",
-		"geoSD"               = "Geometric\nSD",
-		"geoCV"               = "Geometric\nCV (%)",
-		"GeomCV"              = "Geometric\nMean (CV %)",
-		"GeomSD"              = "Geometric\nMean (SD)",
-		"MeanSD"              = "Arithmetric\nMean (SD)",
-		"harmMean"            = "Harmonic\nMean",
-		"P05"                 = "5th Percentile",
-		"P95"                 = "95th Percentile",
-		"N"                   = "N",
-		"Ntot"                = "N Total",
-		"Nobs"                = "N", # "N Observed"
-		"Nmiss"               = "N Missing",
-		"p.value"             = "p-value",
-		"RSE"                 = "%RSE",
-		"CI"                  = "Confidence \nInterval",
-		"FE_Estimate"         = "Fixed Effect \nEstimate",
-		"FE_RSE"              = "%RSE",
-		"IIV_SD"              = "IIV (SD)",
-		"IIV_RSE"             = "%RSE (IIV)",
-		"IOV_SD"              = "IOV (SD)",
-		"IOV_RSE"             = "%RSE (IOV)",
-		# "IIV %RSE"            = "IIV %RSE",
-		"Dosing.range"        = "Dosing Range",
-		"Point.estimate"      = "Point Estimate",
-		"Criteria.interval"   = "Criteria Interval",
-		"Confidence.interval" = "Confidence Interval")
+.normalizeAliasMapping <- function(mapping, value_col = "aliases") {
+	# Return NULL if input is NULL
+	if (is.null(mapping)) {
+		return(NULL)
+	}
 
-	# Replace column names where matches are found
-	new_names <- names(df)
-	new_names_pretty <- ifelse(
-		new_names %in% names(stat_labels),
-		stat_labels[new_names],
-		new_names
-	)
-	names(df) <- new_names_pretty
-	return(df)
+	# Case 1: Named vector -> convert to dataframe
+	if (is.vector(mapping) && !is.data.frame(mapping) && !is.null(names(mapping))) {
+		result <- data.frame(
+			parameter = names(mapping),
+			value = unname(mapping),
+			stringsAsFactors = FALSE
+		)
+		names(result) <- c("parameter", value_col)
+		return(result)
+	}
+
+	# Case 2: Dataframe -> rename columns
+	if (is.data.frame(mapping)) {
+		if (ncol(mapping) < 2) {
+			stop("custom_aliases/custom_units dataframe must have at least 2 columns.", call. = FALSE)
+		}
+		# Take first two columns and rename
+		result <- mapping[, 1:2, drop = FALSE]
+		names(result) <- c("parameter", value_col)
+		# Ensure character type
+		result$parameter <- as.character(result$parameter)
+		result[[value_col]] <- as.character(result[[value_col]])
+		return(result)
+	}
+
+	# Invalid input
+	stop("custom_aliases/custom_units must be a named vector or a 2-column dataframe.", call. = FALSE)
 }
 
+###############################################################################
+#' .formatUnits
+#'
+#' Transforms unit strings from PKanalix notation to publication-ready
+#' display format. Converts denominator notation (e.g., `^-1`) to fraction
+#' format and replaces multiplication separators with `*`.
+#'
+#' @param unit_string A character string representing a unit in PKanalix notation
+#'   (e.g., "h.ng.mL^-1", "ng.mL^-1").
+#'
+#' @return A character string with units formatted for display:
+#'   - Denominators (units with `^-1`) moved after `/`
+#'   - Multiplication shown as `*`
+#'   - Returns input unchanged if NA or empty
+#'
+#' @examples
+#' .formatUnits("h.ng.mL^-1")
+#' # Returns: "h*ng/mL"
+#'
+#' .formatUnits("ng.mL^-1")
+#' # Returns: "ng/mL"
+#'
+#' .formatUnits("mL^-1")
+#' # Returns: "1/mL"
+#'
+#' .formatUnits("h")
+#' # Returns: "h"
+#'
+#' @seealso \code{\link{.addUnitsAliases}} which uses this helper internally
+#'
+.formatUnits <- function(unit_string) {
+	if (is.na(unit_string) || unit_string == "") return(unit_string)
 
-##################################################################################
+	# Split by any multiplication separator (., *, middle dot)
+	units <- unlist(strsplit(unit_string, "[.\\*\u22c5]"))
+
+	# Separate into numerator and denominator - order independent
+	numerator <- c()
+	denominator <- c()
+
+	for (u in units) {
+		if (grepl("\\^-1$", u)) {
+			denominator <- c(denominator, sub("\\^-1$", "", u))
+		} else {
+			numerator <- c(numerator, u)
+		}
+	}
+
+	# Build result: all numerators together, then / , then all denominators
+	num_str <- if (length(numerator) == 0) "1" else paste(numerator, collapse = "*")
+
+	if (length(denominator) > 0) {
+		denom_str <- paste(denominator, collapse = "*")
+		return(paste0(num_str, "/", denom_str))
+	}
+
+	return(num_str)
+}
+
+###############################################################################
 #' .addUnitsAliases
 #'
 #' Enhances parameter data frames by adding units and aliases to create formatted
 #' display names. Combines parameter names with their corresponding units and aliases
 #' to generate publication-ready parameter labels with proper fallback handling.
+#' @param df A data frame containing a 'parameter' column.
+#' @param add_units Logical; if TRUE, adds units to display names.
+#' @param add_aliases Logical; if TRUE, adds aliases to display names.
+#' @param units_df Optional dataframe with columns "parameter" and "units".
+#'   If provided, uses these instead of fetching from PKanalix project.
+#' @param aliases_df Optional dataframe with columns "parameter" and "aliases".
+#'   If provided, uses these instead of fetching from PKanalix project.
 #'
-#' @param df_param A data frame containing parameter information with a 'parameter' column.
-#' @param df_units A data frame containing parameter units with 'parameter' and 'units' columns.
-#'                 If NULL, no units are added.
-#' @param df_aliases A data frame containing parameter aliases with 'parameter' and 'aliases' columns.
-#'                   If NULL, no aliases are added.
-#'
-#' @return A data frame with formatted display names that combine aliases and units,
-#'         maintaining the original parameter order.
-#'
-#' @examples
-#' # Example usage:
-#' # df_param <- data.frame(parameter = c("AUC", "Cmax"))
-#' # df_units <- data.frame(parameter = c("AUC", "Cmax"), units = c("ng*h/mL", "ng/mL"))
-#' # df_aliases <- data.frame(parameter = c("AUC", "Cmax"), aliases = c("AUC₀₋ₜ", "Cₘₐₓ"))
-#' # AddUnitsAliases(df_param, df_units, df_aliases)
-#'
-#' #
-.addUnitsAliases <- function(df, add_units = TRUE, add_aliases = TRUE) {
-	# Retrieve all parameters from project
-	allparams <- lixoftConnectors::getNCASettings()$computedncaparameters
+#' @return A data frame with the 'parameter' column replaced by formatted display names.
+.addUnitsAliases <- function(df, add_units = TRUE, add_aliases = TRUE, units_df = NULL, aliases_df = NULL) {
 
-	NCAParamSummary_info <- lixoftConnectors::getNCAParameterStatistics(parameters = allparams)$information %>%
-		tibble::rownames_to_column(var = "parameter")
-
-
-	# Check and retrieve units information (if requested)
+	# ---------------------------------------------------------------------------
+	# UNITS: Use custom data or fetch from PKanalix
+	# ---------------------------------------------------------------------------
 	if (isTRUE(add_units)) {
-		# extract units if active in project
-		if (isTRUE(lixoftConnectors::getDataSettings()$enableunits)) {
-			units_df <- NCAParamSummary_info %>%
-				dplyr::select(parameter, units)
+		if (!is.null(units_df)) {
+			# Use custom units (already normalized to parameter/units columns)
+			# Apply .formatUnits() to ensure consistent formatting
+			units_df <- units_df %>%
+				dplyr::mutate(units = sapply(units, .formatUnits))
 		} else {
-			# warning if units are requested but not enabled
-			warning("Units were requested (units=TRUE) but are not enabled in the current project. Skipping unit retrieval.")
-			units_df <- NULL
+			# Fetch from PKanalix project (existing behavior)
+			allparams <- lixoftConnectors::getNCASettings()$computedncaparameters
+
+			NCAParamSummary_info <- lixoftConnectors::getNCAParameterStatistics(parameters = allparams)$information %>%
+				tibble::rownames_to_column(var = "parameter")
+
+			if (isTRUE(lixoftConnectors::getDataSettings()$enableunits)) {
+				units_df <- NCAParamSummary_info %>%
+					dplyr::select(parameter, units) %>%
+					dplyr::mutate(units = sapply(units, .formatUnits))
+			} else {
+				warning("Units were requested (units=TRUE) but are not enabled in the current project. Skipping unit retrieval.")
+				units_df <- NULL
+			}
 		}
 	} else {
 		units_df <- NULL
 	}
 
-	# Check and retrieve aliases information (if requested)
-	# ----------------------------------------------------------
+	# ---------------------------------------------------------------------------
+	# ALIASES: Use custom data or fetch from PKanalix
+	# ---------------------------------------------------------------------------
 	if (isTRUE(add_aliases)) {
-		if ("aliases" %in% names(NCAParamSummary_info)) {
-			aliases_df <- NCAParamSummary_info %>%
-				dplyr::select(parameter, aliases) %>%
-				.convertHtmlAliasesForFlextable()
+		if (!is.null(aliases_df)) {
+			# Use custom aliases (already normalized to parameter/aliases columns)
+			# Apply HTML conversion so users can use <sub>text</sub> syntax
+			aliases_df <- .convertHtmlAliasesForFlextable(aliases_df)
 		} else {
-			warning("Aliases were requested (aliases=TRUE) but are not available in the current project. Skipping alias retrieval.")
-			aliases_df <- NULL
+			# Fetch from PKanalix project (existing behavior)
+			if (!exists("NCAParamSummary_info")) {
+				allparams <- lixoftConnectors::getNCASettings()$computedncaparameters
+				NCAParamSummary_info <- lixoftConnectors::getNCAParameterStatistics(parameters = allparams)$information %>%
+					tibble::rownames_to_column(var = "parameter")
+			}
+
+			if ("aliases" %in% names(NCAParamSummary_info)) {
+				aliases_df <- NCAParamSummary_info %>%
+					dplyr::select(parameter, aliases) %>%
+					.convertHtmlAliasesForFlextable()
+			} else {
+				warning("Aliases were requested (aliases=TRUE) but are not available in the current project. Skipping alias retrieval.")
+				aliases_df <- NULL
+			}
 		}
 	} else {
 		aliases_df <- NULL
 	}
 
-	# Save original order for later restoration
+	# ---------------------------------------------------------------------------
+	# MERGE AND BUILD DISPLAY NAMES (unchanged from original)
+	# ---------------------------------------------------------------------------
+
 	original_order <- unique(df$parameter)
 
-	# Merge units if provided
 	if (!is.null(units_df)) {
 		units_df <- units_df %>% dplyr::mutate(
 			parameter = as.character(parameter),
-			units = as.character(units)
-		)
+			units     = as.character(units))
 		df <- dplyr::left_join(df, units_df, by = "parameter")
 	} else {
 		df$units <- NA_character_
 	}
 
-	# Merge aliases if provided
 	if (!is.null(aliases_df)) {
 		aliases_df <- aliases_df %>% dplyr::mutate(
 			parameter = as.character(parameter),
-			aliases = as.character(aliases)
-		)
+			aliases   = as.character(aliases))
 		df <- dplyr::left_join(df, aliases_df, by = "parameter")
 	} else {
 		df$aliases <- NA_character_
 	}
 
-	# Coerce all relevant columns to character to prevent paste0() errors
 	df <- df %>%
 		dplyr::mutate(
 			parameter = as.character(parameter),
-			aliases = as.character(aliases),
-			units = as.character(units)
-		)
+			aliases   = as.character(aliases),
+			units     = as.character(units))
 
-	# Build display name with proper fallback handling
 	df <- df %>%
 		dplyr::mutate(display_name = dplyr::case_when(
-			!is.na(aliases) & !is.na(units) & units != "" ~ paste0(aliases, " (", units, ")"),
+			!is.na(aliases) & !is.na(units) & units != "" ~ paste0(aliases, "\n(", units, ")"),
 			!is.na(aliases) ~ aliases,
-			is.na(aliases) & !is.na(units) & units != "" ~ paste0(parameter, " (", units, ")"),
-			TRUE ~ parameter
-		))
+			is.na(aliases) & !is.na(units) & units != "" ~ paste0(parameter, "\n(", units, ")"),
+			TRUE ~ parameter))
 
-	# Restore original order and finalize structure
 	df <- df %>%
 		dplyr::mutate(parameter = factor(parameter, levels = original_order)) %>%
 		dplyr::arrange(parameter) %>%
@@ -440,6 +488,97 @@
 }
 
 ##################################################################################
+#' Calculate Descriptive Statistics for Longitudinal Data
+#'
+#' @description
+#' A simple internal helper that calculates descriptive statistics from
+#' longitudinal data. Designed to be reusable across multiple table functions
+#' (tableNCAConcentration, tableNCAParameters, tableNCARatios, tableContinuousCovariateSummary).
+#'
+#' This function calculates raw numeric statistics only. Rounding and combined
+#' metrics (MeanSD, GeomCV, etc.) should be applied by the calling function.
+#'
+#' @param data Data frame in long format containing at minimum an ID column and a value column.
+#' @param value_col Character string specifying the name of the value column to summarize.
+#' @param id_col Character string specifying the name of the ID/subject column.
+#'   Used to calculate N (number of unique subjects) and SE (standard error).
+#' @param group_by Character vector or NULL specifying column names to group by.
+#'   Examples: `c("Time", "SEX")`, `c("Parameter")`, `NULL` for no grouping.
+#'
+#' @return A data frame with grouping columns (if any) and the following metrics:
+#'   N, Nobs, min, P05, Q1, mean, SD, SE, CV, median, Q3, P95, max,
+#'   geoMean, geoSD, geoCV, harmMean
+#'
+#' @keywords internal
+#'
+.calculateDescriptiveStats <- function(data,
+																			 value_col,
+																			 id_col,
+																			 group_by = NULL) {
+
+
+	# Validate inputs
+	if (!(value_col %in% names(data))) {
+		stop("Value column '", value_col, "' not found in input data.")
+	}
+	if (!is.null(id_col) && !(id_col %in% names(data))) {
+		stop("ID column '", id_col, "' not found in input data.")
+	}
+	if (!is.null(group_by)) {
+		missing_cols <- setdiff(group_by, names(data))
+		if (length(missing_cols) > 0) {
+			stop("Grouping columns not found in data: ", paste(missing_cols, collapse = ", "))
+		}
+	}
+
+	# Group and calculate all metrics
+	data %>%
+		dplyr::group_by(dplyr::across(dplyr::all_of(group_by))) %>%
+		dplyr::summarise(
+			N = if (!is.null(id_col)) dplyr::n_distinct(.data[[id_col]]) else dplyr::n(),
+			Nobs = dplyr::n(),
+			min = { v <- .data[[value_col]]; if (all(is.na(v))) NA_real_ else min(v, na.rm = TRUE) },
+			P05 = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE),
+			Q1 = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE),
+			mean = mean(.data[[value_col]], na.rm = TRUE),
+			SD = stats::sd(.data[[value_col]], na.rm = TRUE),
+			SE = if (!is.null(id_col)) {
+				sd_val <- stats::sd(.data[[value_col]], na.rm = TRUE)
+				n_subj <- dplyr::n_distinct(.data[[id_col]])
+				if (n_subj > 0 && !is.na(sd_val)) sd_val / sqrt(n_subj) else NA_real_
+			} else NA_real_,
+			CV = {
+				m <- mean(.data[[value_col]], na.rm = TRUE)
+				s <- stats::sd(.data[[value_col]], na.rm = TRUE)
+				if (!is.na(m) && m != 0 && !is.na(s)) 100 * s / m else NA_real_
+			},
+			median = stats::median(.data[[value_col]], na.rm = TRUE),
+			Q3 = stats::quantile(.data[[value_col]], 0.75, na.rm = TRUE),
+			P95 = stats::quantile(.data[[value_col]], 0.95, na.rm = TRUE),
+			max = { v <- .data[[value_col]]; if (all(is.na(v))) NA_real_ else max(v, na.rm = TRUE) },
+			geoMean = {
+				vals <- .data[[value_col]][.data[[value_col]] > 0 & is.finite(.data[[value_col]])]
+				if (length(vals) > 0) exp(mean(log(vals))) else NA_real_
+			},
+			geoSD = {
+				vals <- .data[[value_col]][.data[[value_col]] > 0 & is.finite(.data[[value_col]])]
+				if (length(vals) > 1) exp(stats::sd(log(vals))) else NA_real_
+			},
+			geoCV = {
+				vals <- .data[[value_col]][.data[[value_col]] > 0 & is.finite(.data[[value_col]])]
+				sdlog <- if (length(vals) > 1) stats::sd(log(vals)) else NA_real_
+				if (!is.na(sdlog)) 100 * sqrt(exp(sdlog^2) - 1) else NA_real_
+			},
+			harmMean = {
+				vals <- .data[[value_col]][.data[[value_col]] > 0 & is.finite(.data[[value_col]])]
+				if (length(vals) > 0) length(vals) / sum(1 / vals) else NA_real_
+			},
+			.groups = "drop"
+		) %>%
+		as.data.frame()
+}
+
+##################################################################################
 #' combinedStats
 #'
 #' Creates combined display metrics by concatenating mean with SD and geometric
@@ -474,9 +613,9 @@
 	df %>%
 		dplyr::mutate(
 			MeanSD = paste0(.data$mean, " (", .data$SD, ")"),
+			MeanCV = paste0(.data$mean, " (", .data$CV, ")"),
 			GeomCV = paste0(.data$geoMean, " (", .data$geoCV, ")"),
-			GeomSD = paste0(.data$geoMean, " (", .data$geoSD, ")")
-		)
+			GeomSD = paste0(.data$geoMean, " (", .data$geoSD, ")"))
 }
 
 ##################################################################################
@@ -490,121 +629,152 @@
 #'
 #' @param df Data frame returned by \code{getNCAConcentrations(displayIndividualProfiles = TRUE)}
 #'   that exhibits the column swapping issue.
-#' @param original_covariates Character vector of covariate names in their intended
-#'   order, as originally passed to \code{setNCAResultsStratification(split = covariates)}.
+#' @param originalCovariates Character vector of covariate names in their intended
+#'   order, as originally passed to \code{setNCAResultsStratification(split = splitCovariates)}.
 #'   Must match the order used when setting up the stratification.
 #'
 #' @details This function corrects a known bug where \code{getNCAConcentrations()}
 #'   with \code{displayIndividualProfiles = TRUE} returns covariate columns with
-#'   correct headers but swapped content. When the number of covariates is even,
-#'   all covariates are affected in reverse order. When odd, the middle covariate
+#'   correct headers but swapped content. When the number of splitCovariates is even,
+#'   all splitCovariates are affected in reverse order. When odd, the middle covariate
 #'   remains correct while others are mirrored around it. The function identifies
 #'   covariate columns by name, reverses their order, and applies the original
 #'   intended column names to restore proper data alignment.
 #'
 #' @return A data frame with the same structure as the input but with covariate
-#'   columns correctly ordered and named according to \code{original_covariates}.
+#'   columns correctly ordered and named according to \code{originalCovariates}.
 #'   Non-covariate columns (subject, time points, concentrations) remain unchanged.
 #'
 #' @examples
-#' # covariates <- c("DOSE", "FOOD", "VISIT")
-#' # setNCAResultsStratification(split = covariates)
+#' #  <- c("DOSE", "FOOD", "VISIT")
+#' # setNCAResultsStratification(split = splitCovariates)
 #' # df <- getNCAConcentrations(displayIndividualProfiles = TRUE)
-#' # df_fixed <- fixNCAConcentrationsColumnSwap(df, covariates)
-.fixNCAConcentrationsColumnSwap <- function(df, original_covariates) {
-	# Get the number of covariates
-	n_cov <- length(original_covariates)
+#' # df_fixed <- fixNCAConcentrationsColumnSwap(df, splitCovariates)
+.fixNCAConcentrationsColumnSwap <- function(df, originalCovariates) {
+	# Get the number of splitCovariates
+	n_cov <- length(originalCovariates)
 
-	# If no covariates or only one, no swapping occurs
+	# If no splitCovariates or only one, no swapping occurs
 	if (n_cov <= 1) {
 		return(df)
 	}
 
 	# Find covariate columns in the dataframe
-	cov_cols <- names(df)[names(df) %in% original_covariates]
+	cov_cols <- names(df)[names(df) %in% originalCovariates]
 
 	# Find non-covariate columns
-	non_cov_cols <- names(df)[!names(df) %in% original_covariates]
+	non_cov_cols <- names(df)[!names(df) %in% originalCovariates]
 
 	# Create the corrected column order
-	# The covariates appear to be reversed in the output
+	# The splitCovariates appear to be reversed in the output
 	corrected_cov_order <- rev(cov_cols)
 
 	# Reorder the dataframe with corrected covariate order
 	df_fixed <- df[, c(corrected_cov_order, non_cov_cols)]
 
 	# Rename columns to match the original intended order
-	names(df_fixed)[1:n_cov] <- original_covariates
+	names(df_fixed)[1:n_cov] <- originalCovariates
 
 	return(df_fixed)
 }
 
 ##################################################################################
 
-#' Internal helper to fetch and prepare Covariate summary stats
+#-------------------------------------------------------------------------------
+#' Validate Analysis Results Availability
 #'
-#' @description Fetches covariate data, reshapes to long format,
-#' summarizes using .summarizeStats, rounds, and adds combined metrics.
+#' Checks if required analysis results are available in the currently loaded project.
+#' Throws an error with an informative message if results are missing.
 #'
-.prepareCovariateSummaryStats <- function(projectFile, covariates, cont_cols, roundDigits, roundMethod) {
-	# Base data: variables from dataset tagged as covariates
-	# Note: We fetch ID to ensure we can count subjects correctly
-	cov_df <- lixoftConnectors::getCovariateInformation()$covariate
+#' @param software Character string specifying the software. One of "monolix" or "pkanalix".
+#' @param resultType Character string specifying the type of results to validate.
+#'   For PKanalix: "nca" (NCA parameters/concentrations), "ncaRatio" (NCA ratios),
+#'   "ca" (compartmental analysis), or "be" (bioequivalence).
+#'   For Monolix: "pop" (population parameters).
+#'
+#' @return Invisible NULL if validation passes. Stops with an error if results are unavailable.
+#'
+#' @details
+#' For BE and ratio analyses, also validates that prerequisite NCA results exist.
+#' BE and ratio analyses require NCA to be run first.
+#'
+#' @keywords internal
+#' @noRd
+.validateProjectResultsAvailability <- function(software   = c("monolix", "pkanalix"),
+																								resultType = c("pop", "rse", "bootstrap", "nca", "ncaRatio", "be", "ca"),
+																								method     = "") {
+	resultType <- match.arg(resultType)
 
-	# Ensure we select valid columns (intersection of what is in cov_df and what is expected)
-	# This handles edge cases where header info might slightly differ from loaded covariate info
-	valid_cont_cols <- intersect(names(cov_df), cont_cols)
+	if (software == "pkanalix") {
+		if (resultType %in% c("nca")) {
+			result    <- tryCatch(lixoftConnectors::getNCAIndividualParameters()$parameters, error = function(e) NULL)
+			error_msg <- "No NCA results available. Please run non-compartmental analysis first."
 
-	if (length(valid_cont_cols) == 0) {
-		return(NULL)
+		} else if (resultType == "ncaRatio") {
+			nca_result <- tryCatch(lixoftConnectors::getNCAIndividualParameters(), error = function(e) NULL)
+
+			if (is.null(nca_result) || isFALSE(nca_result)) {
+				stop("No NCA results available. Please run non-compartmental analysis (required for NCA ratios).", call. = FALSE)
+			}
+			result    <- tryCatch(lixoftConnectors::getNCAIndividualRatios(), error = function(e) NULL)
+			error_msg <- "No NCA ratios available. Please configure NCA ratio module before running NCA."
+
+		} else if (resultType == "ca") {
+			result    <- tryCatch(lixoftConnectors::getCAIndividualParameters(), error = function(e) NULL)
+			error_msg <- "No CA results available. Please run compartmental analysis first."
+
+		} else if (resultType == "be") {
+			# BE depends on NCA - check NCA first
+			nca_result <- tryCatch(lixoftConnectors::getNCAIndividualParameters(), error = function(e) NULL)
+
+			if (is.null(nca_result) || isFALSE(nca_result)) {
+				stop("No NCA results available. Please run non-compartmental analysis (required for BE analysis).", call. = FALSE)
+			}
+			be_result <- tryCatch(lixoftConnectors::getBioequivalenceResults()$confidenceIntervals, error = function(e) NULL)
+
+			if (is.null(be_result) || isFALSE(be_result)) {
+				stop("No BE results available. Please run bioequivalence analysis first.", call. = FALSE)
+			}
+			return(invisible(NULL))
+		}
+
+	} else if (software == "monolix") {
+		if (resultType == "pop") {
+			result    <- tryCatch(lixoftConnectors::getEstimatedPopulationParameters(), error = function(e) NULL)
+			error_msg <- "No population parameter estimates available. Please run SAEM first."
+
+		} else if (resultType == "rse") {
+			# Get all available SE results
+			all_rse <- tryCatch(lixoftConnectors::getEstimatedStandardErrors(), error = function(e) NULL)
+
+			# Case 1: No RSE results at all
+			if (is.null(all_rse) || length(all_rse) == 0) {
+				stop("No standard error estimates available. Please run standard error estimation first.", call. = FALSE)
+			}
+
+			# Case 2: Specific method requested
+			if (method != "") {
+				available_methods <- names(all_rse)
+				if (!(method %in% available_methods)) {
+					stop(paste0(
+						"Standard errors for method '", method, "' not available. ",
+						"Available methods: ", paste(available_methods, collapse = ", "), "."), call. = FALSE)
+				}
+			}
+			return(invisible(NULL))
+
+		} else if (resultType == "bootstrap") {
+			result <- tryCatch(lixoftConnectors::getBootstrapResults()$populationSummary, error = function(e) NULL)
+			error_msg <- "No bootstrap results available. Please run bootstrap analysis first."
+		}
 	}
 
-	keep_cols <- c("id", valid_cont_cols, covariates)
-
-	# --- Reshape to Long Format ---
-	# variable = covariate name, value = measurement
-	df_long <- cov_df %>%
-		dplyr::select(dplyr::all_of(keep_cols)) %>%
-		tidyr::pivot_longer(
-			cols = dplyr::all_of(valid_cont_cols),
-			names_to = "variable",
-			values_to = "value"
-		) %>%
-		dplyr::mutate(value = suppressWarnings(as.numeric(value)))
-
-	# Summarize & determine grouping
-	if (is.null(covariates)) {
-		group_vars <- "variable"
-	} else {
-		group_vars <- c(covariates, "variable")
+	# Generic validation for non-rse cases
+	if (is.null(result) || isFALSE(result)) {
+		stop(error_msg, call. = FALSE)
 	}
 
-	# Calculate stats
-	summary_stats <- .summarizeStats(
-		df         = df_long,
-		group_vars = group_vars,
-		value_col  = "value",
-		id_col     = "id"
-	)
-
-	# Standardize Count column to "Nobs"
-	if ("N" %in% names(summary_stats)) {
-		summary_stats <- dplyr::rename(summary_stats, Nobs = N)
-	} else if ("N Total" %in% names(summary_stats)) {
-		summary_stats <- dplyr::rename(summary_stats, Nobs = `N Total`)
-	}
-
-	# Rounding & combining metrics
-	summary_stats <- .roundNumericCols(
-		summary_stats,
-		digits          = roundDigits,
-		rounding_method = roundMethod,
-		exclude         = c("variable", covariates, "Nobs")
-	)
-
-	summary_stats <- .combinedStats(summary_stats)
-
-	return(summary_stats)
+	return(invisible(NULL))
 }
 
 
@@ -650,32 +820,321 @@
 		return(valid_metrics)
 	}
 }
+
+##################################################################################
+#' Validate selected splitCovariates for NCA tables and listings
+#'
+#' @description
+#' Checks if the provided splitCovariates exist in the currently loaded PKanalix project
+#' and are of valid types. For ratio tables, only categorical splitCovariates are allowed.
+#' For other tables/listings, both categorical splitCovariates and occasions are allowed.
+#'
+#' @param splitCovariates Character vector of covariate names to validate, or NULL
+#' @param ratio Logical; if TRUE, validates for ratio tables (only categorical splitCovariates allowed
+#'   via getCovariateInformation()). If FALSE (default), allows both categorical splitCovariates
+#'   and occasions (via getData()).
+#'
+#' @return Invisible NULL if validation passes. Stops with error if validation fails.
+#'
+#' @details
+#' When ratio = FALSE:
+#'   - Uses lixoftConnectors::getData()
+#'   - Allows headerTypes: "catcov" (categorical covariate) or "occ" (occasion)
+#'   - Used in: listingNCAConcentration, tableNCAConcentration, tableNCAParameters, etc.
+#'
+#' When ratio = TRUE:
+#'   - Uses lixoftConnectors::getCovariateInformation()
+#'   - Allows only categorical splitCovariates (type == "categorical")
+#'   - Does NOT allow occasions
+#'   - Used in: tableNCARatios, listingNCARatios
+#'
+#' @noRd
+
+.validateCovariateSelection <- function(splitCovariates, ratio = FALSE) {
+	# Skip validation if no splitCovariates provided
+	if (is.null(splitCovariates)) {
+		return(invisible(NULL))
+	}
+
+	if (ratio) {
+		# For ratio tables: intersection of ratio columns and data variables
+		# This excludes parameters (which only appear in ratio results, not in data)
+		ratio_result <- lixoftConnectors::getNCAIndividualRatios()
+		ratio_cols   <- setdiff(names(ratio_result), "id")
+		# Get all variables from data
+		data_vars <- lixoftConnectors::getData()$header
+		# Available splitCovariates = intersection (parameters are filtered out)
+		available_covs <- intersect(ratio_cols, data_vars)
+		context_msg    <- "splitCovariates in ratio results"
+	} else {
+		# For other tables/listings: use getData(), allow catcov or occ
+		project_data   <- lixoftConnectors::getData()
+		available_covs <- project_data$header[project_data$headerTypes %in% c("catcov", "occ")]
+		context_msg    <- "splitCovariates (catcov or occ)"
+	}
+
+	# Check if provided splitCovariates are valid
+	invalid_covs <- setdiff(splitCovariates, available_covs)
+
+	if (length(invalid_covs) > 0) {
+		stop(sprintf(
+			"Invalid covariate%s: %s\nAvailable %s: %s",
+			if (length(invalid_covs) > 1) "s" else "",
+			paste(invalid_covs, collapse = ", "),
+			context_msg,
+			if (length(available_covs) > 0) paste(available_covs, collapse = ", ") else "none"
+		), call. = FALSE)
+	}
+
+	return(invisible(NULL))
+}
+
+################################################################################
+# Filter Helpers for PKanalix Tables and Listings
+################################################################################
+
+#' Validate Filter Arguments
+#'
+#' Internal helper to validate covariate_filter and id_filter arguments.
+#' Checks that filter splitCovariates are categorical (catcov or occ) based on
+#' the resultType. Does NOT validate that filter values exist in data
+#' (that is handled by .applyFilters()).
+#'
+#' @param covariate_filter Named list where names are categorical covariate names
+#'   and values are vectors of allowed values. Example:
+#'   `list(DOSE = c("100mg", "200mg"), SEX = "Male")`. If NULL, no covariate
+#'   filtering is applied.
+#' @param id_filter Character or numeric vector of subject IDs to include.
+#'   If NULL, no ID filtering is applied.
+#' @param resultType Character string specifying the result type context.
+#'   Determines which splitCovariates are valid for filtering:
+#'   \itemize{
+#'     \item "nca": NCA parameters and concentrations - uses catcov and occ from getData()
+#'     \item "ncaRatio": NCA ratios - uses intersection of ratio columns and data variables
+#'   }
+#'
+#' @return Returns invisible(NULL) on success. Stops with error if validation fails.
+#'
+#' @details
+#' Validation checks performed:
+#' \itemize{
+#'   \item covariate_filter must be a named list (or NULL)
+#'   \item Filter covariate names must be categorical splitCovariates (catcov or occ)
+#'   \item id_filter must be a vector (or NULL)
+#' }
+#'
+#' Note: This function does NOT validate that filter values exist in the data.
+#' Invalid values will simply result in no rows matching (handled by .applyFilters()).
+#'
+#' @keywords internal
+#'
+.validateFilters <- function(covariate_filter = NULL,
+                             id_filter        = NULL,
+                             resultType       = c("nca", "ncaRatio")) {
+
+	resultType <- match.arg(resultType)
+
+	# Early return if no filters specified
+	if (is.null(covariate_filter) && is.null(id_filter)) {
+		return(invisible(NULL))
+	}
+
+	# --------------------------------------------------------------------------
+	# Validate covariate_filter
+	# --------------------------------------------------------------------------
+	if (!is.null(covariate_filter)) {
+
+		# Must be a named list
+		if (!is.list(covariate_filter) || is.null(names(covariate_filter))) {
+			stop("covariate_filter must be a named list. Example: list(DOSE = c('100mg', '200mg'), SEX = 'Male')",
+					 call. = FALSE)
+		}
+
+		# Check for empty names
+		if (any(names(covariate_filter) == "")) {
+			stop("All elements in covariate_filter must be named.", call. = FALSE)
+		}
+
+		# Get available categorical splitCovariates based on resultType
+		if (resultType == "ncaRatio") {
+			# For ratio tables: intersection of ratio columns and data variables
+			ratio_result       <- lixoftConnectors::getNCAIndividualRatios()
+			ratio_cols         <- setdiff(names(ratio_result), "id")
+			data_vars          <- lixoftConnectors::getData()$header
+			available_cat_covs <- intersect(ratio_cols, data_vars)
+		} else {
+			# For nca and ncaConcentration: categorical splitCovariates and occasions
+			project_data       <- lixoftConnectors::getData()
+			available_cat_covs <- project_data$header[project_data$headerTypes %in% c("catcov", "occ")]
+		}
+
+		# Check that filter splitCovariates are valid categorical splitCovariates
+		filter_covs  <- names(covariate_filter)
+		invalid_covs <- setdiff(filter_covs, available_cat_covs)
+
+		if (length(invalid_covs) > 0) {
+			# Check if they're continuous splitCovariates (more specific error message)
+			project_data <- lixoftConnectors::getData()
+			cont_covs    <- project_data$header[project_data$headerTypes == "contcov"]
+			invalid_cont <- intersect(invalid_covs, cont_covs)
+
+			if (length(invalid_cont) > 0) {
+				stop(sprintf(
+					"covariate_filter can only filter categorical covariates (catcov or occ).\n'%s' %s continuous covariate%s and cannot be filtered.\nAvailable categorical covariates: %s",
+					paste(invalid_cont, collapse = "', '"),
+					if (length(invalid_cont) > 1) "are" else "is a",
+					if (length(invalid_cont) > 1) "s" else "",
+					if (length(available_cat_covs) > 0) paste(available_cat_covs, collapse = ", ") else "none"), call. = FALSE)
+			} else {
+				stop(sprintf(
+					"Invalid covariate%s in covariate_filter: %s\nAvailable categorical covariates: %s",
+					if (length(invalid_covs) > 1) "s" else "",
+					paste(invalid_covs, collapse = ", "),
+					if (length(available_cat_covs) > 0) paste(available_cat_covs, collapse = ", ") else "none"), call. = FALSE)
+			}
+		}
+	}
+
+	# --------------------------------------------------------------------------
+	# Validate id_filter
+	# --------------------------------------------------------------------------
+	if (!is.null(id_filter)) {
+
+		# Must be a vector (character or numeric)
+		if (!is.vector(id_filter) || is.list(id_filter)) {
+			stop("id_filter must be a character or numeric vector of IDs.", call. = FALSE)
+		}
+
+		# Check it's not empty
+		if (length(id_filter) == 0) {
+			stop("id_filter cannot be an empty vector.", call. = FALSE)
+		}
+	}
+
+	return(invisible(NULL))
+}
+
+
+################################################################################
+#' Apply Filters to Data
+#'
+#' Internal helper to apply covariate and ID filters to a dataframe.
+#'
+#' @param data Data frame to filter.
+#' @param covariate_filter Named list where names are categorical covariate names
+#'   and values are vectors of allowed values. Example:
+#'   `list(DOSE = c("100mg", "200mg"), SEX = "Male")`. If NULL, no covariate
+#'   filtering is applied.
+#' @param id_filter Character or numeric vector of subject IDs to include.
+#'   If NULL, no ID filtering is applied.
+#' @param id_col Character string specifying the name of the ID column.
+#'   Default is "id".
+#'
+#' @return Filtered data frame. Warns if the result is empty.
+#'
+#' @details
+#' Filters are applied in the following order:
+#' \enumerate{
+#'   \item ID filter (if specified)
+#'   \item Covariate filters (if specified) - applied sequentially
+#' }
+#'
+#' The function assumes filters have been validated by `.validateFilters()`.
+#' If filter values don't exist in the data, those conditions simply won't
+#' match any rows (no error is thrown).
+#'
+#' @keywords internal
+#'
+.applyFilters <- function(data,
+                          covariate_filter = NULL,
+                          id_filter        = NULL,
+                          id_col           = "id") {
+
+	# Early return if no filters specified
+	if (is.null(covariate_filter) && is.null(id_filter)) {
+		return(data)
+	}
+
+	# Store original row count for messaging
+	n_original <- nrow(data)
+
+	# --------------------------------------------------------------------------
+	# Apply ID filter
+	# --------------------------------------------------------------------------
+	if (!is.null(id_filter)) {
+		if (id_col %in% names(data)) {
+			# Convert both to character for consistent comparison
+			data_ids <- as.character(data[[id_col]])
+			filter_ids <- as.character(id_filter)
+
+			data <- data[data_ids %in% filter_ids, , drop = FALSE]
+		} else {
+			warning(sprintf("ID column '%s' not found in data. ID filter not applied.", id_col),
+							call. = FALSE)
+		}
+	}
+
+	# --------------------------------------------------------------------------
+	# Apply covariate filters
+	# --------------------------------------------------------------------------
+	if (!is.null(covariate_filter)) {
+		for (cov_name in names(covariate_filter)) {
+			if (cov_name %in% names(data)) {
+				filter_values <- covariate_filter[[cov_name]]
+
+				# Convert both to character for consistent comparison
+				data_values <- as.character(data[[cov_name]])
+				filter_values_char <- as.character(filter_values)
+
+				data <- data[data_values %in% filter_values_char, , drop = FALSE]
+			} else {
+				warning(sprintf("Covariate '%s' not found in data. Filter not applied for this covariate.",
+												cov_name), call. = FALSE)
+			}
+		}
+	}
+
+	# --------------------------------------------------------------------------
+	# Check for empty result
+	# --------------------------------------------------------------------------
+	n_filtered <- nrow(data)
+
+	if (n_filtered == 0) {
+		warning(sprintf(
+			"Filter resulted in empty dataset (0 of %d rows remaining).\nCheck your covariate_filter and id_filter values.",
+			n_original
+		), call. = FALSE)
+	}
+
+	return(data)
+}
+
 ##################################################################################
 #' Internal helper to validate stratification arguments
 #'
-#' @param covariates Vector of covariate names (or NULL).
+#' @param splitCovariates Vector of covariate names (or NULL).
 #' @param stratify_columns Boolean flag indicating if stratification is requested.
 #'
-#' @return Boolean. Returns FALSE if covariates are missing, otherwise returns original stratify_columns.
+#' @return Boolean. Returns FALSE if splitCovariates are missing, otherwise returns original stratify_columns.
 #'
-.validateStratificationArgs <- function(covariates, stratify_columns) {
+.validateStratificationArgs <- function(splitCovariates, stratify_columns) {
 	# 1. Argument consistency check
-	if (isTRUE(stratify_columns) && is.null(covariates)) {
+	if (isTRUE(stratify_columns) && is.null(splitCovariates)) {
 		warning("stratify_columns=TRUE requires covariates. Resetting stratify_columns to FALSE.")
 		return(FALSE)
 	}
-	# 2. Covariate existence check (if covariates provided)
-	if (!is.null(covariates)) {
-		# Get available covariates from current PKanalix project
-		cov_info <- lixoftConnectors::getCovariateInformation()$covariate
-		available_covariates <- setdiff(names(cov_info), "id")
+	# 2. Covariate existence check (if splitCovariates provided)
+	if (!is.null(splitCovariates)) {
+		# Get available splitCovariates from current PKanalix project
+		cov_info                  <- lixoftConnectors::getCovariateInformation()$covariate
+		available_splitCovariates <- setdiff(names(cov_info), "id")
 
-		# Validate requested covariates exist
-		bad_covariates <- setdiff(covariates, available_covariates)
-		if (length(bad_covariates) > 0) {
+		# Validate requested splitCovariates exist
+		bad_splitCovariates <- setdiff(splitCovariates, available_splitCovariates)
+		if (length(bad_splitCovariates) > 0) {
 			stop(
-				"Invalid covariate(s): ", paste(bad_covariates, collapse = ", "), "\n",
-				"Available covariates: ", paste(available_covariates, collapse = ", ")
+				"Invalid covariate(s): ", paste(bad_splitCovariates, collapse = ", "), "\n",
+				"Available splitCovariates: ", paste(available_splitCovariates, collapse = ", ")
 			)
 		}
 	}
@@ -685,170 +1144,690 @@
 
 ##################################################################################
 
-#' Internal helper to validate covariate labels against covariates
+#' Internal helper to validate covariate labels against splitCovariates
 #'
-#' @param covariates Character vector of covariate names.
-#' @param covariate_labels Character vector of labels (can be NULL).
+#' @param splitCovariates Character vector of covariate names.
+#' @param splitCovariate_labels Character vector of labels (can be NULL).
 #'
-#' @return A character vector of validated labels matching the length of covariates.
+#' @return A character vector of validated labels matching the length of splitCovariates.
 #'
-.validateCovariateLabels <- function(covariates, covariate_labels) {
-	if (is.null(covariates)) {
+.validateCovariateLabels <- function(splitCovariates, splitCovariate_labels) {
+	if (is.null(splitCovariates)) {
 		return(NULL)
 	}
 
 	# If no labels provided, use variable names
-	if (is.null(covariate_labels)) {
-		return(covariates)
+	if (is.null(splitCovariate_labels)) {
+		return(splitCovariates)
 	}
 
-	n_cov <- length(covariates)
-	n_lab <- length(covariate_labels)
+	n_cov <- length(splitCovariates)
+	n_lab <- length(splitCovariate_labels)
 
 	if (n_lab < n_cov) {
-		# Scenario: Fewer labels than covariates -> Fill the rest with names
+		# Scenario: Fewer labels than splitCovariates -> Fill the rest with names
 		# e.g. covs=c(A,B,C), labels=c("LabelA") -> result=c("LabelA", "B", "C")
-		final_labels <- c(covariate_labels, covariates[(n_lab + 1):n_cov])
+		final_labels <- c(splitCovariate_labels, splitCovariates[(n_lab + 1):n_cov])
 	} else if (n_lab > n_cov) {
-		# Scenario: More labels than covariates -> Truncate and Warn
-		final_labels <- covariate_labels[1:n_cov]
-		warning(paste0("More labels provided (", n_lab, ") than covariates (", n_cov, "). Extra labels ignored."))
+		# Scenario: More labels than splitCovariates -> Truncate and Warn
+		final_labels <- splitCovariate_labels[1:n_cov]
+		warning(paste0("More labels provided (", n_lab, ") than splitCovariates (", n_cov, "). Extra labels ignored."))
 	} else {
 		# Scenario: Exact match
-		final_labels <- covariate_labels
+		final_labels <- splitCovariate_labels
 	}
 
 	return(final_labels)
 }
 
-
 ##################################################################################
-#' Internal helper to add individual NCA parameters
+#' Validate provided NCA or ratio parameters against available parameters
 #'
 #' @description
-#' Retrieves individual NCA parameter values and appends them below summary statistics.
-#' Used by \code{tableNCAParameters} when \code{include_id = TRUE}.
+#' Checks if the provided NCA parameters exist in the currently loaded PKanalix project.
+#' For ratio tables, validates against ratio parameters in getNCAIndividualRatios().
+#' For non-ratio tables, validates against computed NCA parameters from getNCASettings().
+#' Stops if none of the requested parameters are found; warns if some are missing.
 #'
-#' When covariates are specified, individual IDs are grouped by their covariate values
-#' and listed after the corresponding summary metrics (metrics of modality 1, IDs of
-#' modality 1, metrics of modality 2, IDs of modality 2, etc.).
+#' @param NCAparams Character vector of NCA parameter names to validate, or NULL
+#' @param ratio Logical; if TRUE, validates for ratio tables (checks ratio parameters).
+#'   If FALSE (default), validates against computed NCA parameters.
 #'
-#' @param summary_stats Data frame containing summary statistics in vertical format
-#'   (with "Statistic" column and parameter columns).
-#' @param covariates Character vector of covariate names used for stratification.
-#' @param NCAparams Character vector of NCA parameter names to include.
-#' @param roundDigits Integer specifying the number of decimal places for rounding.
-#' @param roundMethod Character string specifying the rounding method ("monolix", "signif", "none").
-#' @param units Logical; if TRUE, units are appended to parameter names.
-#' @param aliases Logical; if TRUE, parameter aliases (friendly names) are used.
+#' @return Invisible NULL if validation passes. Stops with error if no valid parameters found.
+#'   Issues warning if some parameters are missing but continues.
 #'
-#' @return A data frame combining summary statistics with individual parameter values.
+#' @details
+#' When ratio = FALSE:
+#'   - Uses lixoftConnectors::getNCASettings()$computedncaparameters
+#'   - Gets list of NCA parameters computed/enabled in the project
+#'   - Used in: listingNCAParameters, tableNCAParameters, tableNCAConcentration
+#'
+#' When ratio = TRUE:
+#'   - Uses lixoftConnectors::getNCAIndividualRatios()
+#'   - Extracts ratio parameter columns (excludes id and data variables)
+#'   - Used in: tableNCARatios, listingNCARatios
+#'
+#' Error handling:
+#'   - Stops if NONE of the requested parameters are available
+#'   - Warns if SOME parameters are missing (continues with valid ones)
+#'
+#' @noRd
+.validateNCAParametersSelection <- function(NCAparams, ratio = FALSE, be = FALSE) {
+	# Skip validation if no parameters specified
+	if (is.null(NCAparams)) {
+		return(invisible(NULL))
+	}
+	if (be) {
+		# For BE tables: get computed BE parameters
+		be_settings      <- lixoftConnectors::getBioequivalenceSettings()
+		available_params <- be_settings$computedbioequivalenceparameters$parameters
+		context_msg      <- "BE parameters"
+	} else if (ratio) {
+		# For ratio tables: get available ratio parameters
+		ratio_result <- lixoftConnectors::getNCAIndividualRatios()
+
+		# Get all parameters columns except id and splitCovariates
+		data_info  <- lixoftConnectors::getData()
+		data_vars  <- data_info$header
+		ratio_cols <- setdiff(names(ratio_result), "id")
+
+		# Parameters are columns that only appear in ratio results, not in data
+		available_params <- setdiff(ratio_cols, data_vars)
+		context_msg      <- "ratio parameters"
+	} else {
+		# For non-ratio tables: get computed NCA parameters
+		available_params <- lixoftConnectors::getNCASettings()$computedncaparameters
+		context_msg      <- "NCA parameters"
+	}
+
+	# Find intersection of requested and available
+	valid_params   <- intersect(NCAparams, available_params)
+	missing_params <- setdiff(NCAparams, available_params)
+
+	# Stop if none of the requested parameters are available
+	if (length(valid_params) == 0) {
+		stop(sprintf(
+			"None of the requested %s were found.\nRequested: %s\nAvailable: %s",
+			context_msg,
+			paste(NCAparams, collapse = ", "),
+			if (length(available_params) > 0) paste(available_params, collapse = ", ") else "none"
+		), call. = FALSE)
+	}
+
+	# Warn if some parameters are missing (but continue with valid ones)
+	if (length(missing_params) > 0) {
+		warning(sprintf(
+			"Ignoring unknown %s: %s",
+			context_msg,
+			paste(missing_params, collapse = ", ")
+		), call. = FALSE)
+	}
+
+	return(invisible(NULL))
+}
+
+################################################################################
+#' Filter Observations by Time Deviation
+#'
+#' Filters out observations where the percentage deviation between actual time
+#' and nominal time exceeds a specified threshold. Used internally by
+#' `tableNCAConcentration` to exclude observations with large time deviations
+#' from summary statistics.
+#'
+#' @param data A data frame containing concentration data with columns
+#'   `ActualTime` and `NominalTime`.
+#' @param occs A vector containing names of occasion varaibales
+#'
+#' @param threshold Numeric value specifying the maximum allowed percentage
+#'   deviation. Observations where `abs((ActualTime - NominalTime) / NominalTime) * 100`
+#'   exceeds this value are excluded.
+#'
+#' @details
+#' The percentage deviation is calculated as:
+#' \deqn{\frac{|ActualTime - NominalTime|}{NominalTime} \times 100}
+#'
+#' Observations at `NominalTime = 0` are always retained (excluded from filtering)
+#' since the percentage deviation is undefined at t=0.
+#'
+#' The function attaches the following attributes to the returned data frame
+#' for downstream footnote generation:
+#' \itemize{
+#'   \item `timeDeviationFiltered`: Logical flag indicating if any observations were excluded
+#'   \item `timeDeviationThreshold`: The threshold value used
+#'   \item `timeDeviationExcluded`: Data frame of excluded observations containing
+#'     subject ID, occasion columns (if present), ActualTime, NominalTime, and
+#'     the calculated percentage deviation
+#' }
+#'
+#' @return A filtered data frame with observations exceeding the threshold removed.
+#'   Attributes are attached for footnote generation (see Details).
 #'
 #' @keywords internal
-#'
-.addIndividualsNCAParameters <- function(summary_stats,
-                                         covariates,
-                                         NCAparams,
-                                         roundDigits,
-                                         roundMethod,
-                                         units,
-                                         aliases) {
+.filterByTimeDeviation <- function(data, occs, threshold) {
+	# Calculate percentage deviation: abs((actual - nominal) / nominal) * 100
+	# t=0 observations are excluded from filtering (always kept)
 
-	# Get individual NCA parameters
-	indiv_data   <- lixoftConnectors::getNCAIndividualParameters()
-	indiv_params <- indiv_data$parameters
-	param_info   <- indiv_data$info
+	data <- data %>%
+		dplyr::mutate(
+			.pct_deviation = dplyr::case_when(
+				NominalTime == 0 ~ NA_real_,
+				TRUE ~ abs((ActualTime - NominalTime) / NominalTime) * 100),
+			.exceeds_threshold = .pct_deviation > threshold)
 
-	# Convert rownames to a column for easier manipulation
-	param_info <- param_info %>% tibble::rownames_to_column(var = "name")
+	# Capture excluded observations (id + occasion columns + time info)
+	id_cols <- c("id", occs)
+	excluded_obs <- data %>%
+		dplyr::filter(.exceeds_threshold == TRUE) %>%
+		dplyr::select(
+			dplyr::any_of(id_cols),
+			ActualTime,
+			NominalTime,
+			.pct_deviation)
 
-	# Filter to requested parameters if specified (preserving covariates)
-	if (!is.null(NCAparams)) {
-		# Keep only requested parameters plus id and covariates
-		available_params <- intersect(names(indiv_params), param_info$name)
-		params_to_keep   <- intersect(NCAparams, available_params)
-		# Include covariates in cols_to_keep (they're already in indiv_params for occasion-level covariates)
-		cov_cols_present <- intersect(covariates, names(indiv_params))
-		cols_to_keep     <- c("id", cov_cols_present, params_to_keep)
-		indiv_params     <- indiv_params[, cols_to_keep, drop = FALSE]
-	}
+	n_excluded <- nrow(excluded_obs)
 
-	# Round individual parameter values
-	indiv_params <- .round_num(
-		to_round        = indiv_params,
-		digits          = roundDigits,
-		rounding_method = roundMethod,
-		exclude         = c("id", covariates))
+	# Filter and clean up
 
-	# Apply units and aliases to parameter column names
-	# Get parameter columns (exclude id and covariates)
-	param_cols <- setdiff(names(indiv_params), c("id", covariates))
+	filtered_data <- data %>%
+		dplyr::filter(!.exceeds_threshold | is.na(.exceeds_threshold)) %>%
+		dplyr::select(-.pct_deviation, -.exceeds_threshold)
 
-	if (length(param_cols) > 0) {
-		# temp dataframe for transformation
-		temp_df <- data.frame(parameter = param_cols, stringsAsFactors = FALSE)
-		temp_df <- .addUnitsAliases(temp_df, add_units = units, add_aliases = aliases)
+	# Attach attributes for footnote generation
+	if (n_excluded > 0) {
+		attr(filtered_data, "timeDeviationFiltered") <- TRUE
+		attr(filtered_data, "timeDeviationThreshold") <- threshold
+		attr(filtered_data, "timeDeviationExcluded") <- excluded_obs
 
-		# Create mapping: old name -> new name
-		name_mapping <- setNames(temp_df$parameter, param_cols)
-
-		# Rename columns in indiv_params (vectorized approach)
-		new_names  <- names(indiv_params)
-		rename_idx <- which(new_names %in% names(name_mapping))
-		new_names[rename_idx] <- name_mapping[new_names[rename_idx]]
-		names(indiv_params)   <- new_names
-	}
-
-	# Get parameter columns from summary_stats (excluding Statistic and covariates)
-	summary_param_cols <- setdiff(names(summary_stats), c("Statistic", covariates))
-
-	# Select only columns that match summary_stats
-	cols_to_keep <- c("id", covariates, intersect(names(indiv_params), summary_param_cols))
-	indiv_params <- indiv_params[, cols_to_keep, drop = FALSE]
-
-	# Rename id to Statistic
-	indiv_params <- indiv_params %>% dplyr::rename(Statistic = id)
-
-	# Convert parameter columns to character to match summary_stats format
-	param_cols <- setdiff(names(indiv_params), c("Statistic", covariates))
-	if (length(param_cols) > 0) {
-		indiv_params <- indiv_params %>% dplyr::mutate(dplyr::across(dplyr::all_of(param_cols), as.character))
-	}
-
-	# Combine with summary_stats
-	if (!is.null(covariates) && length(covariates) > 0) {
-		# Split both dataframes by covariate combinations
-		summary_groups <- summary_stats %>%
-			dplyr::group_by(dplyr::across(dplyr::all_of(covariates))) %>%
-			dplyr::group_split()
-
-		indiv_groups <- indiv_params %>%
-			dplyr::group_by(dplyr::across(dplyr::all_of(covariates))) %>%
-			dplyr::group_split()
-
-		# Add Section column to each group
-		summary_groups <- lapply(summary_groups, function(x) {
-			x$Section <- "SUMMARY"
-			x
-		})
-
-		indiv_groups <- lapply(indiv_groups, function(x) {
-			x$Section <- "INDIVIDUAL"
-			x
-		})
-
-		# Combine corresponding groups (metrics first, then individuals)
-		result_list <- purrr::map2(summary_groups, indiv_groups, rbind)
-
-		final_result <- do.call(rbind, result_list)
+		message(sprintf("Excluded %d observations exceeding %g%% time deviation threshold.",
+										n_excluded, threshold))
 	} else {
-		# No covariates: simple append
-		summary_stats$Section <- "SUMMARY"
-		indiv_params$Section  <- "INDIVIDUAL"
-		final_result          <- rbind(summary_stats, indiv_params)
+		attr(filtered_data, "timeDeviationFiltered") <- FALSE
 	}
 
-	return(final_result)
+	return(filtered_data)
+
+}
+
+################################################################################
+#' Add individual subject data to summary statistics table
+#'
+#' Unified helper to add individual subject IDs and their values (parameters, ratios, or concentrations)
+#' below summary statistics. Works for NCA parameters, ratios, and concentrations.
+#'
+#' @param summary_stats Summary statistics data frame (in vertical format with Statistic column for params/ratios,
+#'   or in wide format with time columns for concentrations)
+#' @param splitCovariates Character vector of covariate names (optional)
+#' @param resultType Type of result: "ncaParameters", "ncaRatio", or "ncaConcentration"
+#' @param params Parameter names to include (NCAparams for parameters, ratioParams for ratios, NULL for all)
+#' @param roundDigits Number of decimal places for rounding
+#' @param roundMethod Rounding method ("monolix", "signif", or "none")
+#' @param units Logical; include units for parameter names (only for ncaParameters)
+#' @param aliases Logical; use parameter aliases (only for ncaParameters)
+#' @param useNominalTime Logical; use nominal time (only for ncaConcentration)
+#' @param indiv_data Optional pre-fetched individual data frame (only for ncaConcentration).
+#'   If NULL, data is fetched via listingNCAConcentration(). Passing pre-fetched data avoids
+#'   redundant API calls when the calling function already has the data.
+#'
+#' @return Data frame with summary statistics and individual subject data combined.
+#'   Contains a "Section" column with values "SUMMARY" or "INDIVIDUAL" to distinguish rows.
+#'   SUMMARY rows appear before INDIVIDUAL rows within each covariate group.
+#'
+#' @details
+#' The function handles occasion columns automatically:
+#' - Detects occasion variables from the PKanalix project
+#' - If duplicate id-covariate combinations exist due to occasions, creates composite IDs
+#'   (e.g., "Subject1-Period1") using actual occasion values
+#' - For ncaParameters, applies units and aliases using .addUnitsAliases() helper
+#'
+#' @keywords internal
+#' @noRd
+################################################################################
+.addIndividuals <- function(summary_stats,
+														splitCovariates= NULL,
+														resultType     = c("ncaParameters", "ncaRatio", "ncaConcentration"),
+														params         = NULL,
+														roundDigits    = 3,
+														roundMethod    = "monolix",
+														units          = TRUE,
+														units_df       = NULL,
+														aliases        = TRUE,
+														aliases_df     = NULL,
+														useNominalTime = TRUE,
+														indiv_data     = NULL
+														) {
+
+	resultType <- match.arg(resultType)
+
+	# ==========================================================================
+	# BRANCH 1: NCA Parameters and Ratios (similar logic)
+	# ==========================================================================
+
+	if (resultType %in% c("ncaParameters", "ncaRatio")) {
+
+		# Get ALL splitCovariates from project (including occasions) to properly identify parameter columns
+		project_data <- lixoftConnectors::getData()
+		all_splitCovariates <- project_data$header[project_data$headerTypes %in% c("catcov", "contcov", "occ")]
+		occ_vars <- project_data$header[project_data$headerTypes == "occ"]
+
+		# Get individual data based on type
+		if (resultType == "ncaParameters") {
+			# Get parameter columns (exclude id and ALL splitCovariates including occasions)
+			param_cols <- setdiff(names(indiv_data), c("id", all_splitCovariates))
+
+		} else {  # ncaRatio
+			ratio_info <- lixoftConnectors::getNCARatios()
+			param_cols <- names(ratio_info)
+
+			# Check for remaining occasions in ratio table
+			remaining_occs <- .getRemainingOccasionsInRatioTable(indiv_data)
+			occ_vars <- remaining_occs  # Only use REMAINING occasions, not all project occasions
+		}
+
+		# Filter to requested parameters if specified
+		if (!is.null(params)) {
+			cols_to_keep <- intersect(params, param_cols)
+		} else {
+			cols_to_keep <- param_cols
+		}
+
+		# Get parameter order from summary_stats (pretty names from tableNCAParameters)
+		param_order <- setdiff(names(summary_stats), c("Statistic", splitCovariates))
+
+		# ==========================================================================
+		# Apply units/aliases FIRST to create mapping (before any pivoting)
+		# This ensures parameter names match param_order from summary_stats
+		# ==========================================================================
+		# For ncaParameters: use units/aliases flags
+		# For ncaRatio: use custom aliases_df only (ratios are dimensionless, no units)
+		should_apply_aliases <- (resultType == "ncaParameters" && (units || aliases)) ||
+		                        (resultType == "ncaRatio" && !is.null(aliases_df))
+
+		if (should_apply_aliases) {
+			temp_df <- data.frame(parameter = cols_to_keep, stringsAsFactors = FALSE)
+			temp_df_formatted <- .addUnitsAliases(
+				temp_df,
+				add_units   = if (resultType == "ncaRatio") FALSE else units,
+				add_aliases = if (resultType == "ncaRatio") TRUE else aliases,
+				units_df    = units_df,
+				aliases_df  = aliases_df)
+			name_mapping <- setNames(temp_df_formatted$parameter, cols_to_keep)
+
+			# For ncaRatio: update param_order to use aliased names (summary_stats has original names)
+			if (resultType == "ncaRatio") {
+				param_order <- unname(name_mapping)
+			}
+		} else {
+			name_mapping <- setNames(cols_to_keep, cols_to_keep)  # identity mapping
+		}
+
+		# ==========================================================================
+		# Select only needed columns, pivot to long, check for occasions
+		# ==========================================================================
+
+		# Columns to keep: id, user splitCovariates, occasion columns, selected parameters
+		cols_for_pivot <- c("id", splitCovariates, occ_vars, cols_to_keep)
+		cols_for_pivot <- intersect(cols_for_pivot, names(indiv_data))
+
+		# Pivot to long format
+		long_df <- indiv_data %>%
+			dplyr::select(dplyr::all_of(cols_for_pivot)) %>%
+			tidyr::pivot_longer(
+				cols      = dplyr::all_of(cols_to_keep),
+				names_to  = "Parameter",
+				values_to = "Value")
+
+		# Apply name mapping to Parameter column
+		long_df$Parameter <- name_mapping[long_df$Parameter]
+
+		# Check for occasions (duplicate id-covariate-parameter combinations)
+		# Pass occ_vars explicitly - differs between ncaParameters and ncaRatio
+		composite_result <- .createCompositeId(long_df, splitCovariates, occ_vars = occ_vars,
+																					 value_group_col = "Parameter")
+		long_df <- composite_result$data
+		use_composite_id <- composite_result$composite_id_created
+
+		# Determine which ID column to use
+		id_col <- if (use_composite_id) "composite_id" else "id"
+
+		# Round individual values
+		long_df$Value <- .round_num(
+			to_round        = data.frame(val = long_df$Value),
+			digits          = roundDigits,
+			rounding_method = roundMethod,
+			exclude         = NULL)$val
+
+		# ==========================================================================
+		# Pivot to wide format and combine with summary_stats
+		# ==========================================================================
+
+		# Pivot to wide (parameters as columns, id/composite_id as rows)
+		indiv_wide <- long_df %>%
+			tidyr::pivot_wider(
+				id_cols     = c(!!rlang::sym(id_col), dplyr::all_of(splitCovariates)),
+				names_from  = Parameter,
+				values_from = Value) %>%
+			dplyr::rename(Statistic = !!rlang::sym(id_col)) %>%
+			dplyr::mutate(Section = "INDIVIDUAL")
+
+		# Ensure column order matches summary_stats
+		indiv_wide <- indiv_wide %>%
+			dplyr::mutate(dplyr::across(dplyr::all_of(param_order), as.character)) %>%
+			dplyr::select(dplyr::all_of(c(splitCovariates, "Statistic", param_order, "Section")))
+
+		# Add Section column to summary stats
+		summary_stats$Section <- "SUMMARY"
+
+		# Combine and sort
+		result <- dplyr::bind_rows(summary_stats, indiv_wide)
+
+		# Convert Section to factor to ensure SUMMARY appears before INDIVIDUAL
+		result$Section <- factor(result$Section, levels = c("SUMMARY", "INDIVIDUAL"))
+
+		# Sort by splitCovariates (if present), then Section (SUMMARY before INDIVIDUAL)
+		if (!is.null(splitCovariates) && length(splitCovariates) > 0) {
+			result <- result %>%
+				dplyr::arrange(dplyr::across(dplyr::all_of(splitCovariates)), Section)
+		} else {
+			result <- result %>%
+				dplyr::arrange(Section)
+		}
+
+		# Convert Section back to character for consistent output
+		result$Section <- as.character(result$Section)
+
+		# Reorder columns: splitCovariates, Statistic, Section, then parameters
+		result <- result %>%
+			dplyr::select(dplyr::all_of(c(splitCovariates, "Statistic", param_order, "Section")))
+
+		return(as.data.frame(result))
+	}
+
+	# ==========================================================================
+	# BRANCH 2: NCA Concentrations (different structure - time as columns)
+	# ==========================================================================
+
+	if (resultType == "ncaConcentration") {
+
+		# Get occasion variables from project settings (same as ncaParameters)
+		project_data <- lixoftConnectors::getData()
+		occ_vars <- project_data$header[project_data$headerTypes == "occ"]
+
+		# Use provided indiv_data or fetch individual concentration data
+		if (is.null(indiv_data)) {
+			indiv_data <- listingNCAConcentration(
+				projectFile    = NULL,  # Already loaded
+				splitCovariates     = splitCovariates,
+				useNominalTime = useNominalTime,
+				roundDigits    = NULL,  # Don't round here, will round below
+				roundMethod    = "none")
+		}
+
+		# Determine time column
+		time_col <- if ("NominalTime" %in% names(indiv_data)) "NominalTime" else "ActualTime"
+
+		# Round concentration values (raw_data from tableNCAConcentration is unrounded)
+		indiv_data$UsedConc <- .round_num(
+			to_round        = data.frame(val = indiv_data$UsedConc),
+			digits          = roundDigits,
+			rounding_method = roundMethod,
+			exclude         = NULL)$val
+
+		# *** CHECK FOR OCCASIONS BEFORE PIVOTING TO WIDE ***
+		# Pass full indiv_data with all columns (including occasions) to detect duplicates correctly
+		composite_result <- .createCompositeId(indiv_data, splitCovariates, occ_vars = occ_vars,
+																					 value_group_col = time_col)
+		indiv_data_processed <- composite_result$data
+		use_composite_id <- composite_result$composite_id_created
+
+		# Determine which ID column to use
+		id_col <- if (use_composite_id) "composite_id" else "id"
+
+		# Pivot individual data to wide format (time as columns)
+		indiv_wide <- indiv_data_processed %>%
+			dplyr::select(!!rlang::sym(id_col), dplyr::all_of(splitCovariates),
+										!!rlang::sym(time_col), UsedConc) %>%
+			tidyr::pivot_wider(
+				id_cols     = c(!!rlang::sym(id_col), dplyr::all_of(splitCovariates)),
+				names_from  = !!rlang::sym(time_col),
+				values_from = UsedConc) %>%
+			dplyr::rename(Statistic = !!rlang::sym(id_col)) %>%
+			dplyr::mutate(Section = "INDIVIDUAL")
+
+		# Get time points from summary_stats (columns excluding Statistic and splitCovariates)
+		time_cols <- setdiff(names(indiv_wide), c("Statistic", splitCovariates, "Section"))
+
+		# Ensure column order matches summary_stats
+		indiv_wide <- indiv_wide %>%
+			dplyr::mutate(dplyr::across(dplyr::all_of(time_cols), as.character)) %>%
+			dplyr::select(dplyr::all_of(c(splitCovariates, "Statistic", time_cols, "Section")))
+
+		# Add Section column to summary stats
+		summary_stats$Section <- "SUMMARY"
+
+		# Combine and sort
+		result <- dplyr::bind_rows(summary_stats, indiv_wide)
+
+		# Convert Section to factor to ensure SUMMARY appears before INDIVIDUAL
+		result$Section <- factor(result$Section, levels = c("SUMMARY", "INDIVIDUAL"))
+
+		# Sort by splitCovariates (if present), then Section (SUMMARY before INDIVIDUAL)
+		if (!is.null(splitCovariates) && length(splitCovariates) > 0) {
+			result <- result %>%
+				dplyr::arrange(dplyr::across(dplyr::all_of(splitCovariates)), Section)
+		} else {
+			result <- result %>%
+				dplyr::arrange(Section)
+		}
+
+		# Convert Section back to character for consistent output
+		result$Section <- as.character(result$Section)
+
+		# Reorder columns: splitCovariates, Statistic, Section, then time points
+		result <- result %>%
+			dplyr::select(dplyr::all_of(c(splitCovariates, "Statistic", time_cols, "Section")))
+
+		return(as.data.frame(result))
+	}
+}
+################################################################################
+#' Get remaining occasion columns in NCA ratio table
+#'
+#' Identifies which occasion variables from the project are still present in
+#' the individual ratio table. Ratios are computed BETWEEN occasions (e.g.,
+#' OCC2/OCC1), so those occasions are consumed. However, other occasion
+#' variables may remain and cause non-unique subject identifiers.
+#'
+#' @param ratio_data Data frame from getNCAIndividualRatios(). If NULL,
+#'   fetches it automatically.
+#'
+#' @return Character vector of occasion column names that remain in the ratio
+#'   table (may be empty if all occasions were used for ratio computation).
+#'
+#' @details
+#' This function:
+#' 1. Gets all occasion variables defined in the project
+#' 2. Gets the ratio parameter columns from getNCARatios()
+#' 3. Identifies columns in ratio_data that are neither 'id' nor ratio params
+#' 4. Returns intersection with project occasions (remaining occasions)
+#'
+#' Used by .addIndividuals() to determine which occasions apply for ncaRatio,
+#' since ratio tables have different occasion handling than ncaParameters.
+#'
+#' @seealso \code{\link{.createCompositeId}} which uses this to determine
+#'   appropriate occasion variables for ratio data
+#'
+#' @keywords internal
+#' @noRd
+################################################################################
+.getRemainingOccasionsInRatioTable <- function(ratio_data = NULL) {
+	# Fetch ratio data if not provided
+	if (is.null(ratio_data)) {
+		ratio_data <- lixoftConnectors::getNCAIndividualRatios()
+	}
+
+	# Get project occasion variables
+	project_data <- lixoftConnectors::getData()
+	occ_vars <- project_data$header[project_data$headerTypes == "occ"]
+
+	# Get ratio parameter columns
+	ratio_info <- lixoftConnectors::getNCARatios()
+	ratio_cols <- names(ratio_info)
+
+	# Find non-id, non-ratio columns
+	other_cols <- setdiff(names(ratio_data), c("id", ratio_cols))
+
+	# Which are occasion variables?
+	remaining_occs <- intersect(other_cols, occ_vars)
+
+	return(remaining_occs)
+}
+################################################################################
+#' Create composite IDs for handling occasions in individual data
+#'
+#' Detects when duplicate id-covariate-parameter combinations exist due to
+#' occasions and creates composite IDs by combining subject ID with occasion
+#' values. Handles long format data where each subject has multiple rows
+#' (one per parameter or time point).
+#'
+#' @param data Data frame containing individual data with id column and
+#'   potentially occasion columns. Expected to be in long format.
+#' @param splitCovariates Character vector of user-specified covariate names (may
+#'   include occasion columns, which will be excluded from grouping).
+#' @param occ_vars Character vector of occasion variable names to check.
+#'   Must be provided by caller based on data type:
+#'   \itemize{
+#'     \item ncaParameters/ncaConcentration: from project settings
+#'     \item ncaRatio: from .getRemainingOccasionsInRatioTable() (only
+#'       remaining occasions, not those used to compute ratios)
+#'   }
+#' @param value_group_col Column name that causes expected row multiplication
+#'   in long format. Used to properly check uniqueness:
+#'   \itemize{
+#'     \item ncaParameters/ncaRatio: "Parameter"
+#'     \item ncaConcentration: time column (NominalTime or ActualTime)
+#'   }
+#'
+#' @return A list with three elements:
+#'   \item{data}{The input data frame, potentially with new "composite_id" column}
+#'   \item{composite_id_created}{Logical; TRUE if composite IDs were created}
+#'   \item{occasion_cols}{Character vector of occasion column names used for
+#'     composite ID, or NULL if no composite ID was needed}
+#'
+#' @details
+#' The function:
+#' 1. Excludes occasions from user splitCovariates to define grouping columns
+#' 2. Includes value_group_col to account for long format (multiple rows per subject)
+#' 3. Checks if any (id, covariate, parameter/time) combination appears more than once
+#' 4. If duplicates exist, identifies which occasion columns vary within groups
+#' 5. Creates composite IDs using actual occasion values (e.g., "Subject1-Period1")
+#'
+#' This ensures unique identifiers when pivoting to wide format, while preserving
+#' the mapping to original subject ID and occasion values.
+#'
+#' @seealso \code{\link{.getRemainingOccasionsInRatioTable}} for determining
+#'   appropriate occ_vars for ratio data
+#'
+#' @keywords internal
+#' @noRd
+################################################################################
+.createCompositeId <- function(data, splitCovariates, occ_vars, value_group_col) {
+	# Define grouping columns (id + user-specified splitCovariates, excluding occasions)
+
+	user_splitCovariates <- setdiff(splitCovariates, occ_vars)
+	if (is.null(user_splitCovariates) || length(user_splitCovariates) == 0) {
+		grouping_cols <- "id"
+	} else {
+		grouping_cols <- c("id", user_splitCovariates)
+	}
+
+	# Include value_group_col in check (accounts for long format where each
+	# id-covariate has multiple rows - one per Parameter or time point)
+	check_cols <- grouping_cols
+	if (!is.null(value_group_col) && value_group_col %in% names(data)) {
+		check_cols <- c(check_cols, value_group_col)
+	}
+
+	# Count occurrences of each id-covariate-valueGroup combination
+	dup_check <- data %>%
+		dplyr::group_by(dplyr::across(dplyr::all_of(check_cols))) %>%
+		dplyr::summarise(n_obs = dplyr::n(), .groups = "drop")
+
+	# If all combinations appear exactly once, no composite ID needed
+	if (all(dup_check$n_obs == 1)) {
+		return(list(
+			data = data,
+			composite_id_created = FALSE,
+			occasion_cols = NULL
+		))
+	}
+
+	# Duplicates exist! Identify which occasion columns vary within id-covariate groups
+	# Only use occasions that actually cause the duplication
+
+	# Find occasion columns that are present in the data
+	available_occ_cols <- intersect(occ_vars, names(data))
+
+	if (length(available_occ_cols) == 0) {
+		# No occasion columns found - cannot create composite IDs
+		warning("Duplicate id-covariate combinations detected but no occasion columns found. ",
+						"Cannot create composite IDs. Keeping original id.")
+		return(list(
+			data = data,
+			composite_id_created = FALSE,
+			occasion_cols = NULL
+		))
+	}
+
+	# Check which occasion columns actually vary within id-covariate groups
+	varying_occ_cols <- c()
+	for (occ_col in available_occ_cols) {
+		max_unique <- data %>%
+			dplyr::group_by(dplyr::across(dplyr::all_of(grouping_cols))) %>%
+			dplyr::summarise(
+				n_unique = dplyr::n_distinct(!!rlang::sym(occ_col), na.rm = TRUE),
+				.groups = "drop"
+			) %>%
+			dplyr::pull(n_unique) %>%
+			max(na.rm = TRUE)
+
+		if (max_unique > 1) {
+			varying_occ_cols <- c(varying_occ_cols, occ_col)
+		}
+	}
+
+	# Use varying occasion columns for composite ID
+	if (length(varying_occ_cols) > 0) {
+		# Create composite ID by pasting id with actual occasion values
+		composite_parts <- list(rlang::sym("id"))
+		for (col in varying_occ_cols) {
+			composite_parts <- c(composite_parts, list(rlang::sym(col)))
+		}
+
+		data <- data %>%
+			dplyr::mutate(
+				composite_id = do.call(paste, c(composite_parts, list(sep = "-"))),
+				.before = 1
+			)
+
+		message("Created composite IDs using: id + ", paste(varying_occ_cols, collapse = " + "))
+	} else {
+		# All occasion columns are constant within groups
+		# This means occasions don't actually cause duplication - should not happen
+		warning("Duplicate id-covariate combinations detected but occasion columns don't vary. ",
+						"This should not occur. Keeping original id.")
+
+		return(list(
+			data = data,
+			composite_id_created = FALSE,
+			occasion_cols = NULL
+		))
+	}
+
+	return(list(
+		data = data,
+		composite_id_created = TRUE,
+		occasion_cols = varying_occ_cols
+	))
 }
 
 
@@ -870,7 +1849,7 @@
 #' @param NCAparams A character vector of NCA parameter names to filter by.
 #'   If `NULL`, all available parameters are retrieved.
 #'   \emph{Applicable only when `by_time = FALSE`.}
-#' @param covariates A character vector of covariate names to stratify the results by.
+#' @param splitCovariates A character vector of covariate names to stratify the results by.
 #'   If `NULL`, overall (non-stratified) statistics are calculated.
 #' @param roundDigits Integer. The rounding precision (number of digits).
 #'   Inherited from the parent table/listing function settings.
@@ -897,7 +1876,7 @@
 #'
 .prepareNCASummaryStats <- function(projectFile,
 																		NCAparams = NULL,
-																		covariates = NULL,
+																		splitCovariates = NULL,
 																		roundDigits,
 																		roundMethod,
 																		units = TRUE,
@@ -910,8 +1889,8 @@
 		# CONCENTRATION MODE: Calculate stats by timepoint
 		# Set Stratification
 		lixoftConnectors::setNCAResultsStratification() # reset
-		if (!is.null(covariates)) {
-			lixoftConnectors::setNCAResultsStratification(split = covariates)
+		if (!is.null(splitCovariates)) {
+			lixoftConnectors::setNCAResultsStratification(split = splitCovariates)
 		}
 
 		# Check if nominal time exists
@@ -932,7 +1911,7 @@
 		}
 
 		# Fix column swap bug
-		df_fixed <- .fixNCAConcentrationsColumnSwap(df, covariates)
+		df_fixed <- .fixNCAConcentrationsColumnSwap(df, splitCovariates)
 
 		# Choose label column
 		stat_col <- if ("metric" %in% names(df_fixed)) "metric" else "subject"
@@ -942,7 +1921,7 @@
 			dplyr::filter(!grepl("^\\d+$", !!rlang::sym(stat_col)))
 
 		# Pivot time columns to rows
-		cols_to_pivot <- setdiff(names(df_fixed), c(covariates, stat_col))
+		cols_to_pivot <- setdiff(names(df_fixed), c(splitCovariates, stat_col))
 
 		summary_long <- summary_only %>%
 			tidyr::pivot_longer(
@@ -956,15 +1935,15 @@
 		# Pivot metrics to columns
 		summary_stats <- summary_long %>%
 			tidyr::pivot_wider(names_from = !!rlang::sym(stat_col), values_from = "Value") %>%
-			dplyr::arrange(dplyr::across(dplyr::any_of(covariates)), as.numeric(Time)) %>%
-			dplyr::mutate(dplyr::across(dplyr::any_of(covariates), as.character))
+			dplyr::arrange(dplyr::across(dplyr::any_of(splitCovariates)), as.numeric(Time)) %>%
+			dplyr::mutate(dplyr::across(dplyr::any_of(splitCovariates), as.character))
 
 		# Apply Rounding
 		summary_stats <- .round_num(
 			to_round        = summary_stats,
 			digits          = roundDigits,
 			rounding_method = roundMethod,
-			exclude         = c("Time", covariates))
+			exclude         = c("Time", splitCovariates))
 
 		# Add Combined Metrics
 		summary_stats <- .combinedStats(summary_stats)
@@ -976,8 +1955,8 @@
 		# PARAMETER MODE: Original logic (calculate stats by parameter)
 		# Set Stratification
 		lixoftConnectors::setNCAResultsStratification() # reset
-		if (!is.null(covariates)) {
-			lixoftConnectors::setNCAResultsStratification(split = covariates)
+		if (!is.null(splitCovariates)) {
+			lixoftConnectors::setNCAResultsStratification(split = splitCovariates)
 		}
 
 		# Get Summary Stats (from getNCAParameterStatistics)
@@ -992,19 +1971,19 @@
 		indiv <- lixoftConnectors::getNCAIndividualParameters()$parameters
 
 		# Identify grouping and pivoting structure
-		grouping_vars <- c("id", covariates)
+		grouping_vars <- c("id", splitCovariates)
 
-		# Keep only numeric columns + covariates + id
+		# Keep only numeric columns + splitCovariates + id
 		indiv_long <- indiv %>%
 			dplyr::select(dplyr::all_of(grouping_vars), dplyr::where(is.numeric)) %>%
 			tidyr::pivot_longer(
 				cols = -dplyr::all_of(grouping_vars),
 				names_to = "parameter",
 				values_to = "value") %>%
-			dplyr::relocate(dplyr::any_of(covariates), id, parameter, value)
+			dplyr::relocate(dplyr::any_of(splitCovariates), id, parameter, value)
 
 		# Summarize (handles stats automatically)
-		if (is.null(covariates)) {
+		if (is.null(splitCovariates)) {
 			descr_stats <- .summarizeStats(
 				df         = indiv_long,
 				group_vars = "parameter",
@@ -1015,15 +1994,15 @@
 		} else {
 			descr_stats <- .summarizeStats(
 				df         = indiv_long,
-				group_vars = c(covariates, "parameter"),
+				group_vars = c(splitCovariates, "parameter"),
 				value_col  = "value",
 				id_col     = "id") %>%
-				dplyr::select(dplyr::all_of(c(covariates, "parameter")), P05, Q1, median, Q3, P95, max) %>%
-				dplyr::arrange(dplyr::across(dplyr::all_of(c(covariates, "parameter"))))
+				dplyr::select(dplyr::all_of(c(splitCovariates, "parameter")), P05, Q1, median, Q3, P95, max) %>%
+				dplyr::arrange(dplyr::across(dplyr::all_of(c(splitCovariates, "parameter"))))
 		}
 
 		# Merge Summaries
-		join_cols <- c("parameter", covariates)
+		join_cols <- c("parameter", splitCovariates)
 		summary_stats <- dplyr::left_join(summary_stats, descr_stats, by = join_cols)
 
 		# Apply Rounding & Combining
@@ -1031,7 +2010,7 @@
 			to_round        = summary_stats,
 			digits          = roundDigits,
 			rounding_method = roundMethod,
-			exclude         = c("parameter", covariates))
+			exclude         = c("parameter", splitCovariates))
 
 		summary_stats <- .combinedStats(summary_stats)
 
@@ -1046,7 +2025,7 @@
 
 
 ##################################################################################
-#' calculate_raw_freq
+#' .calculateCategoricalFrequencies
 #'
 #' Calculates raw frequency counts and percentages for categorical variables.
 #' For each unique value (modality) within each variable, computes the count,
@@ -1061,7 +2040,7 @@
 #'
 #' @details
 #' This function is used internally for creating frequency tables of categorical
-#' covariates. It first counts the total number of distinct subjects (IDs) for
+#' splitCovariates. It first counts the total number of distinct subjects (IDs) for
 #' each variable, then calculates how many subjects have each specific value
 #' (modality) of that variable.
 #'
@@ -1088,7 +2067,7 @@
 #' #                  value = c("M", "F", "M", "White", "White", "Asian"))
 #' # .calculate_raw_freq(df)
 #'
-.calculate_raw_freq <- function(df_input) {
+.calculateCategoricalFrequencies <- function(df_input) {
 	# This logic assumes df_input has columns: id, variable, value
 	subject_counts <- df_input %>%
 		dplyr::group_by(variable) %>%
@@ -1104,7 +2083,7 @@
 
 
 ##################################################################################
-#' format_frequency_table
+#' formatFrequencyTable
 #'
 #' Formats a frequency table by applying rounding and creating a combined
 #' display metric showing count and percentage together as "N (%)".
@@ -1180,7 +2159,7 @@
 #' }
 #'
 #' It's used internally to streamline the creation of formatted frequency tables
-#' for categorical covariates in summary reports.
+#' for categorical splitCovariates in summary reports.
 #'
 #' @return A formatted frequency table with combined `N (%)` display metric.
 #'   See `.format_frequency_table()` for details on the output structure.
@@ -1361,23 +2340,23 @@
 #'
 #' @param summary_stats Stratified summary statistics
 #' @param overall_stats Overall summary statistics (optional)
-#' @param covariates Covariate names
+#' @param splitCovariates Covariate names
 #' @param selected_metrics Selected metrics to include
 #' @param param_col Parameter column name
-#' @param covariate_labels Custom labels for covariates (optional)
+#' @param splitCovariate_labels Custom labels for splitCovariates (optional)
 #' @keywords internal
 #' @noRd
-.buildStratifiedTable <- function(summary_stats, overall_stats = NULL, covariates,
+.buildStratifiedTable <- function(summary_stats, overall_stats = NULL, splitCovariates,
 																	selected_metrics, param_col, covariate_labels = NULL) {
-	if (!is.null(covariates)) {
+	if (!is.null(splitCovariates)) {
 		# Prepare covariate labels
-		if (is.null(covariate_labels)) labels <- covariates else labels <- covariate_labels
+		if (is.null(covariate_labels)) labels <- splitCovariates else labels <- covariate_labels
 
-		# Create header column combining covariates
+		# Create header column combining splitCovariates
 		df_prepared <- summary_stats %>%
 			dplyr::rowwise() %>%
 			dplyr::mutate(header = {
-				values <- dplyr::c_across(dplyr::all_of(covariates))
+				values <- dplyr::c_across(dplyr::all_of(splitCovariates))
 				pieces <- paste0(labels, "=", as.character(values))
 				paste(pieces, collapse = "\n")
 			}) %>%
@@ -1385,7 +2364,7 @@
 
 		# Map headers to N counts
 		n_per_stratum <- df_prepared %>%
-			distinct(header, Nobs) %>%
+			dplyr::distinct(header, Nobs) %>%
 			dplyr::mutate(header_N = paste0(header, "\n(N=", Nobs, ")"))
 
 		# Prepare overall data if provided
@@ -1405,7 +2384,7 @@
 			n_per_stratum    = n_per_stratum
 		)
 	} else {
-		# No covariates - just Overall with N
+		# No splitCovariates - just Overall with N
 		max_n <- max(summary_stats$Nobs, na.rm = TRUE)
 
 		if (length(selected_metrics) > 1) {
@@ -1431,11 +2410,11 @@
 #'
 #' @param summary_stats Summary statistics data frame
 #' @param param_col Parameter column name
-#' @param covariates Covariate names to preserve
+#' @param splitCovariates Covariate names to preserve
 #' @keywords internal
 #' @noRd
-.pivotToVertical <- function(summary_stats, param_col, covariates = NULL) {
-	stat_cols <- setdiff(names(summary_stats), c(param_col, covariates))
+.pivotToVertical <- function(summary_stats, param_col, splitCovariates = NULL) {
+	stat_cols <- setdiff(names(summary_stats), c(param_col, splitCovariates))
 	param_order <- unique(summary_stats[[param_col]])
 	stat_order <- stat_cols
 
@@ -1448,12 +2427,12 @@
 		) %>%
 		dplyr::mutate(Statistic = factor(Statistic, levels = stat_order)) %>%
 		tidyr::pivot_wider(
-			id_cols     = c(dplyr::any_of(covariates), Statistic),
+			id_cols     = c(dplyr::any_of(splitCovariates), Statistic),
 			names_from  = dplyr::all_of(param_col),
 			values_from = Value
 		) %>%
-		dplyr::arrange(dplyr::across(dplyr::any_of(covariates)), Statistic) %>%
-		dplyr::select(dplyr::any_of(covariates), Statistic, dplyr::all_of(as.character(param_order)))
+		dplyr::arrange(dplyr::across(dplyr::any_of(splitCovariates)), Statistic) %>%
+		dplyr::select(dplyr::any_of(splitCovariates), Statistic, dplyr::all_of(as.character(param_order)))
 
 	return(result)
 }
@@ -1497,7 +2476,7 @@
 				tidyr::pivot_longer(cols = dplyr::all_of(selected_metrics), names_to = "Statistic", values_to = "Overall") %>%
 				dplyr::select(!!rlang::sym(param_col), Statistic, Overall, header_N)
 
-			overall_label <- unique(overall_pivoted$header_N)
+			overall_label <- unique(overall_pivoted$header_N)[1]
 			result <- result %>%
 				dplyr::left_join(overall_pivoted %>% dplyr::select(-header_N), by = c(param_col, "Statistic")) %>%
 				dplyr::rename(!!overall_label := Overall)
@@ -1528,10 +2507,136 @@
 
 			result <- result %>%
 				dplyr::left_join(overall_renamed, by = param_col) %>%
-				dplyr::rename(!!unique(overall_renamed$header_N) := Overall) %>%
+				dplyr::rename(!!unique(overall_renamed$header_N)[1] := Overall) %>%
 				dplyr::select(-header_N)
 		}
 	}
 
 	return(result)
+}
+################################################################################
+#' Apply Log Transformation Label to Parameter Names
+#'
+#' @description
+#' Wraps parameter names with "ln()" prefix for parameters that were
+#' log-transformed in the bioequivalence analysis.
+#'
+#' @param df A data.frame containing parameter information.
+#' @param log_map A named logical vector where names are parameter names and
+#'   values indicate whether log transformation was applied (TRUE/FALSE).
+#' @param orig_col Character. Name of the column containing original parameter
+#'   names used for log transformation lookup. Default: "Original_Parameter".
+#' @param param_col Character. Name of the column containing formatted parameter
+#'   names to be wrapped. Default: "parameter".
+#'
+#' @return A data.frame with log-transformed parameters wrapped in "ln()".
+#'   The original parameter column is retained for subsequent processing.
+#'
+#' @details
+#' This function checks each parameter against the log transformation map
+#' (typically from \code{getBioequivalenceSettings()$computedbioequivalenceparameters})
+#' and prepends "ln(" and appends ")" to parameters where \code{logTransform = TRUE}.
+#'
+#' @note This is an internal function used by \code{tableBEResults()} to indicate
+#'   which parameters were analyzed on the log scale. Should be called after
+#'   aliases are applied but before units are added.
+#'
+#' @seealso \code{\link{.addUnitsOnly}}, \code{\link{tableBEResults}}
+#'
+#' @keywords internal
+.applyLogTransformLabel <- function(df, log_map, orig_col = "Original_Parameter", param_col = "parameter") {
+	df[[param_col]] <- sapply(seq_len(nrow(df)), function(i) {
+		orig_param <- df[[orig_col]][i]
+		formatted_param <- df[[param_col]][i]
+
+		if (isTRUE(log_map[orig_param])) {
+			paste0("ln(", formatted_param, ")")
+		} else {
+			formatted_param
+		}
+	})
+
+	df
+}
+################################################################################
+#' Add Units to Parameter Names
+#'
+#' @description
+#' Appends units to parameter display names by looking up the original parameter
+#' name in the project's NCA settings. Units are formatted and appended in
+#' parentheses (e.g., "AUClast (h*ng/mL)").
+#'
+#' @param df A data.frame containing parameter information.
+#' @param orig_col Character. Name of the column containing original parameter
+#'   names used for unit lookup. Default: "Original_Parameter".
+#' @param param_col Character. Name of the column containing formatted parameter
+#'   names to which units will be appended. Default: "parameter".
+#'
+#' @return A data.frame with units appended to the parameter column and the
+#'   original parameter column removed.
+#'
+#' @details
+#' This function retrieves unit information from the loaded PKanalix project
+#' using \code{lixoftConnectors::getNCAParameterStatistics()}. If units are not
+#' enabled in the project settings, a warning is issued and the original
+#' parameter column is removed without modification.
+#'
+#' The function uses \code{.formatUnits()} to properly format unit strings
+#' before appending.
+#'
+#' @note This is an internal function used by \code{tableBEResults()} to add
+#'   units separately from aliases, allowing log transformation labels to be
+#'   applied to parameter names before units are appended.
+#'
+#' @seealso \code{\link{.addUnitsAliases}}, \code{\link{.applyLogTransformLabel}}
+#'
+#' @keywords internal
+.addUnitsOnly <- function(df, orig_col = "Original_Parameter", param_col = "parameter", units_df = NULL) {
+
+	# ---------------------------------------------------------------------------
+	# UNITS: Use custom data or fetch from PKanalix
+	# ---------------------------------------------------------------------------
+	if (!is.null(units_df)) {
+		# Use custom units (already normalized to parameter/units columns)
+		# Apply .formatUnits() to ensure consistent formatting
+		units_df <- units_df %>%
+			dplyr::mutate(units = sapply(units, .formatUnits))
+	} else {
+		# Fetch from PKanalix project (existing behavior)
+		# Check if units are enabled in project
+		if (!isTRUE(lixoftConnectors::getDataSettings()$enableunits)) {
+			warning("Units were requested but are not enabled in the current project. Skipping unit retrieval.")
+			df[[orig_col]] <- NULL
+			return(df)
+		}
+
+		allparams <- lixoftConnectors::getNCASettings()$computedncaparameters
+
+		NCAParamSummary_info <- lixoftConnectors::getNCAParameterStatistics(parameters = allparams)$information %>%
+			tibble::rownames_to_column(var = "parameter")
+
+		units_df <- NCAParamSummary_info %>%
+			dplyr::select(parameter, units) %>%
+			dplyr::mutate(units = sapply(units, .formatUnits))
+	}
+
+	# Create lookup map
+	units_map <- setNames(units_df$units, units_df$parameter)
+
+	# Apply units to parameter column
+	df[[param_col]] <- sapply(seq_len(nrow(df)), function(i) {
+		orig_param <- df[[orig_col]][i]
+		formatted_param <- df[[param_col]][i]
+		unit <- units_map[orig_param]
+
+		if (!is.na(unit) && nchar(unit) > 0) {
+			paste0(formatted_param, " (", unit, ")")
+		} else {
+			formatted_param
+		}
+	})
+
+	# Remove Original_Parameter column
+	df[[orig_col]] <- NULL
+	df
 }

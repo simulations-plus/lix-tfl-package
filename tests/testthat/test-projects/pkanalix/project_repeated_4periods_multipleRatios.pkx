@@ -1,0 +1,67 @@
+<DATAFILE>
+
+[FILEINFO]
+file={path='repeated_4periods_data.csv'}
+delimiter = comma
+header={SUBJ, PER, TIME, DV, AMOUNT, TRT, SEQ}
+
+[CONTENT]
+SUBJ = {use=identifier}
+PER = {use=occasion}
+TIME = {use=time}
+DV = {use=observation, type=continuous}
+AMOUNT = {use=amount}
+TRT = {use=covariate, type=categorical}
+SEQ = {use=covariate, type=categorical}
+
+[SETTINGS]
+enableUnits = true
+units = {time={factor=1, unit=h}, concentration={factor=1, unit=mg/L}, dose={factor=1}}
+
+<MODEL>
+
+[COVARIATE]
+input = {SEQ, TRT}
+
+SEQ = {type=categorical, categories={'RTRT', 'TRTR'}}
+TRT = {type=categorical, categories={'R', 'T'}}
+
+[LONGITUDINAL]
+file = 'lib:oral1_1cpt_kaVCl.txt'
+
+<FIT>
+data = 'DV'
+model = Cc
+
+<PKANALIX>
+
+[TASKS]
+bioequivalence()
+
+[SETTINGS]
+GLOBAL:
+dataNextToProject = yes
+
+NCA:
+obsIdToUse = 'DV'
+administrationType = {1 = extravascular}
+startTimeNotBefore = {use=no, value=0}
+integralMethod = upDownTrapUpDownInterp
+partialAUCTime = {use=no, value={{0, 48}}}
+addSteadyState = {use=no, value=48}
+ratios = {{name = 'AUC_inf_Per1_Per2', header = 'PER', ref = '2', test = '1', param = 'AUCINF_obs'},{name = 'AUC_inf_Per1_Per3', header = 'PER', ref = '3', test = '1', param = 'AUCINF_obs'},{name = 'AUC_inf_Per1_Per4', header = 'PER', ref = '4', test = '1', param = 'AUCINF_obs'},{name = 'AUC_inf_Per2_Per3', header = 'PER', ref = '3', test = '2', param = 'AUCINF_obs'},{name = 'AUC_inf_Per2_Per4', header = 'PER', ref = '4', test = '2', param = 'AUCINF_obs'},{name = 'AUC_inf_Per3_Per4', header = 'PER', ref = '4', test = '3', param = 'AUCINF_obs'}}
+computedParameters = {{value = Rsq}, {value = Rsq_adjusted}, {value = No_points_lambda_z}, {value = Lambda_z}, {value = Lambda_z_intercept}, {value = Tmax_Rate}, {value = Max_Rate}, {value = Rate_last}, {value = AURC_last}, {value = AURC_INF_obs}, {value = Tmax}, {value = Tmax_SS}, {value = Cmax}, {value = Cmax_SS}, {value = Tlast}, {value = Clast}, {value = AUClast}, {value = AUCINF_obs}, {value = Vz_F_obs}, {value = Cl_F_obs}, {value = Cl_obs}, {value = Ctau}, {value = AUC_TAU}, {value = Vz_obs}, {value = Vz_F}, {value = CLss_F}, {value = AURC_Int, partialInt = 0}, {value = AURC_Int_D, partialInt = 0}, {value = AUC_Int, partialInt = 0}, {value = AUC_Int_D, partialInt = 0}}
+sparseDataCensoring = {type = singlerule, rule = zero, checkMeanSamples = {no, {loq = 0, blqBeforeTmax = zero, blqAfterTmax = missing}}}
+
+CA:
+initialvalues = {Cl={value=0.515, constraint=positive}, V={value=10.02, constraint=positive}, ka={value=0.502, constraint=positive}}
+
+BIOEQUIVALENCE:
+computedParameters = {{value = Max_Rate, log = yes}, {value = AURC_last, log = yes}, {value = Cmax, log = yes}, {value = AUClast, log = yes}, {value = AUCINF_obs, log = yes}, {value = AUC_TAU, log = yes}}
+design = crossover
+factors = {id={'SUBJ'}, period={'PER'}, formulation={'TRT'}, reference={'R'}, sequence={'SEQ'}}
+
+[COMMENTS]
+; This is a 2-formulation, 2-sequence, 4-period repeated crossover bioequivalence study. Individuals 1, 34 and 35 have missing data and are automatically excluded from the bioequivalence analysis.
+; 
+

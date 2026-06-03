@@ -1,5 +1,8 @@
 mono_project_1 = "test-projects/monolix/PK_run01.mlxtran"
 mono_project_2 = "test-projects/monolix/PK_run02.mlxtran"
+mono_project_3 = "test-projects/monolix/prj08_iov2.mlxtran"
+mono_project_4 = "test-projects/monolix/prj9_iov2_bootstrap.mlxtran"
+
 syc_project = "test-projects/monolix/PK_models.syc"
 
 test_that("tableRunHistory project", {
@@ -130,19 +133,25 @@ test_that("tableParameterEstimates include logicals", {
 	on.exit(unlink(tools::file_path_sans_ext(mono_project_1), recursive = TRUE), add = TRUE, after = FALSE)
 
 	# before bootstrap run (nor std errors)
-	table = tableParameterEstimates(mono_project_1, include_bootstrap = TRUE)
-	expect_all_true(is.na(table$RSE))
-	expect_all_true(is.na(table$Bootstrap_P2.5))
-	expect_all_true(is.na(table$Bootstrap_Median))
-	expect_all_true(is.na(table$Bootstrap_P97.5))
+	table <- tableParameterEstimates(mono_project_1, include_bootstrap = TRUE, prettyLabels = FALSE)
+	# Find dynamic bootstrap CI column name
+	boot_ci_col <- grep("^Boot_CI", names(table), value = TRUE)
+
+	expect_true(all(is.na(table$RSE)))
+	expect_true(all(is.na(table$Boot_Median)))
+	expect_true(all(is.na(table[[boot_ci_col]])))  # Dynamic CI column
+	expect_true(all(is.na(table$Boot_RSE)))
 
 	# after bootstrap
 	lixoftConnectors::runBootstrap(nbRuns = 2)
-	table = tableParameterEstimates(mono_project_1, include_bootstrap = TRUE)
-	expect_all_true(is.na(table$RSE))
-	expect_all_false(is.na(table$Bootstrap_P2.5))
-	expect_all_false(is.na(table$Bootstrap_Median))
-	expect_all_false(is.na(table$Bootstrap_P97.5))
+	table <- tableParameterEstimates(mono_project_1, include_bootstrap = TRUE, prettyLabels = FALSE)
+
+	boot_ci_col <- grep("^Boot_CI", names(table), value = TRUE)
+
+	expect_true(all(is.na(table$RSE)))  # Still no standard errors
+	expect_false(any(is.na(table$Boot_Median)))
+	expect_false(any(is.na(table[[boot_ci_col]])))  # CI column has values
+	expect_false(any(is.na(table$Boot_RSE)))
 })
 
 test_that("tableParameterEstimates include logicals", {
@@ -152,19 +161,19 @@ test_that("tableParameterEstimates include logicals", {
 	lixoftConnectors::runPopulationParameterEstimation()
 	on.exit(unlink(tools::file_path_sans_ext(mono_project_1), recursive = TRUE), add = TRUE, after = FALSE)
 
-	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_RSE = TRUE)
+	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_RSE = TRUE, prettyLabels = FALSE)
 	expect_true("RSE" %in% names(table))
-	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_RSE = FALSE)
+	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_RSE = FALSE, prettyLabels = FALSE)
 	expect_false("RSE" %in% names(table))
 
-	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_CI = TRUE)
+	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_CI = TRUE, prettyLabels = FALSE)
 	expect_true("CI_2.5_97.5" %in% names(table))
 	expect_false("P2.5" %in% names(table))
 	expect_false("P97.5" %in% names(table))
-	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_CI = FALSE)
+	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_CI = FALSE, prettyLabels = FALSE)
 	expect_false("CI_2.5_97.5" %in% names(table))
 
-	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_CV = TRUE)
+	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_CV = TRUE, prettyLabels = FALSE)
 	expect_true("CV" %in% names(table))
 	# CV values should be present for omega parameters (not NA)
 	omega_rows = grep("omega_", table$Parameter)
@@ -172,12 +181,12 @@ test_that("tableParameterEstimates include logicals", {
 	# CV parameter rows should NOT exist anymore
 	expect_all_false(paste0(c("omega_Tlag", "omega_ka", "omega_V", "omega_Cl"), "_CV") %in% table$Parameter)
 
-	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_CV = FALSE)
+	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_CV = FALSE, prettyLabels = FALSE)
 	expect_false("CV" %in% names(table))
 
-	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_bootstrap = TRUE)
+	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_bootstrap = TRUE, prettyLabels = FALSE)
 	expect_all_true(c("Bootstrap_P2.5", "Bootstrap_Median", "Bootstrap_P97.5") %in% names(table))
-	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_bootstrap = FALSE)
+	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_bootstrap = FALSE, prettyLabels = FALSE)
 	expect_all_false(c("Bootstrap_P2.5", "Bootstrap_Median", "Bootstrap_P97.5") %in% names(table))
 })
 
@@ -189,24 +198,24 @@ test_that("tableParameterEstimates wide format", {
 	on.exit(unlink(tools::file_path_sans_ext(mono_project_1), recursive = TRUE), add = TRUE, after = FALSE)
 
 	# Test wide format with IIV
-	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, use_wide_format = TRUE, include_IIV = TRUE)
+	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, use_wide_format = TRUE, include_IIV = TRUE, prettyLabels = FALSE)
 	expect_true("FE_Estimate" %in% names(table))
 	expect_true("IIV_SD" %in% names(table))
 	expect_false("IIV" %in% table$Section)  # omega parameters should not appear as separate rows
 	expect_true(all(table$Section == "FE"))
 
 	# Test wide format with CV
-	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, use_wide_format = TRUE, include_CV = TRUE, include_IIV = TRUE)
+	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, use_wide_format = TRUE, include_CV = TRUE, include_IIV = TRUE, , prettyLabels = FALSE)
 	expect_true("IIV_CV" %in% names(table))
 	expect_true("IIV_SD" %in% names(table))
 
 	# Test wide format with RSE
-	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, use_wide_format = TRUE, include_RSE = TRUE, include_IIV = TRUE)
+	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, use_wide_format = TRUE, include_RSE = TRUE, include_IIV = TRUE, , prettyLabels = FALSE)
 	expect_true("FE_RSE" %in% names(table))
 	expect_true("IIV_RSE" %in% names(table))
 
 	# Test wide format without IIV
-	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, use_wide_format = TRUE, include_IIV = FALSE)
+	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, use_wide_format = TRUE, include_IIV = FALSE, , prettyLabels = FALSE)
 	expect_false("IIV_SD" %in% names(table))
 	expect_false("IIV_CV" %in% names(table))
 	expect_false("IIV_RSE" %in% names(table))
@@ -220,7 +229,7 @@ test_that("tableParameterEstimates CI combined format", {
 	on.exit(unlink(tools::file_path_sans_ext(mono_project_1), recursive = TRUE), add = TRUE, after = FALSE)
 
 	# Test CI column in long format (should be combined)
-	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_CI = TRUE)
+	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_CI = TRUE, prettyLabels = FALSE)
 	expect_true("CI_2.5_97.5" %in% names(table))
 	# CI values should have format "(value; value)"
 	ci_values = table$CI_2.5_97.5[!is.na(table$CI_2.5_97.5)]
@@ -229,7 +238,7 @@ test_that("tableParameterEstimates CI combined format", {
 	}
 
 	# Test CI column in wide format (should be renamed to FE_CI)
-	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_CI = TRUE, use_wide_format = TRUE, include_IIV = TRUE)
+	table = tableParameterEstimates(mono_project_1, nameMapping = NULL, include_CI = TRUE, use_wide_format = TRUE, include_IIV = TRUE, prettyLabels = FALSE)
 	expect_true("FE_CI" %in% names(table))
 	expect_true("IIV_CI" %in% names(table))
 	expect_false("CI_2.5_97.5" %in% names(table))
@@ -268,6 +277,318 @@ test_that("tableParameterEstimates errors", {
 	expect_error(tableParameterEstimates(mono_project_1, c(Parameter = "V_pop", Label = "V", Unit = "L")))
 })
 
+# ------------------------------------------------------------------------------
+# Tests for tableParameterEstimates() with IOV
+test_that("tableParameterEstimates() includes IOV parameters in long format", {
+	result <- tableParameterEstimates(
+		projectFile = mono_project_3,
+		include_IOV = TRUE,
+		use_wide_format = FALSE
+	)
+
+	# Check that IOV section exists
+	expect_true("IOV" %in% result$Section)
+
+	# Check that gamma parameters are present
+	iov_rows <- result[result$Section == "IOV", ]
+	expect_gt(nrow(iov_rows), 0)
+
+	# Check attributes
+	expect_equal(attr(result, "table_type"), "pop")
+	expect_equal(attr(result, "format"), "long")
+	expect_false(attr(result, "include_IOV"))  # FALSE in long format
+})
+
+test_that("tableParameterEstimates() wide format with IOV creates IOV columns", {
+	result <- tableParameterEstimates(
+		projectFile = mono_project_3,
+		include_IOV = TRUE,
+		use_wide_format = TRUE
+	)
+
+	# Check that IOV_SD column exists
+	expect_true("IOV\nSD" %in% names(result) | "IOV_SD" %in% names(result))
+
+	# Check that IOV section is NOT present (should be in columns, not rows)
+	expect_false("IOV" %in% result$Section)
+
+	# Check attributes
+	expect_equal(attr(result, "format"), "wide")
+	expect_true(attr(result, "include_IOV"))
+})
+test_that("tableParameterEstimates() wide format can exclude IOV", {
+	result <- tableParameterEstimates(
+		projectFile = mono_project_3,
+		include_IOV = FALSE,
+		use_wide_format = TRUE
+	)
+
+	# Check that IOV columns do NOT exist
+	expect_false(any(grepl("IOV", names(result))))
+
+	# Check attributes
+	expect_false(attr(result, "include_IOV"))
+})
+
+test_that("tableParameterEstimates() wide format with IOV and CV", {
+	result <- tableParameterEstimates(
+		projectFile = mono_project_3,
+		include_IOV = TRUE,
+		include_CV = TRUE,
+		use_wide_format = TRUE
+	)
+
+	# Check for both IOV_SD and IOV_CV columns
+	col_names <- names(result)
+	expect_true(any(grepl("IOV.*SD", col_names)))
+	expect_true(any(grepl("IOV.*CV", col_names)))
+})
+test_that("tableParameterEstimates() wide format with IOV, RSE, and CI", {
+	result <- tableParameterEstimates(
+		projectFile = mono_project_3,
+		include_IOV = TRUE,
+		include_RSE = TRUE,
+		include_CI = TRUE,
+		use_wide_format = TRUE
+	)
+
+	# Check for IOV columns with RSE and CI
+	col_names <- names(result)
+	expect_true(any(grepl("IOV.*RSE", col_names)))
+	expect_true(any(grepl("IOV.*CI", col_names)))
+})
+
+test_that("tableParameterEstimates() wide format: include_IIV=FALSE, include_IOV=TRUE", {
+	result <- tableParameterEstimates(
+		projectFile = mono_project_3,
+		include_IIV = FALSE,
+		include_IOV = TRUE,
+		use_wide_format = TRUE
+	)
+
+	# Should have IOV columns but not IIV columns
+	col_names <- names(result)
+	expect_false(any(grepl("IIV", col_names)))
+	expect_true(any(grepl("IOV", col_names)))
+
+	# Check attributes
+	expect_false(attr(result, "include_IIV"))
+	expect_true(attr(result, "include_IOV"))
+})
+
+# ------------------------------------------------------------------------------
+# Tests for tableParameterEstimates() with Bootstrap
+test_that("tableParameterEstimates() includes bootstrap results in long format", {
+	result <- tableParameterEstimates(
+		projectFile = mono_project_4,
+		include_bootstrap = TRUE,
+		use_wide_format = FALSE
+	)
+
+	# Check for bootstrap columns
+	col_names <- names(result)
+	expect_true(any(grepl("Boot.*Median", col_names)))
+	expect_true(any(grepl("Boot.*CI", col_names)))
+	expect_true(any(grepl("Boot.*RSE", col_names)))
+})
+
+test_that("tableParameterEstimates() bootstrap CI naming adapts to confidence level", {
+	result <- tableParameterEstimates(
+		projectFile = mono_project_4,
+		include_bootstrap = TRUE,
+		use_wide_format = FALSE
+	)
+
+	# Check that CI column exists with dynamic naming (e.g., Boot_CI_2.5_97.5)
+	col_names <- names(result)
+	boot_ci_col <- grep("Boot.*CI.*[0-9]", col_names, value = TRUE)
+	expect_length(boot_ci_col, 1)
+	expect_true(grepl("Boot.*CI.*[0-9]+.*[0-9]+", boot_ci_col))
+})
+
+test_that("tableParameterEstimates() wide format with bootstrap creates bootstrap IIV columns", {
+	result <- tableParameterEstimates(
+		projectFile = mono_project_4,
+		include_bootstrap = TRUE,
+		include_IIV = TRUE,
+		use_wide_format = TRUE
+	)
+
+	# Check for bootstrap IIV columns
+	col_names <- names(result)
+	expect_true(any(grepl("Boot.*IIV.*Median", col_names)))
+	expect_true(any(grepl("Boot.*IIV.*CI", col_names)))
+	expect_true(any(grepl("Boot.*IIV.*RSE", col_names)))
+})
+test_that("tableParameterEstimates() wide format with bootstrap and IOV creates bootstrap IOV columns", {
+	result <- tableParameterEstimates(
+		projectFile = mono_project_4,  # Project with both bootstrap and IOV
+		include_bootstrap = TRUE,
+		include_IOV = TRUE,
+		use_wide_format = TRUE
+	)
+
+	# Check for bootstrap IOV columns
+	col_names <- names(result)
+	expect_true(any(grepl("Boot.*IOV.*Median", col_names)))
+	expect_true(any(grepl("Boot.*IOV.*CI", col_names)))
+	expect_true(any(grepl("Boot.*IOV.*RSE", col_names)))
+})
+
+test_that("tableParameterEstimates() bootstrap CI values are properly rounded and combined", {
+	result <- tableParameterEstimates(
+		projectFile = mono_project_4,
+		include_bootstrap = TRUE,
+		roundDigits = 3,
+		roundingMethod = "signif",
+		use_wide_format = FALSE
+	)
+
+	# Find the bootstrap CI column
+	boot_ci_col <- grep("Boot.*CI", names(result), value = TRUE)
+
+	# Check that CI values are formatted as "(lower; upper)"
+	ci_values <- result[[boot_ci_col]]
+	non_na_values <- ci_values[!is.na(ci_values)]
+	expect_true(all(grepl("^\\([^;]+;\\s[^)]+\\)$", non_na_values)))
+})
+
+test_that("tableParameterEstimates() bootstrap with different rounding methods", {
+	result_monolix <- tableParameterEstimates(
+		projectFile = mono_project_4,
+		include_bootstrap = TRUE,
+		roundDigits = 3,
+		roundingMethod = "monolix"
+	)
+
+	result_signif <- tableParameterEstimates(
+		projectFile = mono_project_4,
+		include_bootstrap = TRUE,
+		roundDigits = 3,
+		roundingMethod = "signif"
+	)
+
+	# Both should have bootstrap columns
+	expect_true(any(grepl("Boot", names(result_monolix))))
+	expect_true(any(grepl("Boot", names(result_signif))))
+})
+
+# ------------------------------------------------------------------------------
+# Combined Tests: IOV + Bootstrap + Wide Format
+
+test_that("tableParameterEstimates() comprehensive: wide format with all options", {
+	result <- tableParameterEstimates(
+		projectFile = mono_project_4,
+		include_RSE = TRUE,
+		include_IIV = TRUE,
+		include_IOV = TRUE,
+		include_CI = TRUE,
+		include_CV = TRUE,
+		include_bootstrap = TRUE,
+		use_wide_format = TRUE,
+		roundDigits = 3,
+		roundingMethod = "signif",
+		prettyLabels = FALSE)
+
+	col_names <- names(result)
+
+	# Fixed effects columns
+	expect_true(any(grepl("FE.*Estimate", col_names)))
+	expect_true(any(grepl("FE.*RSE", col_names)))
+	expect_true(any(grepl("FE.*CI", col_names)))
+
+	# IIV columns
+	expect_true(any(grepl("IIV.*SD", col_names)))
+	expect_true(any(grepl("IIV.*CV", col_names)))
+	expect_true(any(grepl("IIV.*RSE", col_names)))
+	expect_true(any(grepl("IIV.*CI", col_names)))
+
+	# IOV columns
+	expect_true(any(grepl("IOV.*SD", col_names)))
+	expect_true(any(grepl("IOV.*CV", col_names)))
+	expect_true(any(grepl("IOV.*RSE", col_names)))
+	expect_true(any(grepl("IOV.*CI", col_names)))
+
+	# Bootstrap FE columns
+	expect_true(any(grepl("Boot.*Median", col_names)))
+	expect_true(any(grepl("Boot.*CI", col_names)))
+	expect_true(any(grepl("Boot.*RSE", col_names)))
+
+	# Bootstrap IIV columns
+	expect_true(any(grepl("Boot.*IIV.*Median", col_names)))
+	expect_true(any(grepl("Boot.*IIV.*CI", col_names)))
+	expect_true(any(grepl("Boot.*IIV.*RSE", col_names)))
+
+	# Bootstrap IOV columns
+	expect_true(any(grepl("Boot.*IOV.*Median", col_names)))
+	expect_true(any(grepl("Boot.*IOV.*CI", col_names)))
+	expect_true(any(grepl("Boot.*IOV.*RSE", col_names)))
+
+	# Check attributes
+	expect_equal(attr(result, "format"), "wide")
+	expect_true(attr(result, "include_IIV"))
+	expect_true(attr(result, "include_IOV"))
+})
+
+test_that("tableParameterEstimates() long format with IOV and bootstrap", {
+	result <- tableParameterEstimates(
+		projectFile = mono_project_4,
+		include_IOV = TRUE,
+		include_bootstrap = TRUE,
+		use_wide_format = FALSE
+	)
+
+	# Check sections
+	sections <- unique(result$Section)
+	expect_true("FE" %in% sections)
+	expect_true("IIV" %in% sections)
+	expect_true("IOV" %in% sections)
+
+	# Bootstrap columns should be present for all sections
+	col_names <- names(result)
+	expect_true(any(grepl("Boot.*Median", col_names)))
+	expect_true(any(grepl("Boot.*CI", col_names)))
+})
+
+# ------------------------------------------------------------------------------
+# Column Order Tests
+test_that("tableParameterEstimates() bootstrap columns appear in correct order", {
+	result <- tableParameterEstimates(
+		projectFile = mono_project_4,
+		include_bootstrap = TRUE,
+		use_wide_format = FALSE,
+		prettyLabels = FALSE
+	)
+
+	col_names <- names(result)
+	boot_median_pos <- grep("Boot_Median", col_names)
+	boot_ci_pos <- grep("Boot_CI", col_names)
+	boot_rse_pos <- grep("Boot_RSE", col_names)
+
+	# Order should be: Median, CI, RSE
+	expect_true(boot_median_pos < boot_ci_pos)
+	expect_true(boot_ci_pos < boot_rse_pos)
+})
+
+test_that("tableParameterEstimates() wide format bootstrap IIV column order", {
+	result <- tableParameterEstimates(
+		projectFile = mono_project_4,
+		include_bootstrap = TRUE,
+		include_IIV = TRUE,
+		use_wide_format = TRUE,
+		prettyLabels = FALSE
+	)
+
+	col_names <- names(result)
+	boot_iiv_median_pos <- grep("Boot_IIV_Median", col_names)
+	boot_iiv_ci_pos <- grep("Boot_IIV_CI", col_names)
+	boot_iiv_rse_pos <- grep("Boot_IIV_RSE", col_names)
+
+	# Order should be: Median, CI, RSE
+	expect_true(boot_iiv_median_pos < boot_iiv_ci_pos)
+	expect_true(boot_iiv_ci_pos < boot_iiv_rse_pos)
+})
+
 # testing
 # test logic of columns included with true/false
 # test create mapping
@@ -299,3 +620,6 @@ test_that("createNameMapping errors", {
 	expect_error(createNameMapping(c(Parameter = "V_pop", Unit = "L"), "Cl_pop"))
 	expect_error(createNameMapping(c("V_pop", "V", "L")))
 })
+################################################################################
+# setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
+# testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-MonolixHelpers.R")
