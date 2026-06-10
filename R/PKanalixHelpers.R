@@ -88,6 +88,8 @@
 #' @return A data frame containing concentration summary statistics organized by time points
 #'         and optionally stratified by splitCovariates.
 #'
+#' @export
+#'
 #' @examples
 #' # Overall summary (no stratification)
 #' # tableNCAConcentration()
@@ -521,7 +523,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #' @return A data frame combining standard NCA statistics with additional descriptive statistics
 #'         (Q1, Q3, median, max) for the specified parameters. If `include_id = TRUE`,
 #'         also includes individual parameter values for each subject.
-#'
+#' @export
 #' @examples
 #' # Overall (no stratification), all computed parameters, wide layout
 #' # tableNCAParameters()
@@ -843,7 +845,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 #' @param use_wide_format logical; if TRUE (default) results are wide; if FALSE, results are pivoted to long format.
 #'
 #' @return A data.frame with summary statistics for each ratio parameter, optionally stratified.
-#'
+#' @export
 #' @examples
 #' # Overall summary (all subjects, no stratification):
 #' tableNCARatios()
@@ -1450,7 +1452,7 @@ listingAbbreviation <- function(data,
 #' @return A data frame in long format containing (if present) \code{splitCovariates},
 #'   \code{id}, \code{ActualTime}, \code{NominalTime} (if available),
 #'   \code{Concentration}, \code{UsedConc}, and \code{Censoring}.
-#'
+#' @export
 #' @examples
 #' # Default: actual time only
 #' listingNCAConcentration()

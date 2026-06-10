@@ -5,12 +5,14 @@
 \title{Creates a data frame summarizing the continuous covariates in the dataset with descriptive statistics.}
 \usage{
 tableContinuousCovariateSummary(
-  projectFile,
+  projectFile = NULL,
   covDisplayLabels = NULL,
   splitCovariates = NULL,
-  additionalMetrics = NULL,
-  metricsAsRows = FALSE,
-  digits = 2,
+  metrics = NULL,
+  use_wide_format = TRUE,
+  stratify_columns = FALSE,
+  covariate_labels = NULL,
+  roundDigits = 2,
   roundingMethod = c("monolix", "signif", "none"),
   prettyLabels = TRUE
 )
@@ -22,14 +24,30 @@ tableContinuousCovariateSummary(
 
 \item{splitCovariates}{vector of categorical covariates to stratify by, or NULL}
 
-\item{additionalMetrics}{vector of additional metrics to calculate, see \code{\link[=getAdditionalContinuousCovariateMetrics]{getAdditionalContinuousCovariateMetrics()}} or NULL}
+\item{metrics}{vector of metrics to display, or NULL to display all available metrics}
 
-\item{metricsAsRows}{TRUE to display metrics as rows, or FALSE (default) to display them as columns}
+\item{use_wide_format}{Logical. If \code{TRUE} (default), returns a "wide" table format where
+statistics appear as columns and covariates appear as rows.
+If \code{FALSE}, returns a "long" table format where statistics appear as rows
+(useful for vertical reporting layouts).
+Note: \code{stratify_columns = TRUE} is only compatible with \code{use_wide_format = FALSE}.}
 
-\item{digits}{number of digits to display}
+\item{stratify_columns}{Logical; if \code{TRUE}, creates a stratified table layout with
+separate columns for each covariate combination plus an "Overall" column. If \code{FALSE}
+(default), splitCovariates appear as separate columns on the left side of the table.
+Only applicable when \code{splitCovariates} is specified.}
+
+\item{covariate_labels}{Character vector of custom labels for splitCovariates, must be the
+same length as \code{splitCovariates}. If \code{NULL} (default), the original covariate names are
+used. These labels appear in column headers when \code{stratify_columns = TRUE}.}
+
+\item{roundDigits}{number of digits to display}
 
 \item{roundingMethod}{"monolix" to use MonolixSuite rounding where digits specifies the number of places after the decimal, or "signif"
 for digits to specify the number of significant figures}
+
+\item{prettyLabels}{Logical; if \code{TRUE} (default), converts column names to
+human-readable labels (e.g., "CV" becomes "CV (\%)", "geoMean" becomes "Geometric Mean").}
 }
 \value{
 a data.frame
@@ -41,5 +59,5 @@ Creates a data frame summarizing the continuous covariates in the dataset with d
 # TODO
 }
 \seealso{
-\code{\link[=getAdditionalContinuousCovariateMetrics]{getAdditionalContinuousCovariateMetrics()}}
+\code{\link[=getContinuousCovariateMetrics]{getContinuousCovariateMetrics()}}
 }

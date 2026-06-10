@@ -229,7 +229,6 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 #'
 #' @returns vector of available metrics
 #' @seealso [tableContinuousCovariateSummary()]
-#' @export
 #'
 #' @examples
 #' getContinuousCovariateMetrics()
@@ -249,7 +248,6 @@ getContinuousCovariateMetrics <- function() {
 #' for digits to specify the number of significant figures
 #'
 #' @returns a data.frame
-#' @export
 #'
 #' @examples
 #' # TODO
