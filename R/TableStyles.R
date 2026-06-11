@@ -607,9 +607,22 @@
 		}
 	}
 	# -------------------------------------------------------------------------
-	# Project source footnote
+	# Source footnotes (project + R script).
+	# Both lines are emitted as a single footer entry joined by "\n" so that
+	# they render as adjacent lines inside one paragraph - no blank/extra
+	# spacing between them, even when flextable adds inter-paragraph margins.
+	# - project_source: the Monolix/PKanalix project the table is based on.
+	# - r_source: the .R/.Rmd/.qmd script that generated the data frame
+	#   (captured by helpers via .getRScriptPath() at table-creation time).
+	source_lines <- character(0)
 	if (!is.null(attrs$project_source)) {
-		footnotes <- c(footnotes, paste0("Source: ", attrs$project_source))
+		source_lines <- c(source_lines, paste0("Project source: ", attrs$project_source))
+	}
+	if (!is.null(attrs$r_source)) {
+		source_lines <- c(source_lines, paste0("Script source: ", attrs$r_source))
+	}
+	if (length(source_lines) > 0) {
+		footnotes <- c(footnotes, paste(source_lines, collapse = "\n"))
 	}
 	# -------------------------------------------------------------------------
 	# Future: Add more auto-footnote detection here

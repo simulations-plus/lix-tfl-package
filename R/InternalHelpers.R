@@ -13,6 +13,89 @@ utils::globalVariables(c("."))
 }
 
 
+#' Resolve the path of the R/Quarto/Rmd script that produced the current table
+#'
+#' Determines the file path of the script that called the current helper so it
+#' can be stored as a data-frame attribute (`r_source`) and later rendered as
+#' an auto-footnote by [style_tfl()].
+#'
+#' Detection order (first non-empty result wins):
+#' 1. **Innermost `source()`'d file** — the deepest `ofile` on the call stack.
+#'    When a meta-script `source()`s a table script (or a Quarto chunk does
+#'    the same), this returns the *table* script, i.e. the one that actually
+#'    built the data frame.
+#' 2. **`knitr::current_input(dir = TRUE)`** — the `.Rmd`/`.qmd` being rendered
+#'    when no nested `source()` is in flight.
+#' 3. **`--file=` in `commandArgs()`** — set when launched via `Rscript`.
+#' 4. **`rstudioapi::getSourceEditorContext()$path`** — the active editor tab
+#'    in an interactive RStudio session.
+#'
+#' @return A normalised character path, or `NULL` when no source script can be
+#'   determined (e.g. a plain interactive R console with no editor).
+#'
+#' @keywords internal
+#' @noRd
+.getRScriptPath <- function() {
+	# 1. Innermost source()'d script: walk frames from deepest to outermost so
+	# meta -> table -> helper resolves to "table.R", not "meta.R".
+	frame_count <- sys.nframe()
+	if (frame_count > 0) {
+		for (n in rev(seq_len(frame_count))) {
+			frame <- tryCatch(sys.frame(n), error = function(e) NULL)
+			if (is.null(frame)) next
+			ofile <- tryCatch(
+				get0("ofile", envir = frame, inherits = FALSE),
+				error = function(e) NULL
+			)
+			if (!is.null(ofile) && is.character(ofile) &&
+					length(ofile) == 1 && nzchar(ofile)) {
+				return(tryCatch(normalizePath(ofile, winslash = "/", mustWork = FALSE),
+												error = function(e) ofile))
+			}
+		}
+	}
+
+	# 2. knitr / Quarto rendering context (no source() in flight).
+	if (requireNamespace("knitr", quietly = TRUE)) {
+		knitr_input <- tryCatch(
+			knitr::current_input(dir = TRUE),
+			error = function(e) NULL
+		)
+		if (!is.null(knitr_input) && is.character(knitr_input) && nzchar(knitr_input)) {
+			return(knitr_input)
+		}
+	}
+
+	# 3. Rscript invocation (no source() chain).
+	cmd_args <- commandArgs(trailingOnly = FALSE)
+	file_arg <- grep("^--file=", cmd_args, value = TRUE)
+	if (length(file_arg) > 0) {
+		path <- sub("^--file=", "", file_arg[1])
+		if (nzchar(path)) {
+			return(tryCatch(normalizePath(path, winslash = "/", mustWork = FALSE),
+											error = function(e) path))
+		}
+	}
+
+	# 4. Interactive RStudio: fall back to the active editor tab.
+	if (requireNamespace("rstudioapi", quietly = TRUE)) {
+		rs_avail <- tryCatch(rstudioapi::isAvailable(), error = function(e) FALSE)
+		if (isTRUE(rs_avail)) {
+			rs_path <- tryCatch(
+				rstudioapi::getSourceEditorContext()$path,
+				error = function(e) NULL
+			)
+			if (!is.null(rs_path) && is.character(rs_path) && nzchar(rs_path)) {
+				return(tryCatch(normalizePath(rs_path, winslash = "/", mustWork = FALSE),
+												error = function(e) rs_path))
+			}
+		}
+	}
+
+	return(NULL)
+}
+
+
 # Function to load specified project, which will do nothing in the case that the project
 # is already loaded
 #

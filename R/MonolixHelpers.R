@@ -236,6 +236,7 @@ tableRunHistory <- function(sycomoreProjectFile,
 		dfall <- .prettyLabels(dfall)
 	}
 	attr(dfall, "project_source") <- sycomoreProjectFile
+	attr(dfall, "r_source")       <- .getRScriptPath()
 	return(dfall)
 }
 
@@ -340,6 +341,7 @@ tableRunHistory <- function(sycomoreProjectFile,
 #'     \item{include_IIV}{Logical — `TRUE` only when wide format AND `include_IIV = TRUE`; signals that IIV columns are present}
 #'     \item{include_IOV}{Logical — `TRUE` only when wide format AND `include_IOV = TRUE`; signals that IOV columns are present}
 #'     \item{project_source}{Directory of the Monolix project that produced the table}
+#'     \item{r_source}{Path of the R/Quarto/Rmd script that generated the table (auto-detected at table-creation time, see [.getRScriptPath()])}
 #'   }
 #'
 #'   These attributes are used by [print_table_flex()] to automatically add
@@ -832,6 +834,7 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	attr(pop, "include_IIV") <- use_wide_format && include_IIV
 	attr(pop, "include_IOV") <- use_wide_format && include_IOV
 	attr(pop, "project_source") <- lixoftConnectors::getProjectSettings()$directory
+	attr(pop, "r_source")       <- .getRScriptPath()
 	return(pop)
 
 }

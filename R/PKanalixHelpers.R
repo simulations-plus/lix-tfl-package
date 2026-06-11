@@ -442,6 +442,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 		attr(final_df, "format")     <- "long"  # Always long when include_id=TRUE
 	}
 	attr(final_df, "project_source") <- lixoftConnectors::getProjectSettings()$directory
+	attr(final_df, "r_source")       <- .getRScriptPath()
 
 	return(final_df)
 
@@ -820,6 +821,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 		attr(summary_stats, "format")     <- "long"
 	}
 	attr(summary_stats, "project_source") <- lixoftConnectors::getProjectSettings()$directory
+	attr(summary_stats, "r_source")       <- .getRScriptPath()
 	return(as.data.frame(summary_stats))
 }
 
@@ -1160,6 +1162,7 @@ tableNCARatios <- function(projectFile      = NULL,
 		attr(summary_tbl, "format")     <- "long"  # Always long when include_id=TRUE
 	}
 	attr(summary_tbl, "project_source") <- lixoftConnectors::getProjectSettings()$directory
+	attr(summary_tbl, "r_source")       <- .getRScriptPath()
 	return(as.data.frame(summary_tbl))
 
 
@@ -1333,6 +1336,7 @@ tableBEResults <- function(projectFile    = NULL,
 		result <- .prettyLabels(result)
 	}
 	attr(result, "project_source") <- lixoftConnectors::getProjectSettings()$directory
+	attr(result, "r_source")       <- .getRScriptPath()
 	return(result)
 }
 
@@ -1661,6 +1665,7 @@ listingNCAConcentration <- function(projectFile      = NULL,
 		dplyr::select(-.conc_numeric)
 
 	attr(indiv, "project_source") <- lixoftConnectors::getProjectSettings()$directory
+	attr(indiv, "r_source")       <- .getRScriptPath()
 	return(as.data.frame(indiv))
 }
 
@@ -1797,6 +1802,7 @@ listingNCAParameters <- function(projectFile      = NULL,
 			dplyr::arrange(!!!rlang::syms(splitCovariates))
 	}
 	attr(indivNCA, "project_source") <- lixoftConnectors::getProjectSettings()$directory
+	attr(indivNCA, "r_source")       <- .getRScriptPath()
 	return(indivNCA)
 }
 #-------------------------------------------------------------------------------
@@ -1926,5 +1932,6 @@ listingNCARatios <- function(projectFile      = NULL,
 			dplyr::arrange(!!!rlang::syms(splitCovariates))
 	}
 	attr(indivRatios, "project_source") <- lixoftConnectors::getProjectSettings()$directory
+	attr(indivRatios, "r_source")       <- .getRScriptPath()
 	return(indivRatios)
 }
