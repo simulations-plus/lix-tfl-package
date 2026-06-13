@@ -245,10 +245,6 @@ tableRunHistory <- function(sycomoreProjectFile,
 
 #' Creates a table combining population parameter estimates with information on their uncertainties.
 #'
-#' Use `custom_aliases` to provide display names for parameters and `custom_units` to append units.
-#' Display names or units can include special characters using Unicode (e.g., `\U03C9` for omega).
-#' The results are grouped into sections of fixed effects, random effects, and error parameters,
-#' with a column Section identifying the parameter type.
 #' @details
 #' **Table Format:**
 #' The function supports two output formats controlled by `use_wide_format`:
@@ -273,7 +269,7 @@ tableRunHistory <- function(sycomoreProjectFile,
 #' - `RES_ERR`: Residual error parameters
 #' - `LAT`: Latent covariate probabilities
 #'
-#' When used with [print_table_flex()], these sections automatically generate visual section
+#' When used with [steyle_tfl()], these sections automatically generate visual section
 #' headers to improve table readability.
 #'
 #' @param projectFile Character string specifying the path to a Monolix .mlxtran project file, or `NULL` (default) to use the currently loaded project.
@@ -285,6 +281,15 @@ tableRunHistory <- function(sycomoreProjectFile,
 #' @param custom_units Named vector or 2-column dataframe mapping parameter names to
 #'   custom unit labels. Example: `c(ka_pop = "1/h", V_pop = "L", Cl_pop = "L/h")`.
 #'   Units are appended in parentheses: "Volume (L)".
+#' @param custom_descriptions Named vector or 2-column dataframe mapping parameter names to
+#'   descriptive text. Example: `c(Cl_pop = "Apparent clearance", V_pop = "Apparent volume of distribution")`.
+#'   Unlike `custom_aliases`, descriptions are added as a separate `Description` column placed
+#'   immediately to the right of the `Parameter` column; the `Parameter` cell value is unchanged.
+#'   Parameters not in the mapping receive `NA` in the `Description` column. Keys must match
+#'   the raw Monolix parameter names (e.g. `Cl_pop`, `omega_Cl`, `gamma_Cl`, `a`, `b`, ...).
+#'   When `use_wide_format = TRUE`, IIV/IOV rows are collapsed into columns alongside their
+#'   parent fixed effect; descriptions supplied for `omega_*` / `gamma_*` keys will therefore
+#'   not be displayed (a message lists the unmatched keys).
 #' @param include_RSE Logical; if `TRUE` (default), includes relative standard error (RSE) columns in the table. Applies to both fixed effects and random effects in wide format.
 #' @param include_IIV Logical; if `TRUE` (default), includes inter-individual variability (IIV)
 #'   omega estimates in wide format tables. When `FALSE`, only fixed effect estimates are shown
@@ -376,21 +381,22 @@ tableRunHistory <- function(sycomoreProjectFile,
 #' # Simple column names (no pretty formatting)
 #' pop_table_simple <- tableParameterEstimates(prettyLabels = FALSE)
 #' }
-tableParameterEstimates <- function(projectFile        = NULL,
-																		custom_aliases     = NULL,
-																		custom_units       = NULL,
-																		include_RSE        = TRUE,
-																		include_IIV        = TRUE,
-																		include_IOV        = TRUE,
-																		include_CI         = FALSE,
-																		include_CV         = FALSE,
-																		include_FEcategory = FALSE,
-																		include_bootstrap  = FALSE,
-																		use_wide_format    = FALSE,
-																		std_err_method     = "",
-																		roundDigits        = 3,
-																		roundingMethod     = c("monolix", "signif", "none"),
-																		prettyLabels       = TRUE) {
+tableParameterEstimates <- function(projectFile         = NULL,
+																		custom_aliases      = NULL,
+																		custom_units        = NULL,
+																		custom_descriptions = NULL,
+																		include_RSE         = TRUE,
+																		include_IIV         = TRUE,
+																		include_IOV         = TRUE,
+																		include_CI          = FALSE,
+																		include_CV          = FALSE,
+																		include_FEcategory  = FALSE,
+																		include_bootstrap   = FALSE,
+																		use_wide_format     = FALSE,
+																		std_err_method      = "",
+																		roundDigits         = 3,
+																		roundingMethod      = c("monolix", "signif", "none"),
+																		prettyLabels        = TRUE) {
 
 	roundingMethod <- match.arg(roundingMethod)
 
@@ -797,6 +803,24 @@ tableParameterEstimates <- function(projectFile        = NULL,
 		}
 	}
 
+	#---------------------------------------------------------------------------
+	# Merge custom_descriptions BEFORE aliases/units
+	descriptions_df <- .normalizeAliasMapping(custom_descriptions, "description")
+	if (!is.null(descriptions_df)) {
+		desc_map <- setNames(descriptions_df$description, descriptions_df$parameter)
+		pop$Description <- unname(desc_map[pop$Parameter])
+
+		unmatched_keys <- setdiff(names(desc_map), pop$Parameter)
+		if (length(unmatched_keys) > 0) {
+			.TFL_message(
+				"custom_descriptions: the following keys did not match any row ",
+				"in the output table and were ignored: ",
+				paste(unmatched_keys, collapse = ", "),
+				if (use_wide_format) " (note: in wide format, IIV/IOV rows are collapsed)." else "."
+			)
+		}
+	}
+
 	# Apply custom aliases and units directly to Parameter column
 	aliases_df <- .normalizeAliasMapping(custom_aliases, "aliases")
 	units_df   <- .normalizeAliasMapping(custom_units, "units")
@@ -821,7 +845,10 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	if (!use_wide_format) {
 		pop <- dplyr::relocate(pop, "Parameter", .after = "Section")
 	}
-	pop <- .round_num(pop, roundDigits, exclude = c("Section", "Parameter"), rounding_method = roundingMethod)
+	if ("Description" %in% names(pop)) {
+		pop <- dplyr::relocate(pop, "Description", .after = "Parameter")
+	}
+	pop <- .round_num(pop, roundDigits, exclude = c("Section", "Parameter", "Description"), rounding_method = roundingMethod)
 
 	# Apply pretty labels if requested for nice column names display
 	if (prettyLabels) {
