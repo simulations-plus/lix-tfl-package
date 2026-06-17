@@ -2211,7 +2211,7 @@
 #' # .calc_format_stratum(df, digits = 1, method = "monolix", exclude_cols = c("variable", "Modalities", "N"))
 #'
 .calc_format_stratum <- function(df_input, digits, method, exclude_cols) {
-	raw_stats <- .calculate_raw_freq(df_input)
+	raw_stats <- .calculateCategoricalFrequencies(df_input)
 	final_stats <- .format_frequency_table(raw_stats, digits, method, exclude_cols)
 	return(final_stats)
 }

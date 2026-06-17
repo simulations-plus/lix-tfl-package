@@ -36,7 +36,20 @@
 #' @export
 #'
 #' @examples
-#' # TODO
+#' \dontrun{
+#' # Overall summary of all continuous covariates
+#' tableContinuousCovariateSummary()
+#'
+#' # Stratify by a categorical covariate
+#' tableContinuousCovariateSummary(splitCovariates = "ATRTNCA")
+#'
+#' # Filter to a subset of visits and select a few metrics
+#' tableContinuousCovariateSummary(
+#'     splitCovariates  = "ATRTNCA",
+#'     covariate_filter = list(AVISIT = c("CYCLE 1 DAY 8", "CYCLE 1 DAY 15")),
+#'     metrics          = c("N", "mean", "SD", "median", "min", "max")
+#' )
+#' }
 tableContinuousCovariateSummary <- function(projectFile      = NULL,
 																						covDisplayLabels = NULL,
 																						splitCovariates  = NULL,
@@ -266,99 +279,258 @@ getContinuousCovariateMetrics <- function() {
 
 #' Creates a table summarizing the frequency of categorical covariates in the dataset.
 #'
-#' @param projectFile path to project file (Monolix: .mlxtran or PKanalix: .pkx) or NULL to use the currently loaded project
-#' @param covDisplayLabels (optional) data.frame with columns covariate and label for the dataset covariate name
-#' @param categoryDisplayLabels (optional) data.frame with columns covariate, category, and label for the dataset categorical covariate categories
-#' @param digits number of digits to display
-#' @param roundingMethod "monolix" to use MonolixSuite rounding where digits specifies the number of places after the decimal, or "signif"
-#' for digits to specify the number of significant figures
+#' @param projectFile path to project file (Monolix: .mlxtran or PKanalix: .pkx) or
+#'   NULL to use the currently loaded project.
+#' @param covDisplayLabels (optional) data.frame with columns covariate and label for
+#'   the dataset covariate name.
+#' @param categoryDisplayLabels (optional) data.frame with columns covariate, category,
+#'   and label for the dataset categorical covariate categories.
+#' @param splitCovariates Character vector of categorical covariates to stratify by.
+#'   Allowed types from `getCovariateInformation()`: "categorical",
+#'   "additionalstratificationcategorical", "stratificationcategorical". Default NULL.
+#' @param stratify_columns Logical; if `TRUE`, creates a stratified table layout with
+#'   separate columns for each covariate combination plus an "Overall" column. If
+#'   `FALSE` (default), `splitCovariates` appear as separate columns on the left side
+#'   of the table. Only applicable when `splitCovariates` is specified.
+#' @param covariate_labels Character vector of custom labels for `splitCovariates`,
+#'   must be the same length as `splitCovariates`. If `NULL` (default), the original
+#'   covariate names are used. These labels appear in column headers when
+#'   `stratify_columns = TRUE`.
+#' @param covariate_filter Named list where names are categorical covariate names
+#'   (type "categorical", "additionalstratificationcategorical" or
+#'   "stratificationcategorical" in `getCovariateInformation()`) and values are
+#'   vectors of allowed values. Example:
+#'   `list(SEX = "Male", AVISIT = c("Week 1","Week 2"))`. If `NULL`, no covariate
+#'   filtering is applied.
+#' @param id_filter Character or numeric vector of subject IDs to include. If `NULL`,
+#'   no ID filtering is applied.
+#' @param roundDigits number of digits to display.
+#' @param roundMethod "monolix" to use MonolixSuite rounding where digits specifies
+#'   the number of places after the decimal, or "signif" for digits to specify the
+#'   number of significant figures.
+#' @param mock List controlling output masking. `mock$enable = TRUE` replaces data
+#'   values with placeholders for documentation outputs. `mock$max_rows` controls
+#'   the number of rows kept (default `"all"`).
 #'
 #' @returns a data.frame
+#' @importFrom dplyr %>%
+#' @importFrom rlang .data
 #' @export
 #'
 #' @examples
-#' # TODO
-tableCategoricalCovariateSummary <- function(projectFile,
-                                             covDisplayLabels = NULL,
-                                             categoryDisplayLabels = NULL,
-                                             digits = 2,
-																						 roundingMethod = c("monolix", "signif", "none")) {
-    .checkProjectFile(projectFile, c("monolix", "pkanalix"))
-    .ensureProjectLoaded(projectFile)
+#' \dontrun{
+#' # Overall frequency of all categorical covariates
+#' tableCategoricalCovariateSummary()
+#'
+#' # Stratify by one categorical covariate (long format, splitter as left column)
+#' tableCategoricalCovariateSummary(splitCovariates = "ATRTNCA")
+#'
+#' # Stratified-columns layout: one column per stratum + Overall
+#' tableCategoricalCovariateSummary(
+#'     splitCovariates  = "ATRTNCA",
+#'     stratify_columns = TRUE,
+#'     covariate_labels = "Treatment"
+#' )
+#' }
+tableCategoricalCovariateSummary <- function(projectFile           = NULL,
+																						 covDisplayLabels      = NULL,
+																						 categoryDisplayLabels = NULL,
+																						 splitCovariates       = NULL,
+																						 stratify_columns      = FALSE,
+																						 covariate_labels      = NULL,
+																						 covariate_filter      = NULL,
+																						 id_filter             = NULL,
+																						 roundDigits           = 2,
+																						 roundMethod           = c("monolix", "signif", "none"),
+																						 mock                  = list(enable = FALSE, max_rows = "all")) {
 
-    if (!is.null(covDisplayLabels) && !is.data.frame(covDisplayLabels)) {
-        stop("The argument 'covDisplayLabels' must be a dataframe.", call. = FALSE)
-    }
+	roundMethod <- match.arg(roundMethod)
 
-    if (!is.null(covDisplayLabels) &&
-        !identical(names(covDisplayLabels), c("covariate", "label"))) {
-        stop(
-            paste0(
-                "The argument 'covDisplayLabels' must contain the headers 'covariate' and 'label.' Headers found are: ",
-                paste(names(covDisplayLabels), collapse = ", ")
-            ),
-            call. = FALSE
-        )
-    }
+	# ==========================================================================
+	# VALIDATION & SETUP
 
-    if (!is.null(categoryDisplayLabels) && !is.data.frame(categoryDisplayLabels)) {
-        stop("The argument 'categoryDisplayLabels' must be a dataframe.", call. = FALSE)
-    }
+	.checkProjectFile(projectFile, c("monolix", "pkanalix"))
+	.ensureProjectLoaded(projectFile)
 
-    if (!is.null(categoryDisplayLabels) &&
-        !identical(
-            names(categoryDisplayLabels),
-            c("covariate", "category", "label")
-        )) {
-        stop(
-            paste0(
-                "The argument 'categoryDisplayLabels' must contain the headers 'covariate,' 'category,' and 'label.' Headers found are: ",
-                paste(names(categoryDisplayLabels), collapse = ", ")
-            ),
-            call. = FALSE
-        )
-    }
+	# covDisplayLabels validation
+	if (!is.null(covDisplayLabels) && !is.data.frame(covDisplayLabels)) {
+		stop("The argument 'covDisplayLabels' must be a dataframe.", call. = FALSE)
+	}
+	if (!is.null(covDisplayLabels) &&
+			!identical(names(covDisplayLabels), c("covariate", "label"))) {
+		stop(paste0(
+			"The argument 'covDisplayLabels' must contain the headers 'covariate' and 'label.' Headers found are: ",
+			paste(names(covDisplayLabels), collapse = ", ")),
+			call. = FALSE)
+	}
 
-    cov_info <- lixoftConnectors::getCovariateInformation()
+	# categoryDisplayLabels validation
+	if (!is.null(categoryDisplayLabels) && !is.data.frame(categoryDisplayLabels)) {
+		stop("The argument 'categoryDisplayLabels' must be a dataframe.", call. = FALSE)
+	}
+	if (!is.null(categoryDisplayLabels) &&
+			!identical(names(categoryDisplayLabels), c("covariate", "category", "label"))) {
+		stop(paste0(
+			"The argument 'categoryDisplayLabels' must contain the headers 'covariate,' 'category,' and 'label.' Headers found are: ",
+			paste(names(categoryDisplayLabels), collapse = ", ")),
+			call. = FALSE)
+	}
 
-    cov_data <- cov_info$covariate %>%
-        dplyr::select(cov_info$name[cov_info$type == "categorical"]) # verify then make summary table
-    cov_summary <- NULL
+	# Categorical types accepted for splitting and filtering (incl. PKanalix-derived)
+	cat_types <- c("categorical",
+								 "additionalstratificationcategorical",
+								 "stratificationcategorical")
 
-    for (c in names(cov_data)) {
-        cov <- cov_data %>%
-            dplyr::summarise(.by = as.name(c), Frequency = dplyr::n()) %>%
-            dplyr::mutate(
-                Covariate = "",
-                Category = !!as.name(c),
-                Percentage = .round_num(.data$Frequency / sum(.data$Frequency), digits, rounding_method = roundingMethod)
-            ) %>%
-            dplyr::select(!as.name(c)) %>%
-            dplyr::relocate("Frequency", .before = "Percentage")
+	stratify_columns <- .validateStratificationArgs(splitCovariates, stratify_columns, allowed_types = cat_types)
+	final_labels     <- .validateCovariateLabels(splitCovariates, covariate_labels)
+	.validateFilters(covariate_filter, id_filter, resultType = "covariateSummary")
 
-        # rename categories
-        if (!is.null(categoryDisplayLabels)) {
-            cov <- cov %>%
-                dplyr::mutate(Category = dplyr::filter(
-                    categoryDisplayLabels,
-                    .data$covariate == c
-                )$label[match(.data$Category, dplyr::filter(
-                    categoryDisplayLabels,
-                    .data$covariate == c
-                )$category)])
-        }
+	# ==========================================================================
+	# GET DATA AND APPLY FILTERS
 
-        # rename covariates
-        cov$Covariate[1] <- if (is.null(covDisplayLabels)) {
-            c
-        } else {
-            covDisplayLabels$label[covDisplayLabels$covariate == c][1]
-        }
-        cov_summary <- rbind(cov_summary, cov)
-    }
-    attr(cov_summary, "project_source") <- lixoftConnectors::getProjectSettings()$directory
-    attr(cov_summary, "r_source")       <- .getRScriptPath()
-    return(cov_summary)
+	cov_info <- lixoftConnectors::getCovariateInformation()
+	cov_info$covariate <- .applyFilters(cov_info$covariate, covariate_filter, id_filter,
+																			id_col = "id")
+
+	cat_covs <- cov_info$name[cov_info$type %in% cat_types]
+	if (length(cat_covs) == 0) {
+		stop("No categorical covariates found in the project (type 'categorical', 'additionalstratificationcategorical' or 'stratificationcategorical').",
+				 call. = FALSE)
+	}
+
+	if (!is.null(splitCovariates) &&
+			length(setdiff(cat_covs, splitCovariates)) == 0) {
+		stop("All categorical covariates were used as stratifiers; none remain to summarize.",
+				 call. = FALSE)
+	}
+
+	df_cov            <- cov_info$covariate
+	vars_to_summarize <- setdiff(cat_covs, splitCovariates)
+
+	# ==========================================================================
+	# CALCULATE STATISTICS
+
+	if (stratify_columns) {
+		# --- STRATIFIED (WIDE) -------------------------------------------------
+		# .validateStratificationArgs guarantees splitCovariates is non-NULL here.
+		df_long <- df_cov %>%
+			dplyr::select(id, dplyr::all_of(c(splitCovariates, vars_to_summarize))) %>%
+			tidyr::pivot_longer(cols = dplyr::all_of(vars_to_summarize),
+													names_to = "variable", values_to = "value")
+
+		# Overall summary (ignores splitCovariates — .calculateCategoricalFrequencies
+		# groups only by `variable` so split columns are passed through unused.)
+		overall <- df_long %>%
+			.calculateCategoricalFrequencies() %>%
+			.format_frequency_table(roundDigits, roundMethod, exclude_cols = c("variable", "Modalities", "N")) %>%
+			dplyr::rename(Overall = `N (%)`)
+
+		stratified_df <- df_long %>%
+			dplyr::rowwise() %>%
+			dplyr::mutate(header = {
+				pieces <- purrr::map2_chr(final_labels, splitCovariates,
+																	~ paste0(.x, "=",
+																					 as.character(dplyr::pick(dplyr::all_of(.y)))))
+				paste(pieces, collapse = "\n")
+			}) %>%
+			dplyr::ungroup()
+
+		stratified_result <- stratified_df %>%
+			dplyr::group_by(header) %>%
+			dplyr::do(stats = .calc_format_stratum(., roundDigits, roundMethod,
+																						 exclude_cols = c("variable", "Modalities", "N"))) %>%
+			tidyr::unnest(stats) %>%
+			tidyr::pivot_wider(names_from = header, values_from = `N (%)`)
+
+		summary_stats <- dplyr::left_join(stratified_result, overall,
+																			by = c("variable", "Modalities"))
+		names(summary_stats)[names(summary_stats) == "variable"] <- "Subject characteristics"
+
+	} else {
+		# --- LONG FORMAT --------------------------------------------------------
+		df_long <- df_cov %>%
+			dplyr::select(id, dplyr::all_of(c(vars_to_summarize, splitCovariates))) %>%
+			tidyr::pivot_longer(cols = dplyr::all_of(vars_to_summarize),
+													names_to = "variable", values_to = "value")
+
+		result_raw <- df_long %>%
+			dplyr::group_by(!!!rlang::syms(splitCovariates), variable, value) %>%
+			dplyr::summarise(Count = dplyr::n(), .groups = "drop") %>%
+			dplyr::left_join(
+				df_long %>%
+					dplyr::filter(!is.na(value)) %>%
+					dplyr::group_by(!!!rlang::syms(splitCovariates), variable) %>%
+					dplyr::summarise(N = dplyr::n_distinct(id), .groups = "drop"),
+				by = c(splitCovariates, "variable")
+			) %>%
+			dplyr::mutate(Percentage = (Count / N) * 100) %>%
+			dplyr::select(!!!rlang::syms(splitCovariates), variable,
+										Modalities = value, Count, Percentage, N)
+
+		summary_stats <- result_raw %>%
+			.format_frequency_table(roundDigits, roundMethod,
+															c(splitCovariates, "variable", "Modalities", "Count", "N")) %>%
+			dplyr::select(!!!rlang::syms(splitCovariates),
+										`Subject characteristics` = variable, Modalities,
+										`Frequency\nN (%)` = `N (%)`) %>%
+			dplyr::arrange(dplyr::across(dplyr::any_of(splitCovariates)),
+										 `Subject characteristics`, Modalities)
+
+		# Apply covariate_labels to split columns (positional mapping)
+		if (!is.null(splitCovariates)) {
+			col_idx <- match(splitCovariates, names(summary_stats))
+			ok      <- !is.na(col_idx)
+			names(summary_stats)[col_idx[ok]] <- final_labels[ok]
+		}
+	}
+
+	# ==========================================================================
+	# APPLY DISPLAY LABEL RENAMES
+	# Order matters: categoryDisplayLabels MUST run before covDisplayLabels because
+	# its lookup keys on the original covariate names still in "Subject characteristics".
+
+	if (!is.null(categoryDisplayLabels)) {
+		key_lookup <- paste0(categoryDisplayLabels$covariate, "||",
+												 categoryDisplayLabels$category)
+		key_row    <- paste0(as.character(summary_stats[["Subject characteristics"]]), "||",
+												 as.character(summary_stats$Modalities))
+		match_idx  <- match(key_row, key_lookup)
+		summary_stats$Modalities[!is.na(match_idx)] <-
+			categoryDisplayLabels$label[stats::na.omit(match_idx)]
+	}
+
+	if (!is.null(covDisplayLabels)) {
+		label_idx <- match(summary_stats[["Subject characteristics"]],
+											 covDisplayLabels$covariate)
+		summary_stats[["Subject characteristics"]][!is.na(label_idx)] <-
+			covDisplayLabels$label[stats::na.omit(label_idx)]
+	}
+
+	# ==========================================================================
+	# MOCKING
+
+	if (isTRUE(mock$enable)) {
+		if (stratify_columns) {
+			exclusion_vector <- c("Subject characteristics", "Modalities")
+		} else {
+			exclusion_vector <- c("Subject characteristics", "Modalities", final_labels)
+		}
+		exclusion_vector <- exclusion_vector[!is.null(exclusion_vector) & exclusion_vector != ""]
+
+		summary_stats <- .mockOutputData(
+			df            = summary_stats,
+			mock_settings = list(enable = TRUE, max_rows = mock$max_rows,
+													 exclude_cols = exclusion_vector),
+			digits        = roundDigits,
+			method        = roundMethod)
+	}
+
+	# ==========================================================================
+	# RETURN
+
+	attr(summary_stats, "project_source") <- lixoftConnectors::getProjectSettings()$directory
+	attr(summary_stats, "r_source")       <- .getRScriptPath()
+	return(as.data.frame(summary_stats))
 }
 
 #-------------------------------------------------------------------------------
