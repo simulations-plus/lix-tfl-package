@@ -930,7 +930,7 @@
 #'
 .validateFilters <- function(covariate_filter = NULL,
                              id_filter        = NULL,
-                             resultType       = c("nca", "ncaRatio")) {
+                             resultType       = c("nca", "ncaRatio", "covariateSummary")) {
 
 	resultType <- match.arg(resultType)
 
@@ -962,6 +962,16 @@
 			ratio_cols         <- setdiff(names(ratio_result), "id")
 			data_vars          <- lixoftConnectors::getData()$header
 			available_cat_covs <- intersect(ratio_cols, data_vars)
+		} else if (resultType == "covariateSummary") {
+			# For covariate summary: categorical-like types from getCovariateInformation()
+			# (sourced from getCovariateInformation() rather than getData() so PKanalix-derived
+			#  covariates like additionalstratificationcategorical / stratificationcategorical
+			#  are also recognised.)
+			cov_info_filt      <- lixoftConnectors::getCovariateInformation()
+			cat_types          <- c("categorical",
+			                        "additionalstratificationcategorical",
+			                        "stratificationcategorical")
+			available_cat_covs <- cov_info_filt$name[cov_info_filt$type %in% cat_types]
 		} else {
 			# For nca and ncaConcentration: categorical splitCovariates and occasions
 			project_data       <- lixoftConnectors::getData()
@@ -974,13 +984,21 @@
 
 		if (length(invalid_covs) > 0) {
 			# Check if they're continuous splitCovariates (more specific error message)
-			project_data <- lixoftConnectors::getData()
-			cont_covs    <- project_data$header[project_data$headerTypes == "contcov"]
+			if (resultType == "covariateSummary") {
+				cov_info_filt <- lixoftConnectors::getCovariateInformation()
+				cont_types    <- c("continuous",
+				                   "additionalstratificationcontinuous",
+				                   "stratificationcontinuous")
+				cont_covs     <- cov_info_filt$name[cov_info_filt$type %in% cont_types]
+			} else {
+				project_data <- lixoftConnectors::getData()
+				cont_covs    <- project_data$header[project_data$headerTypes == "contcov"]
+			}
 			invalid_cont <- intersect(invalid_covs, cont_covs)
 
 			if (length(invalid_cont) > 0) {
 				stop(sprintf(
-					"covariate_filter can only filter categorical covariates (catcov or occ).\n'%s' %s continuous covariate%s and cannot be filtered.\nAvailable categorical covariates: %s",
+					"covariate_filter can only filter categorical covariates.\n'%s' %s continuous covariate%s and cannot be filtered.\nAvailable categorical covariates: %s",
 					paste(invalid_cont, collapse = "', '"),
 					if (length(invalid_cont) > 1) "are" else "is a",
 					if (length(invalid_cont) > 1) "s" else "",
@@ -1114,10 +1132,14 @@
 #'
 #' @param splitCovariates Vector of covariate names (or NULL).
 #' @param stratify_columns Boolean flag indicating if stratification is requested.
+#' @param allowed_types Optional character vector of allowed `getCovariateInformation()$type`
+#'   values (e.g. `c("categorical", "additionalstratificationcategorical", "stratificationcategorical")`).
+#'   If `NULL` (default), only existence of `splitCovariates` is checked. If provided,
+#'   each split covariate must additionally have a `type` in `allowed_types`.
 #'
 #' @return Boolean. Returns FALSE if splitCovariates are missing, otherwise returns original stratify_columns.
 #'
-.validateStratificationArgs <- function(splitCovariates, stratify_columns) {
+.validateStratificationArgs <- function(splitCovariates, stratify_columns, allowed_types = NULL) {
 	# 1. Argument consistency check
 	if (isTRUE(stratify_columns) && is.null(splitCovariates)) {
 		warning("stratify_columns=TRUE requires covariates. Resetting stratify_columns to FALSE.")
@@ -1126,8 +1148,8 @@
 	# 2. Covariate existence check (if splitCovariates provided)
 	if (!is.null(splitCovariates)) {
 		# Get available splitCovariates from current PKanalix project
-		cov_info                  <- lixoftConnectors::getCovariateInformation()$covariate
-		available_splitCovariates <- setdiff(names(cov_info), "id")
+		cov_info                  <- lixoftConnectors::getCovariateInformation()
+		available_splitCovariates <- setdiff(names(cov_info$covariate), "id")
 
 		# Validate requested splitCovariates exist
 		bad_splitCovariates <- setdiff(splitCovariates, available_splitCovariates)
@@ -1136,6 +1158,22 @@
 				"Invalid covariate(s): ", paste(bad_splitCovariates, collapse = ", "), "\n",
 				"Available splitCovariates: ", paste(available_splitCovariates, collapse = ", ")
 			)
+		}
+
+		# 3. Optional type check
+		if (!is.null(allowed_types)) {
+			valid_covs <- cov_info$name[cov_info$type %in% allowed_types]
+			bad_type   <- setdiff(splitCovariates, valid_covs)
+			if (length(bad_type) > 0) {
+				stop(
+					"Covariate(s) with invalid type for stratification: ",
+					paste(bad_type, collapse = ", "), "\n",
+					"Allowed types: ", paste(allowed_types, collapse = ", "), "\n",
+					"Available covariates of allowed type(s): ",
+					if (length(valid_covs) > 0) paste(valid_covs, collapse = ", ") else "none",
+					call. = FALSE
+				)
+			}
 		}
 	}
 	return(stratify_columns)
