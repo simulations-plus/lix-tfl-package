@@ -602,12 +602,27 @@ tableNCAParameters <- function(projectFile      = NULL,
 	# GET INDIVIDUAL PARAMETERS DATA
 
 	indiv_params <- lixoftConnectors::getNCAIndividualParameters()$parameters
+
+
+	# getNCAIndividualParameters() does not carry stratificationcategorical or additionalstratificationcategorical columns.
+	# Pull them from getCovariateInformation() and merge by id BEFORE filtering, so that covariate_filter / id_filter can act on them too.
+	# Filtering the source to only strat types guarantees no column collision with indiv_params.
+	cov_info        <- lixoftConnectors::getCovariateInformation()
+	strat_cov_names <- cov_info$name[cov_info$type %in% c("stratificationcategorical", "additionalstratificationcategorical")]
+
+	if (length(strat_cov_names) > 0) {
+		strat_cov_df <- cov_info$covariate[, c("id", strat_cov_names), drop = FALSE]
+		indiv_params <- merge(indiv_params, strat_cov_df, by = "id", all.x = TRUE, sort = FALSE)
+	}
+	# --------------------------------------------------------------------------
+
 	indiv_params <- .applyFilters(indiv_params, covariate_filter, id_filter, id_col = "id")
 
 	project_data        <- lixoftConnectors::getData()
 	all_splitCovariates <- project_data$header[project_data$headerTypes %in% c("catcov", "contcov", "occ")]
 	occ_vars            <- project_data$header[project_data$headerTypes == "occ"]
-	param_cols          <- setdiff(names(indiv_params), c("id", all_splitCovariates))
+	# NEW: also exclude the merged-in strat covariate names from param_cols.
+	param_cols          <- setdiff(names(indiv_params), c("id", all_splitCovariates, strat_cov_names))
 
 	if (!is.null(NCAparams)) {
 		param_cols <- intersect(NCAparams, param_cols)
@@ -660,7 +675,6 @@ tableNCAParameters <- function(projectFile      = NULL,
 
 		summary_stats <- .combinedStats(summary_stats)
 
-		# MODIFIED: Pass custom dataframes
 		if (isTRUE(units) || isTRUE(aliases)) {
 			summary_stats <- .addUnitsAliases(
 				summary_stats,
@@ -692,7 +706,6 @@ tableNCAParameters <- function(projectFile      = NULL,
 
 			overall_stats <- .combinedStats(overall_stats)
 
-			# MODIFIED: Pass custom dataframes
 			if (isTRUE(units) || isTRUE(aliases)) {
 				overall_stats <- .addUnitsAliases(
 					overall_stats,
@@ -734,7 +747,6 @@ tableNCAParameters <- function(projectFile      = NULL,
 
 		summary_stats <- .combinedStats(summary_stats)
 
-		# apply aliases and units
 		if (isTRUE(units) || isTRUE(aliases)) {
 			summary_stats <- .addUnitsAliases(
 				summary_stats,
@@ -883,10 +895,8 @@ tableNCARatios <- function(projectFile      = NULL,
 	# Validate availability of analysis results
 	.validateProjectResultsAvailability(software = "pkanalix", resultType = "ncaRatio")
 
-	# Validate filter arguments
 	.validateFilters(covariate_filter, id_filter, resultType = "ncaRatio")
 
-	# Validate splitCovariates, stratification and covariate label arguments
 	.validateCovariateSelection(splitCovariates, ratio = TRUE)
 	stratify_columns <- .validateStratificationArgs(splitCovariates, stratify_columns)
 	covariate_labels <- .validateCovariateLabels(splitCovariates, covariate_labels)
@@ -926,7 +936,30 @@ tableNCARatios <- function(projectFile      = NULL,
 	}
 
 	# Candidate group-by columns: in dataframe but not id and not ratio(s)
-	indivratio <- lixoftConnectors::getNCAIndividualRatios()
+	indivratio      <- lixoftConnectors::getNCAIndividualRatios()
+
+	cov_info        <- lixoftConnectors::getCovariateInformation()
+	strat_cov_names <- cov_info$name[cov_info$type %in% c("stratificationcategorical",
+																												"additionalstratificationcategorical")]
+	if (length(strat_cov_names) > 0) {
+		invariance     <- .getOccasionInvariantCovariates(cov_info, covariates = strat_cov_names)
+		safe_cov_names <- invariance$invariant
+		dropped_covs   <- invariance$varying
+
+		if (length(dropped_covs) > 0) {
+			message(sprintf(
+				"Skipping occasion-varying stratification covariate(s) for ratio merge: %s (not constant within subject).",
+				paste(dropped_covs, collapse = ", ")))
+		}
+
+		if (length(safe_cov_names) > 0) {
+			# unique() collapses the per-occasion rows (identical for invariant
+			# covariates) to one row per id, preventing the merge row explosion.
+			strat_cov_df <- unique(cov_info$covariate[, c("id", safe_cov_names), drop = FALSE])
+			indivratio   <- merge(indivratio, strat_cov_df, by = "id", all.x = TRUE, sort = FALSE)
+		}
+	}
+	# --------------------------------------------------------------------------
 
 	# Apply filters
 	indivratio <- .applyFilters(indivratio, covariate_filter, id_filter, id_col = "id")

@@ -267,9 +267,9 @@
 
 	df <- df %>%
 		dplyr::mutate(display_name = dplyr::case_when(
-			!is.na(aliases) & !is.na(units) & units != "" ~ paste0(aliases, "\n(", units, ")"),
+			!is.na(aliases) & !is.na(units) & units != "" ~ paste0(aliases, " (", units, ")"),
 			!is.na(aliases) ~ aliases,
-			is.na(aliases) & !is.na(units) & units != "" ~ paste0(parameter, "\n(", units, ")"),
+			is.na(aliases) & !is.na(units) & units != "" ~ paste0(parameter, " (", units, ")"),
 			TRUE ~ parameter))
 
 	df <- df %>%
@@ -857,20 +857,19 @@
 	}
 
 	if (ratio) {
-		# For ratio tables: intersection of ratio columns and data variables
-		# This excludes parameters (which only appear in ratio results, not in data)
-		ratio_result <- lixoftConnectors::getNCAIndividualRatios()
-		ratio_cols   <- setdiff(names(ratio_result), "id")
-		# Get all variables from data
-		data_vars <- lixoftConnectors::getData()$header
-		# Available splitCovariates = intersection (parameters are filtered out)
-		available_covs <- intersect(ratio_cols, data_vars)
-		context_msg    <- "splitCovariates in ratio results"
-	} else {
-		# For other tables/listings: use getData(), allow catcov or occ
 		project_data   <- lixoftConnectors::getData()
-		available_covs <- project_data$header[project_data$headerTypes %in% c("catcov", "occ")]
-		context_msg    <- "splitCovariates (catcov or occ)"
+		available_covs <- project_data$header[project_data$headerTypes %in% c("catcov", "stratcatcov")]
+		cov_info       <- lixoftConnectors::getCovariateInformation()
+		available_covs <- c(available_covs, cov_info$name[cov_info$type == "additionalstratificationcategorical"])
+		context_msg    <- "splitCovariates in ratio results (categorical or stratification categorical; occasions not allowed for ratios)"
+
+		.assertOccasionInvariantForRatio(splitCovariates, cov_info = cov_info, arg_name = "splitCovariates")
+	} else {
+		project_data   <- lixoftConnectors::getData()
+		available_covs <- project_data$header[project_data$headerTypes %in% c("catcov", "occ", "stratcatcov")]
+		cov_info       <- lixoftConnectors::getCovariateInformation()
+		available_covs <- c(available_covs, cov_info$name[cov_info$type == "additionalstratificationcategorical"])
+		context_msg    <- "splitCovariates (catcov, occ, or stratification categorical)"
 	}
 
 	# Check if provided splitCovariates are valid
@@ -957,25 +956,23 @@
 
 		# Get available categorical splitCovariates based on resultType
 		if (resultType == "ncaRatio") {
-			# For ratio tables: intersection of ratio columns and data variables
-			ratio_result       <- lixoftConnectors::getNCAIndividualRatios()
-			ratio_cols         <- setdiff(names(ratio_result), "id")
-			data_vars          <- lixoftConnectors::getData()$header
-			available_cat_covs <- intersect(ratio_cols, data_vars)
-		} else if (resultType == "covariateSummary") {
-			# For covariate summary: categorical-like types from getCovariateInformation()
-			# (sourced from getCovariateInformation() rather than getData() so PKanalix-derived
-			#  covariates like additionalstratificationcategorical / stratificationcategorical
-			#  are also recognised.)
+			project_data       <- lixoftConnectors::getData()
+			available_cat_covs <- project_data$header[project_data$headerTypes %in% c("catcov", "stratcatcov")]
 			cov_info_filt      <- lixoftConnectors::getCovariateInformation()
-			cat_types          <- c("categorical",
-			                        "additionalstratificationcategorical",
-			                        "stratificationcategorical")
+			available_cat_covs <- c(available_cat_covs, cov_info_filt$name[cov_info_filt$type == "additionalstratificationcategorical"])
+
+			.assertOccasionInvariantForRatio(names(covariate_filter), cov_info = cov_info_filt, arg_name = "covariate_filter")
+		} else if (resultType == "covariateSummary") {
+
+			cov_info_filt      <- lixoftConnectors::getCovariateInformation()
+			cat_types          <- c("categorical", "additionalstratificationcategorical", "stratificationcategorical")
 			available_cat_covs <- cov_info_filt$name[cov_info_filt$type %in% cat_types]
 		} else {
-			# For nca and ncaConcentration: categorical splitCovariates and occasions
 			project_data       <- lixoftConnectors::getData()
-			available_cat_covs <- project_data$header[project_data$headerTypes %in% c("catcov", "occ")]
+			available_cat_covs <- project_data$header[project_data$headerTypes %in% c("catcov", "occ", "stratcatcov")]
+			cov_info_filt      <- lixoftConnectors::getCovariateInformation()
+			available_cat_covs <- c(available_cat_covs,
+															cov_info_filt$name[cov_info_filt$type == "additionalstratificationcategorical"])
 		}
 
 		# Check that filter splitCovariates are valid categorical splitCovariates
@@ -987,8 +984,8 @@
 			if (resultType == "covariateSummary") {
 				cov_info_filt <- lixoftConnectors::getCovariateInformation()
 				cont_types    <- c("continuous",
-				                   "additionalstratificationcontinuous",
-				                   "stratificationcontinuous")
+													 "additionalstratificationcontinuous",
+													 "stratificationcontinuous")
 				cont_covs     <- cov_info_filt$name[cov_info_filt$type %in% cont_types]
 			} else {
 				project_data <- lixoftConnectors::getData()
@@ -1179,6 +1176,101 @@
 	return(stratify_columns)
 }
 
+##################################################################################
+#' .getOccasionInvariantCovariates()
+#' Classify covariates as occasion-invariant or occasion-varying
+#'
+#' Inspects \code{getCovariateInformation()$covariate} (one row per subject and
+#' occasion) and determines, for each requested covariate, whether it keeps a
+#' single value within every subject (occasion-invariant, e.g. WEIGHT, BMI, a
+#' treatment-sequence covariate) or changes between a subject's occasions
+#' (occasion-varying, e.g. TRT or a per-period covariate).
+#'
+#' This distinction matters for NCA ratio tables: ratios are computed within a
+#' subject across occasions, so only occasion-invariant covariates have an
+#' unambiguous single value per subject and can be safely merged onto / used to
+#' stratify or filter the ratio results. Occasion-varying covariates would both
+#' duplicate rows on an id-only merge and have no well-defined value per ratio.
+#'
+#' @param cov_info Optional result of \code{lixoftConnectors::getCovariateInformation()}.
+#'   Fetched automatically when \code{NULL}.
+#' @param covariates Optional character vector restricting the covariates to
+#'   classify. When \code{NULL}, all covariates in \code{cov_info$name} are used.
+#'
+#' @return A list with two character vectors: \code{invariant} (constant within
+#'   each subject) and \code{varying} (changes across a subject's occasions).
+#'
+#' @keywords internal
+#' @noRd
+.getOccasionInvariantCovariates <- function(cov_info = NULL, covariates = NULL) {
+	if (is.null(cov_info)) {
+		cov_info <- lixoftConnectors::getCovariateInformation()
+	}
+
+	cov_df <- cov_info$covariate
+
+	candidates <- cov_info$name
+	if (!is.null(covariates)) {
+		candidates <- intersect(candidates, covariates)
+	}
+	candidates <- intersect(candidates, names(cov_df))
+
+	invariant <- character(0)
+	varying   <- character(0)
+
+	for (nm in candidates) {
+		# Count distinct (non-NA) values within each subject.
+		n_distinct_per_id <- tapply(
+			as.character(cov_df[[nm]]),
+			cov_df$id,
+			function(x) length(unique(x[!is.na(x)])))
+
+		if (all(n_distinct_per_id <= 1, na.rm = TRUE)) {
+			invariant <- c(invariant, nm)
+		} else {
+			varying <- c(varying, nm)
+		}
+	}
+
+	list(invariant = invariant, varying = varying)
+}
+
+##################################################################################
+#' .assertOccasionInvariantForRatio()
+#' Assert that covariates are occasion-invariant for ratio results
+#'
+#' Stops with an informative error when any of the requested covariates changes
+#' between a subject's occasions. Used by the ratio-table validation helpers so
+#' that occasion-varying covariates cannot be used to stratify or filter NCA
+#' ratio tables (where they have no single value per subject).
+#'
+#' @param covariates Character vector of covariate names (or NULL).
+#' @param cov_info Optional \code{getCovariateInformation()} result (fetched when NULL).
+#' @param arg_name Name of the calling argument, used in the error message.
+#'
+#' @return Invisible NULL when all covariates are occasion-invariant.
+#'
+#' @keywords internal
+#' @noRd
+.assertOccasionInvariantForRatio <- function(covariates, cov_info = NULL, arg_name = "splitCovariates") {
+	if (is.null(covariates) || length(covariates) == 0) {
+		return(invisible(NULL))
+	}
+
+	cls <- .getOccasionInvariantCovariates(cov_info = cov_info, covariates = covariates)
+
+	if (length(cls$varying) > 0) {
+		stop(sprintf(
+			paste0(
+				"Occasion-varying covariate(s) cannot be used for %s in ratio results: %s\n",
+				"Use a covariate that is constant within each subject."),
+			arg_name,
+			paste(cls$varying, collapse = ", ")),
+			call. = FALSE)
+	}
+
+	invisible(NULL)
+}
 
 ##################################################################################
 
