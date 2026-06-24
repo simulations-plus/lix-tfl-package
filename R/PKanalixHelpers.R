@@ -1755,6 +1755,7 @@ listingNCAParameters <- function(projectFile      = NULL,
 																 custom_units     = NULL,
 																 custom_aliases   = NULL){
 
+
 	roundMethod <- match.arg(roundMethod)
 	# Ensure the correct project is loaded
 	.checkProjectFile(projectFile, "pkanalix")
@@ -1778,17 +1779,27 @@ listingNCAParameters <- function(projectFile      = NULL,
 
 	indivNCA <- lixoftConnectors::getNCAIndividualParameters()$parameter
 
+	project_data        <- lixoftConnectors::getData()
+	all_splitCovariates <- project_data$header[project_data$headerTypes %in% c("catcov", "contcov", "occ")]
+	occ_vars            <- project_data$header[project_data$headerTypes == "occ"]
+	cov_info            <- lixoftConnectors::getCovariateInformation()
+	strat_cov_names     <- cov_info$name[cov_info$type %in% c("stratificationcategorical",
+																														"additionalstratificationcategorical")]
+	if (length(strat_cov_names) > 0) {
+		join_keys    <- c("id", intersect(occ_vars,
+																			intersect(names(indivNCA), names(cov_info$covariate))))
+		strat_cov_df <- unique(cov_info$covariate[, c(join_keys, strat_cov_names), drop = FALSE])
+		indivNCA     <- merge(indivNCA, strat_cov_df, by = join_keys, all.x = TRUE, sort = FALSE)
+	}
+	# ---------------------------------------------------------------------------
+
 	# Apply filters
 	indivNCA <- .applyFilters(indivNCA, covariate_filter, id_filter, id_col = "id")
 
-	# Get ALL available splitCovariates from data
-	project_data <- lixoftConnectors::getData()
-	all_splitCovariates <- project_data$header[project_data$headerTypes %in% c("catcov","contcov", "occ")]
-
 	# Filter to selected parameters if NCAparams is specified
 	if (!is.null(NCAparams)) {
-		# Keep id, all splitCovariates, and selected parameters only
-		cols_to_keep <- c("id", all_splitCovariates, NCAparams)
+		# Keep id, all splitCovariates, merged strat covariates, and selected parameters only
+		cols_to_keep <- c("id", all_splitCovariates, strat_cov_names, NCAparams)
 		# Only keep columns that exist in the data
 		cols_to_keep <- intersect(cols_to_keep, names(indivNCA))
 		indivNCA <- indivNCA %>% dplyr::select(dplyr::all_of(cols_to_keep))
@@ -1799,10 +1810,10 @@ listingNCAParameters <- function(projectFile      = NULL,
 		to_round        = indivNCA,
 		digits          = roundDigits,
 		rounding_method = roundMethod,
-		exclude         = c("id", all_splitCovariates))
+		exclude         = c("id", all_splitCovariates, strat_cov_names))
 
-	# Identify parameter columns (exclude id and all splitCovariates present in data)
-	param_cols <- setdiff(names(indivNCA), c("id", all_splitCovariates))
+	# Identify parameter columns (exclude id, all splitCovariates and merged strat covariates)
+	param_cols <- setdiff(names(indivNCA), c("id", all_splitCovariates, strat_cov_names))
 
 	# Create temporary data frame with parameter names
 	temp_df <- data.frame(parameter = param_cols, stringsAsFactors = FALSE)
@@ -1895,18 +1906,39 @@ listingNCARatios <- function(projectFile      = NULL,
 	# Validate availability of analysis results
 	.validateProjectResultsAvailability(software = "pkanalix", resultType = "ncaRatio")
 
-	# Validate filter arguments
+	# Validate filter arguments (rejects occasion-varying filter keys for ratios)
 	.validateFilters(covariate_filter, id_filter, resultType = "ncaRatio")
 
-	# Validate set splitCovariates
+	# Validate set splitCovariates (rejects occasion-varying split covariates for ratios)
 	.validateCovariateSelection(splitCovariates, ratio = TRUE)
 	# Validate set parameters
 	.validateNCAParametersSelection(ratioParams, ratio = TRUE)
 
 	# Normalize custom alias mapping
-	aliases_df <- .normalizeAliasMapping(custom_aliases, "aliases")
+	aliases_df        <- .normalizeAliasMapping(custom_aliases, "aliases")
 
-	indivRatios <- lixoftConnectors::getNCAIndividualRatios()
+	indivRatios       <- lixoftConnectors::getNCAIndividualRatios()
+
+	cov_info          <- lixoftConnectors::getCovariateInformation()
+	strat_cov_names   <- cov_info$name[cov_info$type %in% c("stratificationcategorical", "additionalstratificationcategorical")]
+	merged_strat_covs <- character(0)
+	if (length(strat_cov_names) > 0) {
+		invariance   <- .getOccasionInvariantCovariates(cov_info, covariates = strat_cov_names)
+		dropped_covs <- invariance$varying
+
+		if (length(dropped_covs) > 0) {
+			message(sprintf(
+				"Skipping occasion-varying stratification covariate(s) for ratio merge: %s (not constant within subject).",
+				paste(dropped_covs, collapse = ", ")))
+		}
+
+		if (length(invariance$invariant) > 0) {
+			merged_strat_covs <- invariance$invariant
+			strat_cov_df      <- unique(cov_info$covariate[, c("id", merged_strat_covs), drop = FALSE])
+			indivRatios       <- merge(indivRatios, strat_cov_df, by = "id", all.x = TRUE, sort = FALSE)
+		}
+	}
+	# ---------------------------------------------------------------------------
 
 	# Apply filters
 	indivRatios <- .applyFilters(indivRatios, covariate_filter, id_filter, id_col = "id")
@@ -1919,8 +1951,8 @@ listingNCARatios <- function(projectFile      = NULL,
 
 	# Filter to selected parameters if ratioParams is specified
 	if (!is.null(ratioParams)) {
-		# Keep id, all splitCovariates, and selected parameters only
-		cols_to_keep <- c("id", all_splitCovariates, ratioParams)
+		# Keep id, all splitCovariates, merged strat covariates, and selected parameters only
+		cols_to_keep <- c("id", all_splitCovariates, merged_strat_covs, ratioParams)
 		# Only keep columns that exist in the data
 		cols_to_keep <- intersect(cols_to_keep, names(indivRatios))
 		indivRatios <- indivRatios %>% dplyr::select(dplyr::all_of(cols_to_keep))
@@ -1931,10 +1963,10 @@ listingNCARatios <- function(projectFile      = NULL,
 		to_round        = indivRatios,
 		digits          = roundDigits,
 		rounding_method = roundMethod,
-		exclude         = c("id", all_splitCovariates))
+		exclude         = c("id", all_splitCovariates, merged_strat_covs))
 
-	# Identify parameter columns (exclude id and all splitCovariates present in data)
-	param_cols <- setdiff(names(indivRatios), c("id", all_splitCovariates))
+	# Identify parameter columns (exclude id, all splitCovariates and merged strat covariates)
+	param_cols <- setdiff(names(indivRatios), c("id", all_splitCovariates, merged_strat_covs))
 
 	# Create temporary data frame with parameter names
 	temp_df <- data.frame(parameter = param_cols, stringsAsFactors = FALSE)
