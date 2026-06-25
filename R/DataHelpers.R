@@ -462,7 +462,7 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 		overall <- df_long %>%
 			.calculateCategoricalFrequencies() %>%
 			.format_frequency_table(roundDigits, roundMethod, exclude_cols = c("variable", "Modalities", "N")) %>%
-			dplyr::select(-dplyr::any_of("N")) %>%   # drop subject-count denominator (shown inside N (%))
+			dplyr::select(-dplyr::any_of("N")) %>%
 			dplyr::rename(Overall = `N (%)`)
 
 		stratified_df <- df_long %>%
