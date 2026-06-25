@@ -963,10 +963,12 @@
 
 			.assertOccasionInvariantForRatio(names(covariate_filter), cov_info = cov_info_filt, arg_name = "covariate_filter")
 		} else if (resultType == "covariateSummary") {
-
 			cov_info_filt      <- lixoftConnectors::getCovariateInformation()
 			cat_types          <- c("categorical", "additionalstratificationcategorical", "stratificationcategorical")
 			available_cat_covs <- cov_info_filt$name[cov_info_filt$type %in% cat_types]
+			# allow occasion index columns (in $covariate but not in $name) as filter keys
+			occ_cols           <- setdiff(names(cov_info_filt$covariate), c("id", cov_info_filt$name))
+			available_cat_covs <- c(available_cat_covs, occ_cols)
 		} else {
 			project_data       <- lixoftConnectors::getData()
 			available_cat_covs <- project_data$header[project_data$headerTypes %in% c("catcov", "occ", "stratcatcov")]
@@ -1133,10 +1135,14 @@
 #'   values (e.g. `c("categorical", "additionalstratificationcategorical", "stratificationcategorical")`).
 #'   If `NULL` (default), only existence of `splitCovariates` is checked. If provided,
 #'   each split covariate must additionally have a `type` in `allowed_types`.
+#' @param allow_occasions Logical; if TRUE, occasion index columns (columns in
+#'   `cov_info$covariate` that are not `id` and not in `cov_info$name`) are also
+#'   accepted as split covariates, even though they are not in `allowed_types`.
 #'
 #' @return Boolean. Returns FALSE if splitCovariates are missing, otherwise returns original stratify_columns.
 #'
-.validateStratificationArgs <- function(splitCovariates, stratify_columns, allowed_types = NULL) {
+.validateStratificationArgs <- function(splitCovariates, stratify_columns,
+																				allowed_types = NULL, allow_occasions = FALSE) {
 	# 1. Argument consistency check
 	if (isTRUE(stratify_columns) && is.null(splitCovariates)) {
 		warning("stratify_columns=TRUE requires covariates. Resetting stratify_columns to FALSE.")
@@ -1144,11 +1150,9 @@
 	}
 	# 2. Covariate existence check (if splitCovariates provided)
 	if (!is.null(splitCovariates)) {
-		# Get available splitCovariates from current PKanalix project
 		cov_info                  <- lixoftConnectors::getCovariateInformation()
 		available_splitCovariates <- setdiff(names(cov_info$covariate), "id")
 
-		# Validate requested splitCovariates exist
 		bad_splitCovariates <- setdiff(splitCovariates, available_splitCovariates)
 		if (length(bad_splitCovariates) > 0) {
 			stop(
@@ -1160,12 +1164,18 @@
 		# 3. Optional type check
 		if (!is.null(allowed_types)) {
 			valid_covs <- cov_info$name[cov_info$type %in% allowed_types]
-			bad_type   <- setdiff(splitCovariates, valid_covs)
+			if (isTRUE(allow_occasions)) {
+				# occasion index columns: present in $covariate but not a covariate name
+				occ_cols   <- setdiff(names(cov_info$covariate), c("id", cov_info$name))
+				valid_covs <- c(valid_covs, occ_cols)
+			}
+			bad_type <- setdiff(splitCovariates, valid_covs)
 			if (length(bad_type) > 0) {
 				stop(
 					"Covariate(s) with invalid type for stratification: ",
 					paste(bad_type, collapse = ", "), "\n",
-					"Allowed types: ", paste(allowed_types, collapse = ", "), "\n",
+					"Allowed types: ", paste(allowed_types, collapse = ", "),
+					if (isTRUE(allow_occasions)) " (plus occasion variables)" else "", "\n",
 					"Available covariates of allowed type(s): ",
 					if (length(valid_covs) > 0) paste(valid_covs, collapse = ", ") else "none",
 					call. = FALSE
@@ -1196,13 +1206,14 @@
 #'   Fetched automatically when \code{NULL}.
 #' @param covariates Optional character vector restricting the covariates to
 #'   classify. When \code{NULL}, all covariates in \code{cov_info$name} are used.
-#'
+#' @param group_by Optional character vector of extra columns to add to the
+#'   grouping key alongside `id`. NULL (default) = constancy within `id` only.
 #' @return A list with two character vectors: \code{invariant} (constant within
 #'   each subject) and \code{varying} (changes across a subject's occasions).
 #'
 #' @keywords internal
 #' @noRd
-.getOccasionInvariantCovariates <- function(cov_info = NULL, covariates = NULL) {
+.getOccasionInvariantCovariates <- function(cov_info = NULL, covariates = NULL, group_by = NULL) {
 	if (is.null(cov_info)) {
 		cov_info <- lixoftConnectors::getCovariateInformation()
 	}
@@ -1215,17 +1226,21 @@
 	}
 	candidates <- intersect(candidates, names(cov_df))
 
+	# Grouping key: id, plus any extra columns (e.g. current splitCovariates).
+	group_by <- intersect(group_by, names(cov_df))
+	key_cols <- c("id", group_by)
+	key      <- do.call(paste, c(lapply(key_cols, function(cc) as.character(cov_df[[cc]])),
+															 sep = "\r"))
+
 	invariant <- character(0)
 	varying   <- character(0)
 
 	for (nm in candidates) {
-		# Count distinct (non-NA) values within each subject.
-		n_distinct_per_id <- tapply(
-			as.character(cov_df[[nm]]),
-			cov_df$id,
-			function(x) length(unique(x[!is.na(x)])))
+		# Count distinct (non-NA) values within each grouping key.
+		n_distinct_per_key <- tapply(as.character(cov_df[[nm]]), key,
+																 function(x) length(unique(x[!is.na(x)])))
 
-		if (all(n_distinct_per_id <= 1, na.rm = TRUE)) {
+		if (all(n_distinct_per_key <= 1, na.rm = TRUE)) {
 			invariant <- c(invariant, nm)
 		} else {
 			varying <- c(varying, nm)
@@ -1236,6 +1251,65 @@
 }
 
 ##################################################################################
+
+#' .getCovariateOccasionDependency()
+#' Find the occasion variable(s) a covariate varies along
+#'
+#' For each requested covariate, decide whether it is constant within every
+#' (id + `group_by`) combination (delegated to `.getOccasionInvariantCovariates`).
+#' If not, find which occasion index column(s) make it constant when added to the
+#' grouping — i.e. the occasion variable(s) the user should add to
+#' `splitCovariates` to obtain a well-defined table.
+#'
+#' Occasion index columns are taken to be the columns of `cov_info$covariate`
+#' that are neither `id` nor a covariate name (`cov_info$name`).
+#'
+#' @param cov_info Optional `getCovariateInformation()` result (fetched when NULL).
+#' @param covariates Character vector of covariate names to test. NULL = all.
+#' @param group_by Character vector of columns already used to stratify
+#'   (typically the current `splitCovariates`); occasions already listed here are
+#'   not re-reported. Default NULL.
+#'
+#' @return Named list (one entry per varying covariate). Each entry is a
+#'   character vector of occasion column(s) the covariate varies along given
+#'   `group_by`. Covariates already constant within `id + group_by` are omitted.
+#'
+#' @keywords internal
+#' @noRd
+.getCovariateOccasionDependency <- function(cov_info = NULL, covariates = NULL, group_by = NULL) {
+	if (is.null(cov_info)) {
+		cov_info <- lixoftConnectors::getCovariateInformation()
+	}
+
+	occ_cols      <- setdiff(names(cov_info$covariate), c("id", cov_info$name))
+	candidate_occ <- setdiff(occ_cols, group_by)
+
+	# Which requested covariates still vary within (id + group_by)?
+	varying <- .getOccasionInvariantCovariates(cov_info, covariates = covariates,
+																						 group_by = group_by)$varying
+
+	result <- list()
+	for (nm in varying) {
+		# Occasion column(s) that make `nm` constant within (id + group_by + occ).
+		resolving <- character(0)
+		for (occ in candidate_occ) {
+			is_invariant <- nm %in% .getOccasionInvariantCovariates(
+				cov_info, covariates = nm, group_by = c(group_by, occ))$invariant
+			if (is_invariant) resolving <- c(resolving, occ)
+		}
+		# If no single occasion resolves it, the combination of all remaining
+		# occasion columns is required.
+		if (length(resolving) == 0 && length(candidate_occ) > 0) {
+			resolving <- candidate_occ
+		}
+		result[[nm]] <- resolving
+	}
+
+	result
+}
+
+##################################################################################
+
 #' .assertOccasionInvariantForRatio()
 #' Assert that covariates are occasion-invariant for ratio results
 #'
