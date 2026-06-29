@@ -576,7 +576,7 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 }
 
 ################################################################################
-#' Exclusion_Table
+#' tableExclusions()
 #'
 #' Generates a summary table of excluded observations and subjects identified
 #' during NCA preprocessing. Exclusions are derived from the raw dataset compared
@@ -604,26 +604,26 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 #'
 #' @examples
 #' # Overall summary of exclusions (no stratification)
-#' Exclusion_Table()
+#' tableExclusions()
 #'
 #' # Stratified summary by visit
-#' Exclusion_Table(splitCovariates = "VISIT")
+#' tableExclusions(splitCovariates = "VISIT")
 #'
 #' # Stratified summary by visit and food status, in vertical format
-#' Exclusion_Table(splitCovariates = c("VISIT", "FOOD"), horizontal = FALSE)
-Exclusion_Table <- function(projectFile = NULL, splitCovariates = NULL, horizontal = TRUE) {
+#' tableExclusions(splitCovariates = c("VISIT", "FOOD"), horizontal = FALSE)
+tableExclusions <- function(projectFile = NULL, splitCovariates = NULL, horizontal = TRUE) {
 
     .checkProjectFile(projectFile, c("pkanalix", "monolix"))
     .ensureProjectLoaded(projectFile)
 
-    listing <- Exclusion_Listing(projectFile = projectFile)
+    listing <- listingExclusions(projectFile = projectFile)
 
-    hd <- lixoftConnectors::getData()
+    hd   <- lixoftConnectors::getData()
     cols <- hd$header
-    typ <- hd$headerTypes
-    hdr <- tibble::tibble(col = cols, type = typ)
-    obs <- hdr$col[hdr$type == "observation"]
-    id <- hdr$col[hdr$type == "id"]
+    typ  <- hd$headerTypes
+    hdr  <- tibble::tibble(col = cols, type = typ)
+    obs  <- hdr$col[hdr$type == "observation"]
+    id   <- hdr$col[hdr$type == "id"]
 
     # columns we will NEVER allow to group by
     disallow_types <- c("id", "ignore")
@@ -681,11 +681,11 @@ Exclusion_Table <- function(projectFile = NULL, splitCovariates = NULL, horizont
                 `Min. No. of Obs./Subject` = min(n_obs),
                 `Max. No. of Obs./Subject` = max(n_obs)
             ) %>%
-            dplyr::arrange(dplyr::across(dplyr::all_of(covariates)))
+            dplyr::arrange(dplyr::across(dplyr::all_of(splitCovariates)))
     }
 
     if (horizontal == FALSE) {
-        stat_cols <- setdiff(names(summary_tbl), covariates)
+        stat_cols <- setdiff(names(summary_tbl), splitCovariates)
 
         summary_tbl <- summary_tbl %>%
             tidyr::pivot_longer(
@@ -701,7 +701,7 @@ Exclusion_Table <- function(projectFile = NULL, splitCovariates = NULL, horizont
 ################################################################################
 # Helpers for Data Listings
 #-------------------------------------------------------------------------------
-#' Exclusion_Listing
+#' listingExclusions()
 #'
 #' Identifies and returns rows from the raw dataset that were excluded during data filtering
 #' in the current NCA project (PKanalix) or PKPD project (Monolix). Compares raw data with
@@ -712,9 +712,9 @@ Exclusion_Table <- function(projectFile = NULL, splitCovariates = NULL, horizont
 #'
 #' @examples
 #' # Example usage:
-#' # excluded_data <- Exclusion_Listing()
-# df <- Exclusion_Listing()
-Exclusion_Listing <- function(projectFile = NULL) {
+#' # excluded_data <- listingExclusions()
+# df <- listingExclusions()
+listingExclusions <- function(projectFile = NULL) {
     # Ensure the correct project is loaded if explicitly provided
     .checkProjectFile(projectFile, c("pkanalix", "monolix"))
     .ensureProjectLoaded(projectFile)
@@ -752,10 +752,10 @@ Exclusion_Listing <- function(projectFile = NULL) {
     dataUsed <- lixoftConnectors::getInterpretedData()
 
     # Identify indices for relevant columns in the raw data
-    iId <- which(data$headerTypes == "id")
-    iTime <- which(data$headerTypes == "time")
-    iOcc <- which(data$headerTypes == "occ")
-    iMdv <- which(data$headerTypes == "mdv")
+    iId      <- which(data$headerTypes == "id")
+    iTime    <- which(data$headerTypes == "time")
+    iOcc     <- which(data$headerTypes == "occ")
+    iMdv     <- which(data$headerTypes == "mdv")
     iOccUsed <- iOcc
     colNameDataRaw <- names(dataRaw)
 
@@ -764,7 +764,7 @@ Exclusion_Listing <- function(projectFile = NULL) {
         for (indexOcc in 1:length(iOcc)) {
             nameOcc <- data$header[iOcc[indexOcc]]
             if (!(nameOcc %in% colNameDataRaw)) { # The OCC column was created by data formatting
-                iOcc[indexOcc] <- which(colNameDataRaw == sub(x = nameOcc, pattern = "_OCC", ""))
+                iOcc[indexOcc]     <- which(colNameDataRaw == sub(x = nameOcc, pattern = "_OCC", ""))
                 iOccUsed[indexOcc] <- which(names(dataUsed) == colNameDataRaw[iOcc[indexOcc]])
             }
             iOccUsed[indexOcc] <- which(names(dataUsed) == colNameDataRaw[iOcc[indexOcc]])
@@ -891,7 +891,7 @@ Exclusion_Listing <- function(projectFile = NULL) {
 }
 #-------------------------------------------------------------------------------
 
-#' DosingRegimen_Listing
+#' listingDosingRegimen()
 #' Builds a dosing regimen listing per subject/occasion with dose amount and time,
 #' optionally adding a covariate column (from the dataset) or a constant entry
 #' (e.g., ROUTE) when the covariate is not present. If the custom NCA parameter
@@ -913,10 +913,10 @@ Exclusion_Listing <- function(projectFile = NULL) {
 #' # DosingRegimen_Listing(covariate = "ROUTE")
 #' #
 #' # Inject constant when covariate absent:
-#' # DosingRegimen_Listing(covariate.entry = "oral")
-DosingRegimen_Listing <- function(projectFile = NULL,
-                                  covariate = NULL,
-                                  covariate.entry = NULL) {
+#' # listingDosingRegimen(covariate.entry = "oral")
+listingDosingRegimen <- function(projectFile     = NULL,
+                                 covariate       = NULL,
+                                 covariate.entry = NULL) {
     # Ensure the correct project is loaded
     .checkProjectFile(projectFile, c("pkanalix", "monolix"))
     .ensureProjectLoaded(projectFile)
