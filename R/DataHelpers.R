@@ -774,6 +774,18 @@ listingExclusions <- function(projectFile = NULL) {
 
     iObs <- which(data$headerTypes == "observation")
 
+    # ---------------------------------------------------------------------------
+    # Identify censoring cols (created by  Data Formatting module when BLQ/ALQ tags in the obs col are assigned an LLOQ/ULOQ value).
+    # When present, BLQ rows are kept in the analysis as cens obs & must not be reported as exclusions. The cens col lives in interpreted/formatted dataset.
+    iCens   <- which(data$headerTypes %in% c("cens", "censored"))
+    censCol <- NULL
+    if (length(iCens) > 0) {
+    	censName <- data$header[iCens[1]]
+    	if (censName %in% names(dataUsed)) {
+    		censCol <- censName
+    	}
+    }
+
     # Retrieve scaling factors based on software type
     if (software == "pkanalix") {
         gainTime <- lixoftConnectors::getDataSettings()$scalings$time
@@ -871,8 +883,12 @@ listingExclusions <- function(projectFile = NULL) {
             }
 
             if (!foundMatch) {
-                # No match in observation value between the raw data and the used data
-                indexFiltered <- c(indexFiltered, indexRaw)
+            	# Before flagging as excluded, check if this is a BLQ/ALQ obs that DF kept as a cens value
+            	# (raw tag -> numeric LLOQ/ULOQ + non-zero censoring flag).
+            	if (!.isCensoredObservation(obsValueRaw, matchingRows, iObs, censCol)) {
+            		# No match in observation value between the raw data and the used data
+            		indexFiltered <- c(indexFiltered, indexRaw)
+            	}
             }
         }
     }
