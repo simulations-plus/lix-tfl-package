@@ -2844,3 +2844,71 @@
 	df[[orig_col]] <- NULL
 	df
 }
+
+################################################################################
+#' .isCensoredFlag
+#'
+#' Interprets a single value from the interpreted-data censoring column as a
+#' censored / not-censored indicator. The column may be reported either as a
+#' string label (PKanalix \code{getInterpretedData()} emits
+#' \code{"leftCensored"}, \code{"rightCensored"}, \code{"intervalCensored"},
+#' \code{"notCensored"} or \code{""}) or as a numeric flag (Monolix-style
+#' censoring columns use \code{0}/\code{1}). Returns \code{TRUE} only for an
+#' actively-censored value.
+#'
+#' @param x A single censoring-column value (character or numeric).
+#' @return TRUE if the value denotes a censored observation, FALSE otherwise.
+#' @keywords internal
+.isCensoredFlag <- function(x) {
+	x <- trimws(as.character(x))
+	if (length(x) == 0 || is.na(x) || x == "") {
+		return(FALSE)
+	}
+	# String labels: anything "...Censored" except "notCensored".
+	if (grepl("censored", x, ignore.case = TRUE)) {
+		return(!grepl("^not", x, ignore.case = TRUE))
+	}
+	# Numeric flag (e.g. 0 = not censored, 1 = censored).
+	num <- suppressWarnings(as.numeric(x))
+	!is.na(num) && num != 0
+}
+
+################################################################################
+#' .isCensoredObservation
+#'
+#' Determines whether a raw observation that does not numerically match the
+#' interpreted data corresponds to a censored (BLQ / ALQ) measurement that was
+#' kept in the analysis through Data Formatting rather than excluded.
+#'
+#' @param obsValueRaw Character scalar; raw observation string (e.g. a BLQ tag).
+#' @param matchingRows Data frame; interpreted-data rows matching this
+#'   id/time/occasion combination.
+#' @param iObs Integer; column index of the observation in the interpreted data.
+#' @param censCol Character scalar or NULL; name of the censoring column in the
+#'   interpreted data, or NULL when the project has none.
+#'
+#' @return TRUE if the row is a kept censored observation, FALSE otherwise.
+#' @keywords internal
+.isCensoredObservation <- function(obsValueRaw, matchingRows, iObs, censCol) {
+	# No censoring column => the project does not use Data-Formatting censoring.
+	if (is.null(censCol) || !(censCol %in% names(matchingRows))) {
+		return(FALSE)
+	}
+
+	# Only relevant when the raw value is a non-numeric tag (e.g. "BLQ").
+	# A numeric-but-mismatching value is a genuine discrepancy, not censoring.
+	if (!is.na(suppressWarnings(as.numeric(obsValueRaw)))) {
+		return(FALSE)
+	}
+
+	# A kept censored row carries an active censoring flag together with a
+	# numeric LLOQ/ULOQ value substituted for the original tag.
+	for (idx in seq_len(nrow(matchingRows))) {
+		interpNum <- suppressWarnings(as.numeric(matchingRows[idx, iObs]))
+		if (.isCensoredFlag(matchingRows[idx, censCol]) && !is.na(interpNum)) {
+			return(TRUE)
+		}
+	}
+
+	FALSE
+}
