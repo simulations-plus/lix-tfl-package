@@ -578,29 +578,30 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 ################################################################################
 #' tableExclusions()
 #'
-#' Generates a summary table of excluded observations and subjects identified
-#' during NCA preprocessing. Exclusions are derived from the raw dataset compared
-#' with interpreted data and can include individual observations or entire subject
-#' records that were removed (e.g., due to MDV flags or filtering rules). Table is
-#' based on listing coming from helper Exclusion_Listing()
+#' Summarises the observations and subjects excluded from the analysis (as
+#' identified by \code{\link{listingExclusions}}), optionally stratified and/or
+#' filtered.
 #'
-#' The function provides overall counts or stratified summaries by one or more
-#' covariates. Summaries include number of subjects, total number of excluded
-#' observations, and per-subject statistics (mean, min, max). The table can be
-#' returned in horizontal (wide) or vertical (long) format.
+#' @param projectFile Optional path to the project to load.
+#' @param splitCovariates Character vector of columns to stratify the summary by.
+#'   Unlike other tables this is not restricted to covariates: any column present
+#'   in the dataset may be used (including columns tagged "ignore" in the GUI,
+#'   such as Exclusion_reason); only non-existent names are rejected. A warning is
+#'   emitted if a chosen column has too many modalities per subject (see
+#'   \code{max_subject_ratio}). If NULL, an overall summary is provided.
+#' @param covariate_filter Named list where names are existing dataset columns
+#'   (any column, not only covariates) and values are vectors of allowed values,
+#'   e.g. \code{list(VISIT = c("DAY 1", "DAY 7"))}. If NULL, no covariate filtering.
+#' @param id_filter Character or numeric vector of subject IDs to include. If
+#'   NULL, no ID filtering.
+#' @param use_wide_format Logical flag indicating table layout. If TRUE
+#'   (default), metrics are returned as columns (wide). If FALSE, metrics are
+#'   pivoted into rows (long, Statistic-Value format).
+#' @param max_subject_ratio Ratio (n_modalities / n_subjects) above which a
+#'   chosen grouping variable triggers a "might not be a suitable grouping
+#'   variable" warning. Default 0.5.
 #'
-#' @param splitCovariates A character vector of covariates to stratify the summary by.
-#'                Must correspond to dataset columns with headerTypes of
-#'                'catcov', 'contcov', 'occ', or 'time'. If NULL, an overall
-#'                summary (no stratification) is provided.
-#' @param horizontal Logical flag indicating table layout. If TRUE (default),
-#'                   metrics are returned as columns. If FALSE, metrics are
-#'                   pivoted into rows (Statistic–Value format).
-#'
-#' @return A data frame summarizing excluded observations and subjects. If
-#'         \code{horizontal = TRUE}, metrics are shown as columns. If
-#'         \code{horizontal = FALSE}, metrics are shown as rows with
-#'         corresponding values.
+#' @return A data frame summarizing excluded observations and subjects.
 #'
 #' @examples
 #' # Overall summary of exclusions (no stratification)
@@ -609,94 +610,145 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 #' # Stratified summary by visit
 #' tableExclusions(splitCovariates = "VISIT")
 #'
-#' # Stratified summary by visit and food status, in vertical format
-#' tableExclusions(splitCovariates = c("VISIT", "FOOD"), horizontal = FALSE)
-tableExclusions <- function(projectFile = NULL, splitCovariates = NULL, horizontal = TRUE) {
+#' # Stratified by visit & food, filtered to two visits, vertical format
+#' tableExclusions(splitCovariates = c("VISIT", "FOOD"),
+#'                 covariate_filter = list(VISIT = c("DAY 1", "DAY 7")),
+#'                 use_wide_format = FALSE)
+#'
+#' # Restrict to specific subjects
+#' tableExclusions(splitCovariates = "Exclusion_reason",
+#'                 id_filter = c(1, 2, 17))
+tableExclusions <- function(projectFile       = NULL,
+														splitCovariates   = NULL,
+														covariate_filter  = NULL,
+														id_filter         = NULL,
+														use_wide_format   = TRUE,
+														max_subject_ratio = 0.5) {
 
-    .checkProjectFile(projectFile, c("pkanalix", "monolix"))
-    .ensureProjectLoaded(projectFile)
+	.checkProjectFile(projectFile, c("pkanalix", "monolix"))
+	.ensureProjectLoaded(projectFile)
 
-    listing <- listingExclusions(projectFile = projectFile)
+	listing <- listingExclusions(projectFile = projectFile)
+	# No exclusions: listingExclusions() already messaged; nothing to summarise.
+	if (is.null(listing)) {
+		return(invisible(NULL))
+	}
+	dataUsed <- lixoftConnectors::getInterpretedData()
 
-    hd   <- lixoftConnectors::getData()
-    cols <- hd$header
-    typ  <- hd$headerTypes
-    hdr  <- tibble::tibble(col = cols, type = typ)
-    obs  <- hdr$col[hdr$type == "observation"]
-    id   <- hdr$col[hdr$type == "id"]
+	hd   <- lixoftConnectors::getData()
+	cols <- hd$header
+	typ  <- hd$headerTypes
+	hdr  <- tibble::tibble(col = cols, type = typ)
+	obs  <- hdr$col[hdr$type == "observation"]
+	id   <- hdr$col[hdr$type == "id"]
 
-    # columns we will NEVER allow to group by
-    disallow_types <- c("id", "ignore")
+	# Any column present in listingExclusions may be used as a grouping / filter key
+	# Only variables that that do not exist are rejected (typo protection). .groupableExclusionColumns()
+	available <- names(listing)
+	suggested <- .groupableExclusionColumns(hdr, listing = listing) # suggest the likely candidates in error messages.
 
-    # columns we DO allow to group by
-    allow_types <- c("catcov", "contcov", "occ", "time")
+	# Validate requested splitCovariates
+	if (!is.null(splitCovariates)) {
+		bad <- setdiff(splitCovariates, available)
+		if (length(bad)) {
+			stop(
+				"Grouping column(s) not found in the dataset: ", paste(bad, collapse = ", "),
+				"\nSuggested grouping columns: ", paste(suggested, collapse = ", "),
+				"\n(any existing column may be used: ", paste(available, collapse = ", "), ")"
+			)
+		}
+	} else {
+		splitCovariates <- character(0)
+	}
 
-    allowed <- hdr$col[hdr$type %in% allow_types]
+	# Warn if a chosen grouping variable has too many modalities per subject.
+	.warnUnsuitableGrouping(dataUsed, splitCovariates, id_col = id,
+													max_subject_ratio = max_subject_ratio)
 
-    # sanitize requested splitCovariates
-    if (!is.null(splitCovariates)) {
-        bad <- setdiff(splitCovariates, allowed)
-        if (length(bad)) {
-            stop(
-                "Unsupported grouping column(s): ", paste(bad, collapse = ", "),
-                "\nAllowed: ", paste(allowed, collapse = ", ")
-            )
-        }
-    } else {
-        splitCovariates <- character(0)
-    }
+	# Validate requested covariate_filter keys
+	if (!is.null(covariate_filter)) {
+		if (!is.list(covariate_filter) || is.null(names(covariate_filter)) || any(names(covariate_filter) == "")) {
+			stop("covariate_filter must be a named list. Example: list(VISIT = c('DAY 1', 'DAY 7'))",
+					 call. = FALSE)
+		}
+		bad_f <- setdiff(names(covariate_filter), available)
+		if (length(bad_f)) {
+			stop(
+				"Filter column(s) not found in the dataset: ", paste(bad_f, collapse = ", "),
+				"\n(any existing column may be used: ", paste(available, collapse = ", "), ")"
+			)
+		}
+	}
 
-    listing_clean <- listing %>%
-        # dplyr::mutate(dplyr::across(dplyr::all_of(obs), ~ dplyr::na_if(., "."))) %>%
-        dplyr::filter(obs != "." & !is.na(obs))
+	# Validate requested id_filter
+	if (!is.null(id_filter)) {
+		if (!is.vector(id_filter) || is.list(id_filter)) {
+			stop("id_filter must be a character or numeric vector of subject IDs.", call. = FALSE)
+		}
+		if (length(id_filter) == 0) {
+			stop("id_filter cannot be an empty vector.", call. = FALSE)
+		}
+		unknown_ids <- setdiff(as.character(id_filter), as.character(listing[[id]]))
+		if (length(unknown_ids) == length(id_filter)) {
+			warning("None of the id_filter IDs are present among the excluded subjects: ",
+							paste(id_filter, collapse = ", "), call. = FALSE)
+		}
+	}
 
-    subject_group_vars <- c(id, splitCovariates)
+	# Apply filters
+	listing <- .applyFilters(listing,
+													 covariate_filter = covariate_filter,
+													 id_filter        = id_filter,
+													 id_col           = id)
 
-    per_subject <- listing_clean %>%
-        dplyr::group_by(dplyr::across(dplyr::all_of(subject_group_vars))) %>%
-        dplyr::summarise(n_obs = dplyr::n(), .groups = "drop")
+	listing_clean <- listing %>%
+		dplyr::filter(obs != "." & !is.na(obs))
 
+	subject_group_vars <- c(id, splitCovariates)
 
-    # Create summary table
-    if (length(splitCovariates) > 0) {
-        summary_tbl <- as.data.frame(per_subject) %>%
-            dplyr::group_by(dplyr::across(dplyr::all_of(splitCovariates))) %>%
-            dplyr::summarise(
-                `Number of Subjects` = dplyr::n_distinct(.data[[id]]),
-                `Total Number of Obs.` = sum(n_obs),
-                `Mean No. of Obs./Subject` = round(mean(n_obs), 2),
-                `Min. No. of Obs./Subject` = min(n_obs),
-                `Max. No. of Obs./Subject` = max(n_obs),
-                .groups = "drop"
-            ) %>%
-            dplyr::relocate(dplyr::all_of(splitCovariates), .before = 1) %>%
-            dplyr::arrange(dplyr::across(dplyr::all_of(splitCovariates)))
-    } else {
-        # Overall summary (no grouping)
-        summary_tbl <- as.data.frame(per_subject) %>%
-            dplyr::summarise(
-                `Number of Subjects` = dplyr::n_distinct(.data[[id]]),
-                `Total Number of Obs.` = sum(n_obs),
-                `Mean No. of Obs./Subject` = round(mean(n_obs), 2),
-                `Min. No. of Obs./Subject` = min(n_obs),
-                `Max. No. of Obs./Subject` = max(n_obs)
-            ) %>%
-            dplyr::arrange(dplyr::across(dplyr::all_of(splitCovariates)))
-    }
+	per_subject <- listing_clean %>%
+		dplyr::group_by(dplyr::across(dplyr::all_of(subject_group_vars))) %>%
+		dplyr::summarise(n_obs = dplyr::n(), .groups = "drop")
 
-    if (horizontal == FALSE) {
-        stat_cols <- setdiff(names(summary_tbl), splitCovariates)
+	# Create summary table
+	if (length(splitCovariates) > 0) {
+		summary_tbl <- as.data.frame(per_subject) %>%
+			dplyr::group_by(dplyr::across(dplyr::all_of(splitCovariates))) %>%
+			dplyr::summarise(
+				`Nb. of Subjects` = dplyr::n_distinct(.data[[id]]),
+				`Total Nb. of Obs.` = sum(n_obs),
+				`Mean Nb. of Obs./Subject` = round(mean(n_obs), 2),
+				`Min. Nb. of Obs./Subject` = min(n_obs),
+				`Max. Nb. of Obs./Subject` = max(n_obs),
+				.groups = "drop") %>%
+			dplyr::relocate(dplyr::all_of(splitCovariates), .before = 1) %>%
+			dplyr::arrange(dplyr::across(dplyr::all_of(splitCovariates)))
+	} else {
+		# Overall summary (no grouping)
+		summary_tbl <- as.data.frame(per_subject) %>%
+			dplyr::summarise(
+				`Nb. of Subjects` = dplyr::n_distinct(.data[[id]]),
+				`Total Nb. of Obs.` = sum(n_obs),
+				`Mean Nb. of Obs./Subject` = round(mean(n_obs), 2),
+				`Min. Nb. of Obs./Subject` = min(n_obs),
+				`Max. Nb. of Obs./Subject` = max(n_obs)) %>%
+			dplyr::arrange(dplyr::across(dplyr::all_of(splitCovariates)))
+	}
 
-        summary_tbl <- summary_tbl %>%
-            tidyr::pivot_longer(
-                cols = dplyr::all_of(stat_cols),
-                names_to = "Statistic",
-                values_to = "Value"
-            )
-    }
-    attr(summary_tbl, "project_source") <- lixoftConnectors::getProjectSettings()$directory
-    attr(summary_tbl, "r_source")       <- .getRScriptPath()
-    return(as.data.frame(summary_tbl))
+	if (use_wide_format == FALSE) {
+		stat_cols <- setdiff(names(summary_tbl), splitCovariates)
+
+		summary_tbl <- summary_tbl %>%
+			tidyr::pivot_longer(
+				cols = dplyr::all_of(stat_cols),
+				names_to = "Statistic",
+				values_to = "Value"
+			)
+	}
+	attr(summary_tbl, "project_source") <- lixoftConnectors::getProjectSettings()$directory
+	attr(summary_tbl, "r_source")       <- .getRScriptPath()
+	return(as.data.frame(summary_tbl))
+
 }
 ################################################################################
 # Helpers for Data Listings

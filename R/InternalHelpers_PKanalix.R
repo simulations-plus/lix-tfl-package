@@ -2912,3 +2912,69 @@
 
 	FALSE
 }
+
+################################################################################
+#' .warnUnsuitableGrouping
+#'
+#' Warns when a chosen grouping variable has too many distinct values relative
+#' to the number of subjects (\code{n_modalities / n_subjects > max_subject_ratio})
+#' to be a useful stratification key.
+#'
+#' @param data A data frame containing the grouping columns and the ID column.
+#' @param splitCovariates Character vector of chosen grouping columns.
+#' @param id_col Name of the subject-ID column in \code{data}.
+#' @param max_subject_ratio Ratio above which a warning is emitted (default 0.5).
+#' @return Invisibly NULL. Emits a warning per unsuitable variable.
+#' @keywords internal
+.warnUnsuitableGrouping <- function(data, splitCovariates, id_col, max_subject_ratio = 0.5) {
+	if (length(splitCovariates) == 0 || !(id_col %in% names(data))) {
+		return(invisible(NULL))
+	}
+
+	n_subj <- length(unique(as.character(data[[id_col]])))
+	if (n_subj == 0) {
+		return(invisible(NULL))
+	}
+
+	for (v in splitCovariates) {
+		if (!(v %in% names(data))) next
+		vals <- trimws(as.character(data[[v]]))
+		vals <- vals[!is.na(vals) & vals != "" & vals != "."]
+		k     <- length(unique(vals))
+		ratio <- k / n_subj
+		if (ratio > max_subject_ratio) {
+			warning(sprintf(
+				paste0("Grouping variable '%s' has %d distinct values across %d subjects ",
+							 "(%.0f%% of subjects); it might not be a suitable grouping variable."),
+				v, k, n_subj, 100 * ratio), call. = FALSE)
+		}
+	}
+	invisible(NULL)
+}
+
+################################################################################
+
+#' .groupableExclusionColumns
+#'
+#' Suggests likely grouping columns for an exclusion table by dropping
+#' structural/role columns (by header type); used only for messaging, not to
+#' restrict what \code{tableExclusions()} accepts.
+#'
+#' @param hdr A tibble/data frame with columns \code{col} and \code{type} from
+#'   \code{lixoftConnectors::getData()}.
+#' @param listing Optional exclusion listing; if supplied, the result is
+#'   restricted to columns actually present in the listing.
+#' @return Character vector of permitted grouping column names.
+#' @keywords internal
+.groupableExclusionColumns <- function(hdr, listing = NULL) {
+	disallow_types <- c("id", "amount", "observation", "cens", "censored",
+											"limit", "mdv", "time", "nominaltime",
+											"regressor", "evid", "date", "ss", "ii", "addl",
+											"tinf", "rate", "admid", "ytype", "obsid")
+
+	candidates <- hdr$col[!(hdr$type %in% disallow_types)]
+	if (!is.null(listing)) {
+		candidates <- intersect(candidates, names(listing))
+	}
+	candidates
+}
