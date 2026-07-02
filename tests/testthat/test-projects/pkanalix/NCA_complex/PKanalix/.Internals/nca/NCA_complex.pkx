@@ -1,0 +1,101 @@
+<DATA_FORMATTING>
+
+[FILEINFO]
+file={path='../../../../ADNCA_Complex.xlsx', sheet='Sheet1'}
+header={STUDYID, SUBJID, USUBJID, SITEID, ATRTNCA, ARM, ARMCD, APRD, ADAY, NRRLT, ARRLT, MRRLT, RRLTU, ARRLTD, ARRLTDU, TMPCTDF, AVISIT, ADOSEDUR, DOSEDURU, PCTEST, PCSPEC, PARAM, PARAMCD, AVAL, AVALC, AVALNCA, AVALSUM, AVALU, SEX, RACE, AGE, AGEU, WEIGHTBL, WTBLU, DOSEA, DOSEU, ATRTRINT, ATRTINTU, COMPFL, PCLLOQ, PCREFID, COVAL, PCDTC, EXSTDTC, ADOSFRM, AROUTE, ADOSFRQ, NCAXFL, NCAXRS, PKSUMXF, SUMXRS, PCRFTDT, PCRFTTM, PCRFTDTM, PCSEQ, ASEQ, DTYPE, VISIT}
+
+[CONTENT]
+SUBJID = {use=identifier}
+MRRLT = {use=time}
+AVISIT = {use=sort}
+PARAMCD = {use=sort}
+
+[SETTINGS]
+LINES:
+header={0}
+excluded={}
+
+[OPERATIONS]
+OBSERVATIONS:
+type=id
+duplicateInfo=true
+censoringTags={}
+'AVALNCA'={}
+
+TREATMENTS:
+occasionGeneration=false
+duplicateObservationsAtDoseTimes=false
+administrations={{times = {0}, amount = {column='DOSEA'}}}
+
+<DATAFILE>
+
+[FILEINFO]
+file={path='../../../../ADNCA_Complex.xlsx', sheet='Sheet1'}
+delimiter = unknown
+header={STUDYID, SUBJID, USUBJID, SITEID, ATRTNCA, ARM, ARMCD, APRD, ADAY, NRRLT, ARRLT, MRRLT, RRLTU, ARRLTD, ARRLTDU, TMPCTDF, AVISIT, ADOSEDUR, DOSEDURU, PCTEST, PCSPEC, PARAM, PARAMCD, AVAL, AVALC, AVALNCA, AVALSUM, AVALU, SEX, RACE, AGE, AGEU, WEIGHTBL, WTBLU, DOSEA, DOSEU, ATRTRINT, ATRTINTU, COMPFL, PCLLOQ, PCREFID, COVAL, PCDTC, EXSTDTC, ADOSFRM, AROUTE, ADOSFRQ, NCAXFL, NCAXRS, PKSUMXF, SUMXRS, PCRFTDT, PCRFTTM, PCRFTDTM, PCSEQ, ASEQ, DTYPE, VISIT, AVISIT_OCC, PARAMCD_OCC, AMT}
+
+[CONTENT]
+SUBJID = {use=identifier}
+ATRTNCA = {use=covariate, type=categorical}
+NRRLT = {use=nominaltime}
+MRRLT = {use=time}
+ARRLTD = {use=covariate, type=continuous}
+AVISIT = {use=stratcovariate, type=categorical}
+PARAMCD = {use=stratcovariate, type=categorical}
+AVALNCA = {use=observation, type=continuous}
+AVISIT_OCC = {use=occasion}
+PARAMCD_OCC = {use=occasion}
+AMT = {use=amount}
+
+[SETTINGS]
+enableUnits = true
+units = {time={factor=1, unit=h}, concentration={factor=1, unit=ng/mL}, dose={factor=1000}, grading={unit=kg}}
+
+[FILTER]
+ADNCA_Complex_filtered = {origin='../../../../ADNCA_Complex.xlsx', filter={{removeLines='PARAMCD==ADNCA_Complex2'}}}
+ADNCA_Complex_filtered_filtered = {origin=ADNCA_Complex_filtered, filter={{selectLines='AVISIT==CYCLE 1 DAY 15'}, {selectLines='AVISIT==CYCLE 1 DAY 8'}, {selectLines='AVISIT==CYCLE 2 DAY 1'}}}
+ADNCA_Complex_filtered_filtered_filtered = {origin=ADNCA_Complex_filtered_filtered, filter={{removeLines={'line==172', 'line==1465', 'line==2210', 'line==3140', 'line==3160'}}}}
+ADNCA_Complex_filtered_filtered_filtered_filtered = {origin=ADNCA_Complex_filtered_filtered_filtered, filter={{removeLines='observationNumber<3'}}}
+
+[APPLICATION]
+computation=ADNCA_Complex_filtered_filtered_filtered_filtered
+
+[ADDITIONAL_COVARIATE]
+firstDoseAmount = {transformation=firstDoseAmount}
+observationNumber = {transformation=observationNumber}
+occasionRank_AVISIT_OCC = {transformation=occasionRank, base='AVISIT_OCC'}
+
+<MODEL>
+
+[COVARIATE]
+input = {ATRTNCA, ARRLTD}
+
+ATRTNCA = {type=categorical, categories={'A (DRG1 + DRG2)', 'C (DRG1 + DRG3)', 'D (DRG1 + DRG4 + DRG5)', 'E (DRG1 + DRG6)'}}
+
+<PKANALIX>
+
+[TASKS]
+bioequivalence(run=false)
+
+[SETTINGS]
+GLOBAL:
+exportpath = '../../../'
+dataNextToProject = yes
+
+NCA:
+obsIdToUse = 'AVALNCA'
+administrationType = {1 = extravascular}
+startTimeNotBefore = {use=no, value=0}
+partialAUCTime = {use=yes, value={{0, 168}, {0, 336}, {0, 672}}}
+addSteadyState = {use=no, value=1681.43}
+computedParameters = {{value = Tmax_Rate}, {value = Max_Rate}, {value = Rate_last}, {value = AURC_last}, {value = AURC_INF_obs}, {value = C0}, {value = Tmax}, {value = Tmax_SS}, {value = Cmax}, {value = Cmax_SS}, {value = Tlast}, {value = Clast}, {value = AUClast}, {value = AUCINF_obs}, {value = Cl_obs}, {value = Ctau}, {value = AUC_TAU}, {value = Vz_obs}, {value = Vz_F}, {value = CLss_F}, {value = AURC_Int, partialInt = 0}, {value = AURC_Int, partialInt = 1}, {value = AURC_Int, partialInt = 2}, {value = AURC_Int_D, partialInt = 0}, {value = AURC_Int_D, partialInt = 1}, {value = AURC_Int_D, partialInt = 2}, {value = AUC_Int, partialInt = 0}, {value = AUC_Int, partialInt = 1}, {value = AUC_Int, partialInt = 2}}
+sparseDataCensoring = {type = singlerule, rule = zero, checkMeanSamples = {no, {loq = 0, blqBeforeTmax = zero, blqAfterTmax = missing}}}
+
+CA:
+initialvalues = {}
+
+BIOEQUIVALENCE:
+computedParameters = {{value = Max_Rate, log = yes}, {value = AURC_last, log = yes}}
+design = crossover
+factors = {id={'SUBJID'}, period={'AVISIT_OCC'}, formulation={'ATRTNCA'}, reference={'E (DRG1 + DRG6)'}}
+
