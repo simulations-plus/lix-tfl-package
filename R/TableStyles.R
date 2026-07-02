@@ -691,14 +691,14 @@
 #' \dontrun{
 #' # Basic usage
 #' df <- data.frame(Parameter = c("Cl", "V"), Estimate = c(1.5, 20.3), RSE = c(45, 120))
-#' print_table_flex(df, color = c("RSE"))
+#' style_tfl(df, color = c("RSE"))
 #'
 #' # Population table with section headers
-#' pop_table <- tableParameterEstimates(use_wide_format = TRUE)
-#' print_table_flex(pop_table, color = c("RSE"), theme_fn = theme_booktabs)
+#' pop_table <- tableParameterEstimates(useWideFormat = TRUE)
+#' style_tfl(pop_table, color = c("RSE"), theme_fn = theme_booktabs)
 #'
 #' # With grouping columns and custom headers
-#' print_table_flex(df,
+#' style_tfl(df,
 #'                  grouping.columns = c("Parameter"),
 #'                  header_level1 = "Population PK Parameters",
 #'                  color = c("RSE"))
@@ -721,7 +721,7 @@ style_tfl <- function(data.flex,
 	##############################################################################
 	# 0. Check required packages
 	if (!requireNamespace("flextable", quietly = TRUE)) {
-		stop("Package 'flextable' is required for print_table_flex(). ",
+		stop("Package 'flextable' is required for style_tfl(). ",
 				 "Install it with: install.packages('flextable')", call. = FALSE)
 	}
 	#-----------------------------------------------------------------------------

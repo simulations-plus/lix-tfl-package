@@ -6,71 +6,82 @@
 \usage{
 tableParameterEstimates(
   projectFile = NULL,
-  custom_aliases = NULL,
-  custom_units = NULL,
-  include_RSE = TRUE,
-  include_IIV = TRUE,
-  include_IOV = TRUE,
-  include_CI = FALSE,
-  include_CV = FALSE,
-  include_FEcategory = FALSE,
-  include_bootstrap = FALSE,
-  use_wide_format = FALSE,
-  std_err_method = "",
+  customAliases = NULL,
+  customUnits = NULL,
+  customDescriptions = NULL,
+  includeRSE = TRUE,
+  includeIIV = TRUE,
+  includeIOV = TRUE,
+  includeCI = FALSE,
+  includeCV = FALSE,
+  includeFEcategory = FALSE,
+  includeBootstrap = FALSE,
+  useWideFormat = FALSE,
+  stdErrMethod = "",
   roundDigits = 3,
-  roundingMethod = c("monolix", "signif", "none"),
+  roundMethod = c("monolix", "signif", "none"),
   prettyLabels = TRUE
 )
 }
 \arguments{
 \item{projectFile}{Character string specifying the path to a Monolix .mlxtran project file, or \code{NULL} (default) to use the currently loaded project.}
 
-\item{custom_aliases}{Named vector or 2-column dataframe mapping parameter names to
+\item{customAliases}{Named vector or 2-column dataframe mapping parameter names to
 custom display labels. Example: \code{c(ka_pop = "Absorption Rate", V_pop = "Volume")}.
 Parameters not in the mapping keep their original names (with "_pop" suffix removed).
 Supports special formatting syntax: \verb{[[sub:text]]} for subscript, \verb{[[sup:text]]} for
 superscript, and \verb{~text~} for italic. Example: \code{c(ka_pop = "K[[sub:a]]", Cl_pop = "CL~iv~")}.}
 
-\item{custom_units}{Named vector or 2-column dataframe mapping parameter names to
+\item{customUnits}{Named vector or 2-column dataframe mapping parameter names to
 custom unit labels. Example: \code{c(ka_pop = "1/h", V_pop = "L", Cl_pop = "L/h")}.
 Units are appended in parentheses: "Volume (L)".}
 
-\item{include_RSE}{Logical; if \code{TRUE} (default), includes relative standard error (RSE) columns in the table. Applies to both fixed effects and random effects in wide format.}
+\item{customDescriptions}{Named vector or 2-column dataframe mapping parameter names to
+descriptive text. Example: \code{c(Cl_pop = "Apparent clearance", V_pop = "Apparent volume of distribution")}.
+Unlike \code{customAliases}, descriptions are added as a separate \code{Description} column placed
+immediately to the right of the \code{Parameter} column; the \code{Parameter} cell value is unchanged.
+Parameters not in the mapping receive \code{NA} in the \code{Description} column. Keys must match
+the raw Monolix parameter names (e.g. \code{Cl_pop}, \code{omega_Cl}, \code{gamma_Cl}, \code{a}, \code{b}, ...).
+When \code{useWideFormat = TRUE}, IIV/IOV rows are collapsed into columns alongside their
+parent fixed effect; descriptions supplied for \verb{omega_*} / \verb{gamma_*} keys will therefore
+not be displayed (a message lists the unmatched keys).}
 
-\item{include_IIV}{Logical; if \code{TRUE} (default), includes inter-individual variability (IIV)
+\item{includeRSE}{Logical; if \code{TRUE} (default), includes relative standard error (RSE) columns in the table. Applies to both fixed effects and random effects in wide format.}
+
+\item{includeIIV}{Logical; if \code{TRUE} (default), includes inter-individual variability (IIV)
 omega estimates in wide format tables. When \code{FALSE}, only fixed effect estimates are shown
-in wide format (CV\% can still be shown if \code{include_CV = TRUE}).}
+in wide format (CV\% can still be shown if \code{includeCV = TRUE}).}
 
-\item{include_IOV}{Logical; if \code{TRUE} (default), includes inter-occasion variability (IOV) gamma parameters in the table. When \code{FALSE}, IOV parameters are excluded from the output.}
+\item{includeIOV}{Logical; if \code{TRUE} (default), includes inter-occasion variability (IOV) gamma parameters in the table. When \code{FALSE}, IOV parameters are excluded from the output.}
 
-\item{include_CI}{Logical; if \code{TRUE}, includes confidence interval columns (P2.5, P97.5) in the table. Default is \code{FALSE}. Applies to both fixed effects and random effects in wide format.}
+\item{includeCI}{Logical; if \code{TRUE}, includes confidence interval columns (P2.5, P97.5) in the table. Default is \code{FALSE}. Applies to both fixed effects and random effects in wide format.}
 
-\item{include_CV}{Logical; if \code{TRUE}, includes coefficient of variation (CV\%) for random effects.
+\item{includeCV}{Logical; if \code{TRUE}, includes coefficient of variation (CV\%) for random effects.
 Default is \code{FALSE}. In wide format, CV\% is shown as an additional column alongside omega estimates
-when \code{include_IIV = TRUE}.}
+when \code{includeIIV = TRUE}.}
 
-\item{include_FEcategory}{Logical; if \code{TRUE}, includes separate rows for fixed-effect values by
+\item{includeFEcategory}{Logical; if \code{TRUE}, includes separate rows for fixed-effect values by
 categorical covariate level (the per-category estimates Monolix exposes via the
 \code{withValuesByGroups} option of \code{getEstimatedPopulationParameters()}/\code{getEstimatedStandardErrors()}).
 Each per-category row appears with \code{Section = "FE_CAT"} and is grouped immediately after the
 parent fixed-effect rows. Default is \code{FALSE}.}
 
-\item{include_bootstrap}{Logical; if \code{TRUE}, includes bootstrap results: median estimate,
+\item{includeBootstrap}{Logical; if \code{TRUE}, includes bootstrap results: median estimate,
 confidence interval (e.g., \code{Boot_CI_2.5_97.5}), and RSE (if available from bootstrap).
 Bootstrap confidence interval levels automatically adapt to project settings (90\%, 95\%, 99\%).
 Default is \code{FALSE}. Requires bootstrap analysis to have been run in Monolix.}
 
-\item{use_wide_format}{Logical; if \code{TRUE}, presents random effects (IIV/IOV) in wide format
+\item{useWideFormat}{Logical; if \code{TRUE}, presents random effects (IIV/IOV) in wide format
 with omega estimates as columns next to their corresponding fixed effects. If \code{FALSE} (default),
 uses long format where each parameter appears in its own row. Wide format creates sections:
 Fixed effects | Random effects with split header, plus separate headers for Correlations and
 Residual error.}
 
-\item{std_err_method}{Character string specifying the standard error method to use. Options: \code{""} (default, uses whichever method the project has, preferring linear if both), \code{"linear"}, or \code{"stochasticApproximation"}.}
+\item{stdErrMethod}{Character string specifying the standard error method to use. Options: \code{""} (default, uses whichever method the project has, preferring linear if both), \code{"linear"}, or \code{"stochasticApproximation"}.}
 
-\item{roundDigits}{Integer specifying the number of digits to display. Default is 3. Interpretation depends on \code{roundingMethod}.}
+\item{roundDigits}{Integer specifying the number of digits to display. Default is 3. Interpretation depends on \code{roundMethod}.}
 
-\item{roundingMethod}{Character string specifying the rounding method. Options:
+\item{roundMethod}{Character string specifying the rounding method. Options:
 \itemize{
 \item \code{"monolix"} (default): Adaptive rounding where \code{digits} specifies decimal places,
 with extra digits added for values < 1
@@ -85,16 +96,16 @@ If \code{FALSE}, uses simpler column names without newlines (e.g., "FE_Estimate"
 \value{
 A data frame containing parameter estimates and uncertainties with the following structure:
 \describe{
-\item{Parameter}{Parameter name (optionally replaced by a label from \code{custom_aliases}, with a unit appended in parentheses when supplied via \code{custom_units})}
+\item{Parameter}{Parameter name (optionally replaced by a label from \code{customAliases}, with a unit appended in parentheses when supplied via \code{customUnits})}
 \item{Section}{Factor column identifying parameter type: \code{FE}, \code{FE_CAT}, \code{IIV}, \code{IOV}, \code{CORR}, \code{CORR_IIV}, \code{CORR_IOV}, \code{RES_ERR}, \code{LAT}}
 \item{Estimate}{Parameter estimate (fixed effects) or variability estimate (random effects)}
-\item{RSE}{Relative standard error (if \code{include_RSE = TRUE})}
-\item{CI_2.5_97.5}{Single combined confidence interval column formatted as \code{"(lower; upper)"} (if \code{include_CI = TRUE}). The percentile bounds in the column name come from the project's standard-error interval-level setting; e.g. \code{CI_2.5_97.5} for a 95\% interval, \code{CI_5_95} for a 90\% interval.}
-\item{CV}{Coefficient of variation for random effects (if \code{include_CV = TRUE})}
-\item{Boot_Median / Boot_CI_2.5_97.5 / Boot_RSE}{Bootstrap summary columns (if \code{include_bootstrap = TRUE}). The bootstrap CI column name adapts to the bootstrap interval-level setting (e.g. \code{Boot_CI_5_95} for a 90\% interval).}
+\item{RSE}{Relative standard error (if \code{includeRSE = TRUE})}
+\item{CI_2.5_97.5}{Single combined confidence interval column formatted as \code{"(lower; upper)"} (if \code{includeCI = TRUE}). The percentile bounds in the column name come from the project's standard-error interval-level setting; e.g. \code{CI_2.5_97.5} for a 95\% interval, \code{CI_5_95} for a 90\% interval.}
+\item{CV}{Coefficient of variation for random effects (if \code{includeCV = TRUE})}
+\item{Boot_Median / Boot_CI_2.5_97.5 / Boot_RSE}{Bootstrap summary columns (if \code{includeBootstrap = TRUE}). The bootstrap CI column name adapts to the bootstrap interval-level setting (e.g. \code{Boot_CI_5_95} for a 90\% interval).}
 }
 
-In wide format (\code{use_wide_format = TRUE}), random-effect rows are pivoted into columns
+In wide format (\code{useWideFormat = TRUE}), random-effect rows are pivoted into columns
 alongside their parent fixed effect. The \code{Estimate} column is renamed \code{FE_Estimate} and analogous
 \verb{IIV_*} / \verb{IOV_*} / \verb{Boot_IIV_*} / \verb{Boot_IOV_*} columns are added for the requested statistics.
 
@@ -102,27 +113,25 @@ The returned data frame includes attributes:
 \describe{
 \item{table_type}{"pop" — identifies this as a population parameter table}
 \item{format}{"wide" or "long" — indicates the table format}
-\item{include_IIV}{Logical — \code{TRUE} only when wide format AND \code{include_IIV = TRUE}; signals that IIV columns are present}
-\item{include_IOV}{Logical — \code{TRUE} only when wide format AND \code{include_IOV = TRUE}; signals that IOV columns are present}
+\item{includeIIV}{Logical — \code{TRUE} only when wide format AND \code{includeIIV = TRUE}; signals that IIV columns are present}
+\item{includeIOV}{Logical — \code{TRUE} only when wide format AND \code{includeIOV = TRUE}; signals that IOV columns are present}
 \item{project_source}{Directory of the Monolix project that produced the table}
+\item{r_source}{Path of the R/Quarto/Rmd script that generated the table (auto-detected at table-creation time, see \code{.getRScriptPath()})}
 }
 
-These attributes are used by \code{\link[=print_table_flex]{print_table_flex()}} to automatically add
+These attributes are used by \code{\link[=style_tfl]{style_tfl()}} to automatically add
 section headers when rendering the table.
 }
 \description{
-Use \code{custom_aliases} to provide display names for parameters and \code{custom_units} to append units.
-Display names or units can include special characters using Unicode (e.g., \verb{\\U03C9} for omega).
-The results are grouped into sections of fixed effects, random effects, and error parameters,
-with a column Section identifying the parameter type.
+Creates a table combining population parameter estimates with information on their uncertainties.
 }
 \details{
 \strong{Table Format:}
-The function supports two output formats controlled by \code{use_wide_format}:
+The function supports two output formats controlled by \code{useWideFormat}:
 \itemize{
-\item \strong{Long format} (\code{use_wide_format = FALSE}, default): Each parameter (fixed effects, IIV, IOV,
+\item \strong{Long format} (\code{useWideFormat = FALSE}, default): Each parameter (fixed effects, IIV, IOV,
 correlations, residual error) appears in its own row. All parameters have the same column structure.
-\item \strong{Wide format} (\code{use_wide_format = TRUE}): Random effects (IIV/IOV) appear as additional columns
+\item \strong{Wide format} (\code{useWideFormat = TRUE}): Random effects (IIV/IOV) appear as additional columns
 next to their corresponding fixed effects. For example, a table might have columns:
 Parameter, Fixed Effect Estimate, RSE (\%), IIV SD, IIV RSE (\%), IOV SD, IOV RSE (\%).
 Correlations and residual error parameters remain in separate rows.
@@ -133,7 +142,7 @@ Correlations and residual error parameters remain in separate rows.
 The \code{Section} column classifies parameters into categories:
 \itemize{
 \item \code{FE}: Fixed effects (population parameters)
-\item \code{FE_CAT}: Fixed effects by covariate category (when \code{include_FEcategory = TRUE})
+\item \code{FE_CAT}: Fixed effects by covariate category (when \code{includeFEcategory = TRUE})
 \item \code{IIV}: Inter-individual variability (omega parameters)
 \item \code{IOV}: Inter-occasion variability (gamma parameters)
 \item \code{CORR_IIV}: Correlations between IIV parameters
@@ -142,36 +151,36 @@ The \code{Section} column classifies parameters into categories:
 \item \code{LAT}: Latent covariate probabilities
 }
 
-When used with \code{\link[=print_table_flex]{print_table_flex()}}, these sections automatically generate visual section
+When used with \code{\link[=style_tfl]{style_tfl()}}, these sections automatically generate visual section
 headers to improve table readability.
 }
 \examples{
 \dontrun{
 # Basic usage with default long format
 pop_table <- tableParameterEstimates()
-print_table_flex(pop_table, color = c("RSE"))
+style_tfl(pop_table, color = c("RSE"))
 
 # Wide format with IIV and CV\%
 pop_table_wide <- tableParameterEstimates(
-  use_wide_format = TRUE,
-  include_IIV = TRUE,
-  include_CV = TRUE)
-print_table_flex(pop_table_wide, color = c("RSE"), theme_fn = theme_booktabs)
+  useWideFormat = TRUE,
+  includeIIV = TRUE,
+  includeCV = TRUE)
+style_tfl(pop_table_wide, color = c("RSE"), theme_fn = theme_booktabs)
 
 # With custom aliases and units
 pop_table <- tableParameterEstimates(
-  custom_aliases = c(Cl_pop = "Clearance", V_pop = "Volume", ka_pop = "Absorption rate"),
-  custom_units = c(Cl_pop = "L/h", V_pop = "L", ka_pop = "1/h"),
-  include_CI = TRUE,
-  include_RSE = TRUE)
+  customAliases = c(Cl_pop = "Clearance", V_pop = "Volume", ka_pop = "Absorption rate"),
+  customUnits = c(Cl_pop = "L/h", V_pop = "L", ka_pop = "1/h"),
+  includeCI = TRUE,
+  includeRSE = TRUE)
 
 # Exclude IOV parameters
-pop_table_no_iov <- tableParameterEstimates(include_IOV = FALSE)
+pop_table_no_iov <- tableParameterEstimates(includeIOV = FALSE)
 
 # Simple column names (no pretty formatting)
 pop_table_simple <- tableParameterEstimates(prettyLabels = FALSE)
 }
 }
 \seealso{
-\code{\link[=print_table_flex]{print_table_flex()}}
+\code{\link[=style_tfl]{style_tfl()}}
 }

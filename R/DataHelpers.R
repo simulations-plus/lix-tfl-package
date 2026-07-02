@@ -4,24 +4,24 @@
 #' @param covDisplayLabels (optional) data.frame with columns covariate and label for the dataset covariate name
 #' @param splitCovariates vector of categorical covariates to stratify by, or NULL
 #' @param metrics vector of metrics to display, or NULL to display all available metrics
-#' @param use_wide_format Logical. If `TRUE` (default), returns a "wide" table format where
+#' @param useWideFormat Logical. If `TRUE` (default), returns a "wide" table format where
 #'   statistics appear as columns and covariates appear as rows.
 #'   If `FALSE`, returns a "long" table format where statistics appear as rows
 #'   (useful for vertical reporting layouts).
-#'   Note: `stratify_columns = TRUE` is only compatible with `use_wide_format = FALSE`.
-#' @param stratify_columns Logical; if `TRUE`, creates a stratified table layout with
+#'   Note: `stratifyColumns = TRUE` is only compatible with `useWideFormat = FALSE`.
+#' @param stratifyColumns Logical; if `TRUE`, creates a stratified table layout with
 #'   separate columns for each covariate combination plus an "Overall" column. If `FALSE`
 #'   (default), splitCovariates appear as separate columns on the left side of the table.
 #'   Only applicable when `splitCovariates` is specified.
-#' @param covariate_labels Character vector of custom labels for splitCovariates, must be the
+#' @param covariateLabels Character vector of custom labels for splitCovariates, must be the
 #'   same length as `splitCovariates`. If `NULL` (default), the original covariate names are
-#'   used. These labels appear in column headers when `stratify_columns = TRUE`.
-#' @param covariate_filter Named list where names are categorical covariate names
+#'   used. These labels appear in column headers when `stratifyColumns = TRUE`.
+#' @param filterCovariates Named list where names are categorical covariate names
 #'   (type "categorical", "additionalstratificationcategorical" or "stratificationcategorical"
 #'   in `getCovariateInformation()`) and values are vectors of allowed values.
 #'   Example: `list(SEX = "Male", AVISIT = c("Week 1","Week 2"))`. If `NULL`, no
 #'   covariate filtering is applied.
-#' @param id_filter Character or numeric vector of subject IDs to include. If `NULL`,
+#' @param filterIds Character or numeric vector of subject IDs to include. If `NULL`,
 #'   no ID filtering is applied.
 #' @param roundDigits number of digits to display
 #' @param roundMethod "monolix" to use MonolixSuite rounding where digits specifies the number of places after the decimal, or "signif"
@@ -30,7 +30,7 @@
 #'   human-readable labels (e.g., "CV" becomes "CV (%)", "geoMean" becomes "Geometric Mean").
 #'
 #' @returns a data.frame
-#' @seealso [getDescriptiveStats()]
+#' @seealso [getDescriptiveStatsMetrics()]
 #' @importFrom dplyr %>%
 #' @importFrom rlang .data
 #' @export
@@ -46,7 +46,7 @@
 #' # Filter to a subset of visits and select a few metrics
 #' tableContinuousCovariateSummary(
 #'     splitCovariates  = "ATRTNCA",
-#'     covariate_filter = list(AVISIT = c("CYCLE 1 DAY 8", "CYCLE 1 DAY 15")),
+#'     filterCovariates = list(AVISIT = c("CYCLE 1 DAY 8", "CYCLE 1 DAY 15")),
 #'     metrics          = c("N", "mean", "SD", "median", "min", "max")
 #' )
 #' }
@@ -54,11 +54,11 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 																						covDisplayLabels = NULL,
 																						splitCovariates  = NULL,
 																						metrics          = NULL,
-																						use_wide_format  = TRUE,
-																						stratify_columns = FALSE,
-																						covariate_labels = NULL,
-																						covariate_filter = NULL,
-																						id_filter        = NULL,
+																						useWideFormat  = TRUE,
+																						stratifyColumns = FALSE,
+																						covariateLabels = NULL,
+																						filterCovariates = NULL,
+																						filterIds        = NULL,
 																						roundDigits      = 2,
 																						roundMethod      = c("monolix", "signif", "none"),
 																						prettyLabels     = TRUE)
@@ -76,28 +76,28 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 		), call. = FALSE )
 	}
 
-	# Validate stratify_columns and covariate_labels (using same logic as PKanalixHelpers).
+	# Validate stratifyColumns and covariateLabels (using same logic as PKanalixHelpers).
 	# allowed_types restricts splitCovariates to categorical-like types from
 	# getCovariateInformation() (incl. PKanalix-derived stratification covariates).
 	cat_types        <- c("categorical",
 												"additionalstratificationcategorical",
 												"stratificationcategorical")
-	stratify_columns <- .validateStratificationArgs(splitCovariates, stratify_columns, allowed_types = cat_types)
-	covariate_labels <- .validateCovariateLabels(splitCovariates, covariate_labels)
+	stratifyColumns <- .validateStratificationArgs(splitCovariates, stratifyColumns, allowed_types = cat_types)
+	covariateLabels <- .validateCovariateLabels(splitCovariates, covariateLabels)
 
 	# Validate covariate and id filters (categorical-like types as defined above)
-	.validateFilters(covariate_filter, id_filter, resultType = "covariateSummary")
+	.validateFilters(filterCovariates, filterIds, resultType = "covariateSummary")
 
-	# Validate: stratify_columns only works with long format
-	if (stratify_columns && use_wide_format) {
-		warning("stratify_columns = TRUE is only compatible with use_wide_format = FALSE (long format). Setting stratify_columns = FALSE")
-		stratify_columns <- FALSE
+	# Validate: stratifyColumns only works with long format
+	if (stratifyColumns && useWideFormat) {
+		warning("stratifyColumns = TRUE is only compatible with useWideFormat = FALSE (long format). Setting stratifyColumns = FALSE")
+		stratifyColumns <- FALSE
 	}
 
 	cov_info <- lixoftConnectors::getCovariateInformation()
 
 	# Apply covariate and ID filters to the covariate dataframe before pivoting
-	cov_info$covariate <- .applyFilters(cov_info$covariate, covariate_filter, id_filter, id_col = "id")
+	cov_info$covariate <- .applyFilters(cov_info$covariate, filterCovariates, filterIds, id_col = "id")
 
 	# Prepare data: pivot continuous covariates to long format.
 	# Include PKanalix-derived continuous types so the table also works on projects
@@ -123,7 +123,7 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 	# ==========================================================================
 	# CALCULATE DESCRIPTIVE STATISTICS
 
-	if (stratify_columns && !is.null(splitCovariates)) {
+	if (stratifyColumns && !is.null(splitCovariates)) {
 		# ----------------------------------------------------------------------
 		# STRATIFIED CASE: Calculate stats for each covariate combination
 		# ----------------------------------------------------------------------
@@ -176,7 +176,7 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 			splitCovariates  = splitCovariates,
 			selected_metrics = selected_metrics,
 			param_col        = "Covariate",
-			covariate_labels = covariate_labels)
+			covariateLabels = covariateLabels)
 
 		# Rename covariates using covDisplayLabels if provided
 		if (!is.null(covDisplayLabels)) {
@@ -225,7 +225,7 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 		# ==========================================================================
 		# FORMAT: WIDE vs LONG
 
-		if (!use_wide_format) {
+		if (!useWideFormat) {
 			# LONG FORMAT: transpose so metrics appear as rows
 			# Use helper function for vertical pivot (similar to tableNCAParameters)
 			cov_summary <- .pivotToVertical(
@@ -296,21 +296,21 @@ getDescriptiveStatsMetrics <- function() {
 #' @param splitCovariates Character vector of categorical covariates to stratify by.
 #'   Allowed types from `getCovariateInformation()`: "categorical",
 #'   "additionalstratificationcategorical", "stratificationcategorical". Default NULL.
-#' @param stratify_columns Logical; if `TRUE`, creates a stratified table layout with
+#' @param stratifyColumns Logical; if `TRUE`, creates a stratified table layout with
 #'   separate columns for each covariate combination plus an "Overall" column. If
 #'   `FALSE` (default), `splitCovariates` appear as separate columns on the left side
 #'   of the table. Only applicable when `splitCovariates` is specified.
-#' @param covariate_labels Character vector of custom labels for `splitCovariates`,
+#' @param covariateLabels Character vector of custom labels for `splitCovariates`,
 #'   must be the same length as `splitCovariates`. If `NULL` (default), the original
 #'   covariate names are used. These labels appear in column headers when
-#'   `stratify_columns = TRUE`.
-#' @param covariate_filter Named list where names are categorical covariate names
+#'   `stratifyColumns = TRUE`.
+#' @param filterCovariates Named list where names are categorical covariate names
 #'   (type "categorical", "additionalstratificationcategorical" or
 #'   "stratificationcategorical" in `getCovariateInformation()`) and values are
 #'   vectors of allowed values. Example:
 #'   `list(SEX = "Male", AVISIT = c("Week 1","Week 2"))`. If `NULL`, no covariate
 #'   filtering is applied.
-#' @param id_filter Character or numeric vector of subject IDs to include. If `NULL`,
+#' @param filterIds Character or numeric vector of subject IDs to include. If `NULL`,
 #'   no ID filtering is applied.
 #' @param roundDigits number of digits to display.
 #' @param roundMethod "monolix" to use MonolixSuite rounding where digits specifies
@@ -336,18 +336,18 @@ getDescriptiveStatsMetrics <- function() {
 #' # Stratified-columns layout: one column per stratum + Overall
 #' tableCategoricalCovariateSummary(
 #'     splitCovariates  = "ATRTNCA",
-#'     stratify_columns = TRUE,
-#'     covariate_labels = "Treatment"
+#'     stratifyColumns = TRUE,
+#'     covariateLabels = "Treatment"
 #' )
 #' }
 tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 																						 covDisplayLabels      = NULL,
 																						 categoryDisplayLabels = NULL,
 																						 splitCovariates       = NULL,
-																						 stratify_columns      = FALSE,
-																						 covariate_labels      = NULL,
-																						 covariate_filter      = NULL,
-																						 id_filter             = NULL,
+																						 stratifyColumns      = FALSE,
+																						 covariateLabels      = NULL,
+																						 filterCovariates      = NULL,
+																						 filterIds             = NULL,
 																						 roundDigits           = 2,
 																						 roundMethod           = c("monolix", "signif", "none"),
 																						 mock                  = list(enable = FALSE, max_rows = "all")) {
@@ -399,15 +399,15 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 	}
 
 	# Allow_occasions = TRUE so occasion index columns (e.g. AVISIT_OCC) can be passed to splitCovariates to resolve occasion-varying covariates.
-	stratify_columns <- .validateStratificationArgs(splitCovariates, stratify_columns, allowed_types = cat_types, allow_occasions = TRUE)
-	final_labels     <- .validateCovariateLabels(splitCovariates, covariate_labels)
-	.validateFilters(covariate_filter, id_filter, resultType = "covariateSummary")
+	stratifyColumns <- .validateStratificationArgs(splitCovariates, stratifyColumns, allowed_types = cat_types, allow_occasions = TRUE)
+	final_labels     <- .validateCovariateLabels(splitCovariates, covariateLabels)
+	.validateFilters(filterCovariates, filterIds, resultType = "covariateSummary")
 
 	# ==========================================================================
 	# GET DATA AND APPLY FILTERS
 
 	cov_info <- lixoftConnectors::getCovariateInformation()
-	cov_info$covariate <- .applyFilters(cov_info$covariate, covariate_filter, id_filter, id_col = "id")
+	cov_info$covariate <- .applyFilters(cov_info$covariate, filterCovariates, filterIds, id_col = "id")
 
 	cat_covs <- cov_info$name[cov_info$type %in% cat_types]
 	if (length(cat_covs) == 0) {
@@ -450,7 +450,7 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 	# ==========================================================================
 	# CALCULATE STATISTICS
 
-	if (stratify_columns) {
+	if (stratifyColumns) {
 		# --- STRATIFIED (WIDE) -------------------------------------------------
 		# .validateStratificationArgs guarantees splitCovariates is non-NULL here.
 		df_long <- df_cov %>%
@@ -517,7 +517,7 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 			dplyr::arrange(dplyr::across(dplyr::any_of(splitCovariates)),
 										 `Subject characteristics`, Modalities)
 
-		# Apply covariate_labels to split columns (positional mapping)
+		# Apply covariateLabels to split columns (positional mapping)
 		if (!is.null(splitCovariates)) {
 			col_idx <- match(splitCovariates, names(summary_stats))
 			ok      <- !is.na(col_idx)
@@ -551,7 +551,7 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 	# MOCKING
 
 	if (isTRUE(mock$enable)) {
-		if (stratify_columns) {
+		if (stratifyColumns) {
 			exclusion_vector <- c("Subject characteristics", "Modalities")
 		} else {
 			exclusion_vector <- c("Subject characteristics", "Modalities", final_labels)
@@ -588,22 +588,23 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 #'   in the dataset may be used (including columns tagged "ignore" in the GUI,
 #'   such as Exclusion_reason); only non-existent names are rejected. A warning is
 #'   emitted if a chosen column has too many modalities per subject (see
-#'   \code{max_subject_ratio}). If NULL, an overall summary is provided.
-#' @param covariate_filter Named list where names are existing dataset columns
+#'   \code{maxSubjectRatio}). If NULL, an overall summary is provided.
+#' @param filterCovariates Named list where names are existing dataset columns
 #'   (any column, not only covariates) and values are vectors of allowed values,
 #'   e.g. \code{list(VISIT = c("DAY 1", "DAY 7"))}. If NULL, no covariate filtering.
-#' @param id_filter Character or numeric vector of subject IDs to include. If
+#' @param filterIds Character or numeric vector of subject IDs to include. If
 #'   NULL, no ID filtering.
-#' @param use_wide_format Logical flag indicating table layout. If TRUE
+#' @param useWideFormat Logical flag indicating table layout. If TRUE
 #'   (default), metrics are returned as columns (wide). If FALSE, metrics are
 #'   pivoted into rows (long, Statistic-Value format).
-#' @param max_subject_ratio Ratio (n_modalities / n_subjects) above which a
+#' @param maxSubjectRatio Ratio (n_modalities / n_subjects) above which a
 #'   chosen grouping variable triggers a "might not be a suitable grouping
 #'   variable" warning. Default 0.5.
 #'
 #' @return A data frame summarizing excluded observations and subjects.
 #'
 #' @examples
+#' \dontrun{
 #' # Overall summary of exclusions (no stratification)
 #' tableExclusions()
 #'
@@ -612,18 +613,21 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 #'
 #' # Stratified by visit & food, filtered to two visits, vertical format
 #' tableExclusions(splitCovariates = c("VISIT", "FOOD"),
-#'                 covariate_filter = list(VISIT = c("DAY 1", "DAY 7")),
-#'                 use_wide_format = FALSE)
+#'                 filterCovariates = list(VISIT = c("DAY 1", "DAY 7")),
+#'                 useWideFormat = FALSE)
 #'
 #' # Restrict to specific subjects
 #' tableExclusions(splitCovariates = "Exclusion_reason",
-#'                 id_filter = c(1, 2, 17))
+#'                 filterIds = c(1, 2, 17))
+#' }
+#'
+#' @export
 tableExclusions <- function(projectFile       = NULL,
 														splitCovariates   = NULL,
-														covariate_filter  = NULL,
-														id_filter         = NULL,
-														use_wide_format   = TRUE,
-														max_subject_ratio = 0.5) {
+														filterCovariates  = NULL,
+														filterIds         = NULL,
+														useWideFormat   = TRUE,
+														maxSubjectRatio = 0.5) {
 
 	.checkProjectFile(projectFile, c("pkanalix", "monolix"))
 	.ensureProjectLoaded(projectFile)
@@ -663,15 +667,15 @@ tableExclusions <- function(projectFile       = NULL,
 
 	# Warn if a chosen grouping variable has too many modalities per subject.
 	.warnUnsuitableGrouping(dataUsed, splitCovariates, id_col = id,
-													max_subject_ratio = max_subject_ratio)
+													maxSubjectRatio = maxSubjectRatio)
 
-	# Validate requested covariate_filter keys
-	if (!is.null(covariate_filter)) {
-		if (!is.list(covariate_filter) || is.null(names(covariate_filter)) || any(names(covariate_filter) == "")) {
-			stop("covariate_filter must be a named list. Example: list(VISIT = c('DAY 1', 'DAY 7'))",
+	# Validate requested filterCovariates keys
+	if (!is.null(filterCovariates)) {
+		if (!is.list(filterCovariates) || is.null(names(filterCovariates)) || any(names(filterCovariates) == "")) {
+			stop("filterCovariates must be a named list. Example: list(VISIT = c('DAY 1', 'DAY 7'))",
 					 call. = FALSE)
 		}
-		bad_f <- setdiff(names(covariate_filter), available)
+		bad_f <- setdiff(names(filterCovariates), available)
 		if (length(bad_f)) {
 			stop(
 				"Filter column(s) not found in the dataset: ", paste(bad_f, collapse = ", "),
@@ -680,25 +684,25 @@ tableExclusions <- function(projectFile       = NULL,
 		}
 	}
 
-	# Validate requested id_filter
-	if (!is.null(id_filter)) {
-		if (!is.vector(id_filter) || is.list(id_filter)) {
-			stop("id_filter must be a character or numeric vector of subject IDs.", call. = FALSE)
+	# Validate requested filterIds
+	if (!is.null(filterIds)) {
+		if (!is.vector(filterIds) || is.list(filterIds)) {
+			stop("filterIds must be a character or numeric vector of subject IDs.", call. = FALSE)
 		}
-		if (length(id_filter) == 0) {
-			stop("id_filter cannot be an empty vector.", call. = FALSE)
+		if (length(filterIds) == 0) {
+			stop("filterIds cannot be an empty vector.", call. = FALSE)
 		}
-		unknown_ids <- setdiff(as.character(id_filter), as.character(listing[[id]]))
-		if (length(unknown_ids) == length(id_filter)) {
-			warning("None of the id_filter IDs are present among the excluded subjects: ",
-							paste(id_filter, collapse = ", "), call. = FALSE)
+		unknown_ids <- setdiff(as.character(filterIds), as.character(listing[[id]]))
+		if (length(unknown_ids) == length(filterIds)) {
+			warning("None of the filterIds IDs are present among the excluded subjects: ",
+							paste(filterIds, collapse = ", "), call. = FALSE)
 		}
 	}
 
 	# Apply filters
 	listing <- .applyFilters(listing,
-													 covariate_filter = covariate_filter,
-													 id_filter        = id_filter,
+													 filterCovariates = filterCovariates,
+													 filterIds        = filterIds,
 													 id_col           = id)
 
 	listing_clean <- listing %>%
@@ -735,7 +739,7 @@ tableExclusions <- function(projectFile       = NULL,
 			dplyr::arrange(dplyr::across(dplyr::all_of(splitCovariates)))
 	}
 
-	if (use_wide_format == FALSE) {
+	if (useWideFormat == FALSE) {
 		stat_cols <- setdiff(names(summary_tbl), splitCovariates)
 
 		summary_tbl <- summary_tbl %>%
@@ -762,6 +766,7 @@ tableExclusions <- function(projectFile       = NULL,
 #' @return If exclusions are found, returns a data frame containing the excluded rows from
 #'         the raw dataset. If no exclusions are found, returns NULL and outputs a message.
 #'
+#' @export
 #' @examples
 #' # Example usage:
 #' # excluded_data <- listingExclusions()
@@ -966,8 +971,8 @@ listingExclusions <- function(projectFile = NULL) {
 #' `InfDur` was computed, it is merged on the subject identifier.
 #'
 #' @param covariate Character scalar; name of a covariate column present in the
-#'   interpreted dataset. Mutually exclusive with covariate.entry.
-#' @param covariate.entry Character scalar; constant value to inject as a column
+#'   interpreted dataset. Mutually exclusive with covariateEntry.
+#' @param covariateEntry Character scalar; constant value to inject as a column
 #'   (named ROUTE) when the covariate is not available in the dataset.
 #'   Mutually exclusive with covariate.
 #'
@@ -981,17 +986,17 @@ listingExclusions <- function(projectFile = NULL) {
 #' # DosingRegimen_Listing(covariate = "ROUTE")
 #' #
 #' # Inject constant when covariate absent:
-#' # listingDosingRegimen(covariate.entry = "oral")
+#' # listingDosingRegimen(covariateEntry = "oral")
 listingDosingRegimen <- function(projectFile     = NULL,
                                  covariate       = NULL,
-                                 covariate.entry = NULL) {
+                                 covariateEntry = NULL) {
     # Ensure the correct project is loaded
     .checkProjectFile(projectFile, c("pkanalix", "monolix"))
     .ensureProjectLoaded(projectFile)
 
-    # CASE 1: covariate and covariate.entry are mutually exclusive: only one should be set depending on whether the covariate exists in the dataset
-    if (!is.null(covariate) && !is.null(covariate.entry)) {
-        stop(paste("Invalid input: covariate:'", covariate, "' and covariate.entry:'", covariate.entry, "' are mutually exclusive."))
+    # CASE 1: covariate and covariateEntry are mutually exclusive: only one should be set depending on whether the covariate exists in the dataset
+    if (!is.null(covariate) && !is.null(covariateEntry)) {
+        stop(paste("Invalid input: covariate:'", covariate, "' and covariateEntry:'", covariateEntry, "' are mutually exclusive."))
     }
 
     headers <- lixoftConnectors::getData()$header
@@ -1012,7 +1017,7 @@ listingDosingRegimen <- function(projectFile     = NULL,
         dplyr::rename(id = dplyr::all_of(id_col)) # rename to id column header used in lixoftConnectors::getNCAIndividualParameters()$parameters
 
     # CASE 2: Covariate exists in dataset
-    if (!is.null(covariate) && is.null(covariate.entry)) {
+    if (!is.null(covariate) && is.null(covariateEntry)) {
         if (!(covariate %in% colnames(df))) {
             stop(paste("Covariate", covariate, "not found in dataset"))
         }
@@ -1022,8 +1027,8 @@ listingDosingRegimen <- function(projectFile     = NULL,
     }
 
     # CASE 3: Covariate not in dataset – inject constant value
-    if (is.null(covariate) && !is.null(covariate.entry)) {
-        listing[["ROUTE"]] <- covariate.entry
+    if (is.null(covariate) && !is.null(covariateEntry)) {
+        listing[["ROUTE"]] <- covariateEntry
     }
 
     # Merge with InfDur if available — using the same ID column name

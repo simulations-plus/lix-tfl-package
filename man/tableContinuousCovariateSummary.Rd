@@ -5,13 +5,17 @@
 \title{Creates a data frame summarizing the continuous covariates in the dataset with descriptive statistics.}
 \usage{
 tableContinuousCovariateSummary(
-  projectFile,
+  projectFile = NULL,
   covDisplayLabels = NULL,
   splitCovariates = NULL,
-  additionalMetrics = NULL,
-  metricsAsRows = FALSE,
-  digits = 2,
-  roundingMethod = c("monolix", "signif", "none"),
+  metrics = NULL,
+  useWideFormat = TRUE,
+  stratifyColumns = FALSE,
+  covariateLabels = NULL,
+  filterCovariates = NULL,
+  filterIds = NULL,
+  roundDigits = 2,
+  roundMethod = c("monolix", "signif", "none"),
   prettyLabels = TRUE
 )
 }
@@ -22,14 +26,39 @@ tableContinuousCovariateSummary(
 
 \item{splitCovariates}{vector of categorical covariates to stratify by, or NULL}
 
-\item{additionalMetrics}{vector of additional metrics to calculate, see \code{\link[=getAdditionalContinuousCovariateMetrics]{getAdditionalContinuousCovariateMetrics()}} or NULL}
+\item{metrics}{vector of metrics to display, or NULL to display all available metrics}
 
-\item{metricsAsRows}{TRUE to display metrics as rows, or FALSE (default) to display them as columns}
+\item{useWideFormat}{Logical. If \code{TRUE} (default), returns a "wide" table format where
+statistics appear as columns and covariates appear as rows.
+If \code{FALSE}, returns a "long" table format where statistics appear as rows
+(useful for vertical reporting layouts).
+Note: \code{stratifyColumns = TRUE} is only compatible with \code{useWideFormat = FALSE}.}
 
-\item{digits}{number of digits to display}
+\item{stratifyColumns}{Logical; if \code{TRUE}, creates a stratified table layout with
+separate columns for each covariate combination plus an "Overall" column. If \code{FALSE}
+(default), splitCovariates appear as separate columns on the left side of the table.
+Only applicable when \code{splitCovariates} is specified.}
 
-\item{roundingMethod}{"monolix" to use MonolixSuite rounding where digits specifies the number of places after the decimal, or "signif"
+\item{covariateLabels}{Character vector of custom labels for splitCovariates, must be the
+same length as \code{splitCovariates}. If \code{NULL} (default), the original covariate names are
+used. These labels appear in column headers when \code{stratifyColumns = TRUE}.}
+
+\item{filterCovariates}{Named list where names are categorical covariate names
+(type "categorical", "additionalstratificationcategorical" or "stratificationcategorical"
+in \code{getCovariateInformation()}) and values are vectors of allowed values.
+Example: \code{list(SEX = "Male", AVISIT = c("Week 1","Week 2"))}. If \code{NULL}, no
+covariate filtering is applied.}
+
+\item{filterIds}{Character or numeric vector of subject IDs to include. If \code{NULL},
+no ID filtering is applied.}
+
+\item{roundDigits}{number of digits to display}
+
+\item{roundMethod}{"monolix" to use MonolixSuite rounding where digits specifies the number of places after the decimal, or "signif"
 for digits to specify the number of significant figures}
+
+\item{prettyLabels}{Logical; if \code{TRUE} (default), converts column names to
+human-readable labels (e.g., "CV" becomes "CV (\%)", "geoMean" becomes "Geometric Mean").}
 }
 \value{
 a data.frame
@@ -38,8 +67,21 @@ a data.frame
 Creates a data frame summarizing the continuous covariates in the dataset with descriptive statistics.
 }
 \examples{
-# TODO
+\dontrun{
+# Overall summary of all continuous covariates
+tableContinuousCovariateSummary()
+
+# Stratify by a categorical covariate
+tableContinuousCovariateSummary(splitCovariates = "ATRTNCA")
+
+# Filter to a subset of visits and select a few metrics
+tableContinuousCovariateSummary(
+    splitCovariates  = "ATRTNCA",
+    filterCovariates = list(AVISIT = c("CYCLE 1 DAY 8", "CYCLE 1 DAY 15")),
+    metrics          = c("N", "mean", "SD", "median", "min", "max")
+)
+}
 }
 \seealso{
-\code{\link[=getAdditionalContinuousCovariateMetrics]{getAdditionalContinuousCovariateMetrics()}}
+\code{\link[=getDescriptiveStatsMetrics]{getDescriptiveStatsMetrics()}}
 }
