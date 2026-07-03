@@ -243,6 +243,264 @@ tableRunHistory <- function(sycomoreProjectFile,
 
 
 
+#' Compact string describing the covariate model of a single built model
+#'
+#' Turns the logical `individualModels` matrix returned by
+#' [lixoftConnectors::getModelBuildingResults()] into a human readable string
+#' such as `"Cl~lw70, V~tSex"`.
+#'
+#' @param im data.frame of logical values (rows = parameters, cols = covariates).
+#' @return A single character string; `"(base)"` when no covariate is used.
+#' @keywords internal
+.covStructureString <- function(im) {
+	parts <- character(0)
+	for (p in rownames(im)) {
+		covs <- colnames(im)[which(as.logical(unlist(im[p, ])))]
+		if (length(covs)) {
+			parts <- c(parts, paste0(p, "~", paste(covs, collapse = "+")))
+		}
+	}
+	if (!length(parts)) return("(base)")
+	paste(parts, collapse = ", ")
+}
+
+#' Canonical key for a covariate-model matrix
+#'
+#' Flattens the logical `individualModels` matrix into a fixed-order string so
+#' two models can be compared for structural equality (used to find the nested
+#' parent of a tested model).
+#'
+#' @param im data.frame of logical values (rows = parameters, cols = covariates).
+#' @return A character key.
+#' @keywords internal
+.imKey <- function(im) {
+	im <- im[order(rownames(im)), order(colnames(im)), drop = FALSE]
+	paste(as.integer(as.matrix(im)), collapse = "")
+}
+
+#' Degrees of freedom added by a covariate relationship
+#'
+#' Continuous covariates add one coefficient (df = 1); categorical covariates add
+#' one coefficient per non-reference category (df = number of categories - 1).
+#'
+#' @param covName Covariate name (as used in the individual model).
+#' @param covInfo Result of [lixoftConnectors::getCovariateInformation()].
+#' @return Integer degrees of freedom, or `1L` when the covariate type cannot be
+#'   determined.
+#' @keywords internal
+.covDf <- function(covName, covInfo) {
+	if (is.null(covInfo) || is.null(covInfo$covariate)) return(1L)
+	info <- covInfo$covariate
+	idx  <- match(covName, info$name)
+	if (is.na(idx)) return(1L)
+	type <- info$type[idx]
+	if (!is.null(type) && grepl("categorical", type, ignore.case = TRUE)) {
+		# number of categories - 1
+		modalities <- if (!is.null(covInfo$modalityNumber)) covInfo$modalityNumber[idx] else NA
+		if (is.na(modalities)) {
+			# fall back to counting distinct observed values
+			vals <- info[[covName]]
+			modalities <- if (!is.null(vals)) length(unique(stats::na.omit(vals))) else 2L
+		}
+		return(max(1L, as.integer(modalities) - 1L))
+	}
+	1L
+}
+
+
+#' tableModelBuilding
+#'
+#' @description
+#' Creates a summary table of an automatic covariate/statistical model building
+#' run (COSSAC, SCM, or SAMBA) for a Monolix project. Each row is one model that
+#' the algorithm evaluated, with its covariate structure, objective function value
+#' (OFV, i.e. -2*log-likelihood), BICc, and the change relative to the nested
+#' parent model. For COSSAC runs the tested parameter-covariate relationship, the
+#' step direction (forward addition / backward removal), the selected best model,
+#' and an optional likelihood-ratio-test p-value are also reported.
+#'
+#' @details
+#' The results are read directly from the loaded Monolix project via
+#' [lixoftConnectors::getModelBuildingResults()], so the location of the
+#' `ModelBuilding` folder on disk is irrelevant: the base project is the single
+#' source of truth. Model building must already have been run for the project.
+#'
+#' **Reference model and deltas.** For each tested model the *nested parent* is
+#' the model whose covariate structure is identical except for the single tested
+#' relationship. `dOFV`/`dBICc` are computed against that parent. In the first
+#' forward round the parent is the model building start model, which already
+#' reflects any covariate relationships defined in the base project.
+#'
+#' **p-value (optional, COSSAC only).** When `addPValue = TRUE`, a
+#' likelihood-ratio-test p-value is *computed by this function* from the drop in
+#' OFV against the nested parent, `p = 1 - pchisq(dOFV, df)`, where `df` is the
+#' number of coefficients added by the relationship (1 for a continuous covariate,
+#' categories - 1 for a categorical covariate). This value is not returned by the
+#' connector; it is a standard re-derivation and may differ slightly from the
+#' criterion COSSAC used internally.
+#'
+#' @param projectFile Character string specifying the path to a Monolix .mlxtran
+#'   project file, or `NULL` (default) to use the currently loaded project.
+#' @param addPValue Logical; if `TRUE`, add a computed likelihood-ratio-test
+#'   p-value and significance flag (COSSAC runs only). Default `FALSE`.
+#' @param sortBy Character string specifying the row order:
+#'   - `"index"` (default): keep the algorithm's model order
+#'   - `"BICc"`: sort by BICc (lowest first = best model)
+#'   - `"LL"`: sort by OFV/-2LL (lowest first)
+#' @param roundDigits Integer specifying the number of digits for rounding
+#'   numeric values. Default is `2`.
+#' @param roundMethod Character string specifying the rounding method:
+#'   `"monolix"` (default), `"signif"`, or `"none"`.
+#' @param prettyLabels Logical; if `TRUE` (default), applies human-readable
+#'   column labels.
+#'
+#' @return A data.frame with one row per evaluated model containing (columns
+#'   without information for the chosen strategy are dropped):
+#'   \itemize{
+#'     \item \code{Run}: model label (e.g. "Model 1")
+#'     \item \code{Tested}: parameter-covariate relationship tested (COSSAC)
+#'     \item \code{Step}: "Forward" (add) or "Backward" (remove) (COSSAC)
+#'     \item \code{CovariateModel}: compact covariate structure string
+#'     \item \code{LL}: OFV (-2*log-likelihood)
+#'     \item \code{BICc}: modified BIC
+#'     \item \code{dLL}, \code{dBICc}: change vs the nested parent model
+#'     \item \code{pValue}, \code{Significant}: computed LRT (only if \code{addPValue})
+#'     \item \code{Selected}: "Yes" for the best model chosen by the algorithm (COSSAC)
+#'   }
+#'   A `Section` column ("Forward"/"Backward") is included for use with
+#'   [style_tfl()] when step direction is available.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Use the currently loaded project (after running model building)
+#' tableModelBuilding()
+#'
+#' # From a project file, sorted by BICc, with computed LRT p-values
+#' tableModelBuilding("path/to/project.mlxtran", sortBy = "BICc", addPValue = TRUE)
+#' }
+tableModelBuilding <- function(projectFile  = NULL,
+															 addPValue    = FALSE,
+															 sortBy       = c("index", "BICc", "LL"),
+															 roundDigits  = 2,
+															 roundMethod  = c("monolix", "signif", "none"),
+															 prettyLabels = TRUE) {
+
+	sortBy      <- match.arg(sortBy)
+	roundMethod <- match.arg(roundMethod)
+
+	if (!is.null(projectFile)) {
+		.checkProjectFile(projectFile, "monolix")
+	}
+	.ensureProjectLoaded(projectFile)
+
+	res <- suppressMessages(lixoftConnectors::getModelBuildingResults())
+	if (is.null(res) || length(res) == 0) {
+		stop("No model building results found. Run model building (COSSAC/SCM/SAMBA) before calling tableModelBuilding().",
+				 call. = FALSE)
+	}
+
+	# COSSAC provides 'tested' and 'bestModel'; SAMBA/SCM may not.
+	hasTested <- any(vapply(res, function(m) !is.null(m$tested), logical(1)))
+	covInfo   <- if (addPValue) suppressMessages(lixoftConnectors::getCovariateInformation()) else NULL
+
+	# Structural key per model, to locate nested parents
+	keys <- vapply(res, function(m) .imKey(m$individualModels), character(1))
+
+	rows <- lapply(seq_along(res), function(i) {
+		m  <- res[[i]]
+		im <- m$individualModels
+
+		tested   <- m$tested
+		hasStep  <- !is.null(tested) && length(tested) == 2 && all(nzchar(tested))
+		param    <- if (hasStep) tested[1] else NA_character_
+		cov      <- if (hasStep) tested[2] else NA_character_
+
+		# nested parent = same structure with the tested cell toggled
+		dLL <- NA_real_; dBICc <- NA_real_; step <- NA_character_
+		pValue <- NA_real_
+		if (hasStep) {
+			added <- isTRUE(as.logical(im[param, cov]))
+			step  <- if (added) "Forward" else "Backward"
+			imParent <- im
+			imParent[param, cov] <- !added
+			j <- match(.imKey(imParent), keys)
+			if (!is.na(j)) {
+				dLL   <- m$LL   - res[[j]]$LL
+				dBICc <- m$BICc - res[[j]]$BICc
+				if (addPValue) {
+					dropOFV <- res[[j]]$LL - m$LL        # positive when the model improves
+					df      <- .covDf(cov, covInfo)
+					if (is.finite(dropOFV) && dropOFV > 0) {
+						pValue <- stats::pchisq(dropOFV, df = df, lower.tail = FALSE)
+					} else {
+						pValue <- 1
+					}
+				}
+			}
+		}
+
+		data.frame(
+			Run            = paste("Model", i),
+			Tested         = if (hasStep) paste0(cov, " on ", param) else "",
+			Step           = if (is.na(step)) "" else step,
+			CovariateModel = .covStructureString(im),
+			LL             = m$LL,
+			BICc           = m$BICc,
+			dLL            = dLL,
+			dBICc          = dBICc,
+			pValue         = pValue,
+			Selected       = if (isTRUE(m$bestModel)) "Yes" else "",
+			stringsAsFactors = FALSE
+		)
+	})
+
+	df <- do.call(rbind, rows)
+
+	# significance flag from computed LRT
+	if (addPValue) {
+		df$Significant <- ifelse(is.na(df$pValue), "",
+														 ifelse(df$pValue < 0.05, "Yes", "No"))
+	} else {
+		df$pValue <- NULL
+	}
+
+	# Section column drives style_tfl grouping when step direction is available
+	if (hasTested) {
+		df$Section <- ifelse(nzchar(df$Step), df$Step, NA_character_)
+	}
+
+	# Drop columns that carry no information for this strategy
+	if (!hasTested) {
+		df <- df[, setdiff(names(df), c("Tested", "Step", "Selected"))]
+	}
+	df <- df[, vapply(df, function(x) any(nzchar(as.character(x)) & !is.na(x)), logical(1)) |
+					 	names(df) %in% c("LL", "BICc", "dLL", "dBICc"), drop = FALSE]
+
+	# Sorting
+	if (sortBy == "BICc") {
+		df <- df[order(df$BICc), , drop = FALSE]
+	} else if (sortBy == "LL") {
+		df <- df[order(df$LL), , drop = FALSE]
+	}
+	rownames(df) <- NULL
+
+	df <- .round_num(df, roundDigits, rounding_method = roundMethod)
+
+	if (isTRUE(prettyLabels)) {
+		df <- .prettyLabels(df)
+	}
+
+	attr(df, "project_source") <- if (!is.null(projectFile)) projectFile else
+		suppressMessages(lixoftConnectors::getProjectSettings()$project)
+	attr(df, "r_source") <- .getRScriptPath()
+	return(df)
+}
+
+
+
+
 #' Creates a table combining population parameter estimates with information on their uncertainties.
 #'
 #' @details

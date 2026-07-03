@@ -426,7 +426,18 @@ utils::globalVariables(c("."))
 		"dLLlin"              = "ΔLL\n(Linearization)",
 		"dLLis"               = "ΔLL\n(Imp. Sampling)",
 		"dBICclin"            = "ΔBICc\n(Linearization)",
-		"dBICcis"             = "ΔBICc\n(Imp. Sampling)")
+		"dBICcis"             = "ΔBICc\n(Imp. Sampling)",
+		"Run"                 = "Run",
+		"Tested"              = "Tested\nRelationship",
+		"Step"                = "Step",
+		"CovariateModel"      = "Covariate\nModel",
+		"LL"                  = "OFV\n(-2LL)",
+		"BICc"                = "BICc",
+		"dLL"                 = "ΔOFV",
+		"dBICc"               = "ΔBICc",
+		"pValue"              = "p-value",
+		"Significant"         = "Significant",
+		"Selected"            = "Selected")
 
 	# Process each column name
 	col_names <- names(df)
