@@ -428,6 +428,7 @@ utils::globalVariables(c("."))
 		"dBICclin"            = "ΔBICc\n(Linearization)",
 		"dBICcis"             = "ΔBICc\n(Imp. Sampling)",
 		"Run"                 = "Run",
+		"Reference"           = "Reference\nModel",
 		"Tested"              = "Tested\nRelationship",
 		"Step"                = "Step",
 		"CovariateModel"      = "Covariate\nModel",
@@ -435,9 +436,9 @@ utils::globalVariables(c("."))
 		"BICc"                = "BICc",
 		"dLL"                 = "ΔOFV",
 		"dBICc"               = "ΔBICc",
-		"pValue"              = "p-value",
 		"Significant"         = "Significant",
-		"Selected"            = "Selected")
+		"Improved"            = "BICc\nImproved",
+		"BestModel"           = "Best\nModel")
 
 	# Process each column name
 	col_names <- names(df)
@@ -657,6 +658,105 @@ utils::globalVariables(c("."))
 	rownames(df) <- NULL
 
 	return(df)
+}
+
+
+################################################################################
+# Helpers for tableModelBuilding()
+################################################################################
+
+#' Compact string describing the covariate model of a single built model
+#'
+#' Turns the logical `individualModels` matrix returned by
+#' [lixoftConnectors::getModelBuildingResults()] into a human readable string
+#' such as `"Cl~lw70, V~tSex"`.
+#'
+#' @param im data.frame of logical values (rows = parameters, cols = covariates).
+#' @return A single character string; `"(no covariates)"` when no covariate is used.
+#' @keywords internal
+.covStructureString <- function(im) {
+	parts <- character(0)
+	for (p in rownames(im)) {
+		covs <- colnames(im)[which(as.logical(unlist(im[p, ])))]
+		if (length(covs)) {
+			parts <- c(parts, paste0(p, "~", paste(covs, collapse = "+")))
+		}
+	}
+	if (!length(parts)) return("(no covariates)")
+	paste(parts, collapse = ", ")
+}
+
+#' Canonical key for a covariate-model matrix
+#'
+#' Flattens the logical `individualModels` matrix into a fixed-order string so
+#' two models can be compared for structural equality (used to find the nested
+#' parent of a tested model).
+#'
+#' @param im data.frame of logical values (rows = parameters, cols = covariates).
+#' @return A character key.
+#' @keywords internal
+.imKey <- function(im) {
+	im <- im[order(rownames(im)), order(colnames(im)), drop = FALSE]
+	paste(as.integer(as.matrix(im)), collapse = "")
+}
+
+#' Degrees of freedom added by a covariate relationship
+#'
+#' Continuous covariates add one coefficient (df = 1); categorical covariates add
+#' one coefficient per non-reference category (df = number of categories - 1).
+#'
+#' @param covName Covariate name (as used in the individual model).
+#' @param covInfo Result of [lixoftConnectors::getCovariateInformation()].
+#' @return Integer degrees of freedom, or `1L` when the covariate type cannot be
+#'   determined.
+#' @keywords internal
+.covDf <- function(covName, covInfo) {
+	if (is.null(covInfo) || is.null(covInfo$covariate)) return(1L)
+	info <- covInfo$covariate
+	idx  <- match(covName, info$name)
+	if (is.na(idx)) return(1L)
+	type <- info$type[idx]
+	if (!is.null(type) && grepl("categorical", type, ignore.case = TRUE)) {
+		# number of categories - 1
+		modalities <- if (!is.null(covInfo$modalityNumber)) covInfo$modalityNumber[idx] else NA
+		if (is.na(modalities)) {
+			# fall back to counting distinct observed values
+			vals <- info[[covName]]
+			modalities <- if (!is.null(vals)) length(unique(stats::na.omit(vals))) else 2L
+		}
+		return(max(1L, as.integer(modalities) - 1L))
+	}
+	1L
+}
+
+#' Likelihood-ratio-test p-value between two nested models
+#'
+#' Computes the LRT p-value for the single relationship that differs between a
+#' *reduced* model (fewer parameters, the null hypothesis) and a *full* model
+#' (more parameters). The LRT statistic is the difference in -2*log-likelihood:
+#' \deqn{\Delta(-2LL) = (-2LL_{reduced}) - (-2LL_{full})}
+#' compared to a chi-squared distribution with `dof` degrees of freedom (the
+#' number of coefficients the relationship contributes).
+#'
+#' The caller identifies which model is reduced/full from the step direction
+#' (forward: reference = reduced, tested = full; backward: tested = reduced,
+#' reference = full), **not** from the likelihood values. With exact maximum
+#' likelihood the full model has the smaller -2LL, but MonolixSuite estimates the
+#' likelihood stochastically (SAEM) and, when linearization is used, only
+#' approximately, so the fuller model can occasionally have a *larger* -2LL. In
+#' that case the statistic is clamped to 0 (no evidence the extra parameter
+#' improves the fit), giving a p-value of 1.
+#'
+#' @param llReduced Numeric -2*log-likelihood (OFV) of the reduced model.
+#' @param llFull Numeric -2*log-likelihood (OFV) of the full model.
+#' @param dof Integer degrees of freedom (see [.covDf()]).
+#' @return The upper-tail chi-squared p-value, or `NA_real_` if any input is
+#'   missing.
+#' @keywords internal
+.lrtPValue <- function(llReduced, llFull, dof) {
+	if (is.na(llReduced) || is.na(llFull) || is.na(dof)) return(NA_real_)
+	lrtStat <- max(0, llReduced - llFull)   # clamp: fuller model never fits worse under H1
+	stats::pchisq(lrtStat, df = dof, lower.tail = FALSE)
 }
 
 
