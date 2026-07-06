@@ -1,0 +1,4 @@
+parameter,statistics(sa),p-value(sa)
+beta_ka_TREAT_B,1.18913,0.234
+beta_V_TREAT_B,9.8366,<2.2e-16
+beta_Cl_TREAT_B,5.07949,3.78e-07

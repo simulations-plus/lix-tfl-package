@@ -1,0 +1,3 @@
+parameter,covariate,statistics,p-value,test
+V,beta_V_wt,7.7301,1.26619e-08,t-Test
+Cl,beta_Cl_lw70,2.34241,0.0259869,t-Test
