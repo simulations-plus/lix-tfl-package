@@ -911,7 +911,12 @@ style_tfl <- function(data.flex,
 		RSE.flag <- length(RSE.cols) > 0
 	}
 
-	flextable::set_flextable_defaults(na_str = "NA")
+	# Display rule for missing values (applies to every table rendered via style_tfl):
+	# NaN (e.g. a failed computation): shown as "NaN"
+	# any other NA (a value that does not apply e.g missing description, CV for a
+	# FEs, IIV/IOV for params w/o variability, ...) is left blank.
+	# Works for both numeric and character columns.
+	flextable::set_flextable_defaults(na_str = "", nan_str = "NaN")
 
 	# Save attributes before reordering (bc subsetting can lose attributes)
 	saved_attrs <- attributes(data.flex)
@@ -942,12 +947,10 @@ style_tfl <- function(data.flex,
 
 	#-----------------------------------------------------------------------------
 	# [Code Chunk of Section Headers]
-	# For parameter tables (population or NCA), add section header rows to
-	# visually separate different sections:
+	# For param. tables (pop or nca), add section header rows to separate different sections:
 	# - Population: Fixed effects, Random effects, Correlations, Residual error
-	# - NCA: Summary Statistics, Individual data (Parameters/Concentrations/Ratios)
+	# - NCA: Summary Statistics, Individual data (Params/Concs/Ratios)
 	# - Model building: Base Model / Forward Inclusion / Backward Elimination,
-	#   a new header at every change of the `Step` column (phases can alternate).
 	# Wide format (pop only) uses a split header at top for FE/RE.
 	#-----------------------------------------------------------------------------
 	# Save table_type before calling .add_section_headers (it may be lost during processing)
