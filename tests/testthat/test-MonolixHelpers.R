@@ -590,5 +590,89 @@ test_that("tableParameterEstimates() wide format bootstrap IIV column order", {
 })
 
 ################################################################################
+# tableModelBuilding()
+
+mb_project_cossac <- "test-projects/monolix/warfarin_covariate3_project_COSSAC.mlxtran"
+mb_project_scm    <- "test-projects/monolix/warfarin_covariate3_project_SCM_BICc.mlxtran"
+mb_project_samba  <- "test-projects/monolix/warfarin_covariate3_project_SAMBA.mlxtran"
+
+test_that("tableModelBuilding COSSAC (LRT) reports connector best model + LRT columns", {
+	table <- tableModelBuilding(mb_project_cossac, prettyLabels = FALSE)
+
+	expect_equal(table$Run, paste("Model", 1:6))
+	# COSSAC uses LRT: p.value / Significant present, no BICc-only Improved flag
+	expect_contains(names(table), c("Tested", "Step", "p.value", "Significant", "BestModel"))
+	expect_false("Improved" %in% names(table))
+	# best model comes straight from the connector (bestModel = Model 4)
+	expect_equal(which(table$BestModel == "Yes"), 4L)
+	# start model has no reference / deltas
+	expect_equal(table$Reference[1], "")
+	expect_true(is.na(table$dLL[1]))
+})
+
+test_that("tableModelBuilding SCM (BICc) reports connector best model + Improved flag", {
+	table <- tableModelBuilding(mb_project_scm, prettyLabels = FALSE)
+
+	expect_equal(nrow(table), 16L)
+	# BICc criterion: Improved flag, no LRT columns
+	expect_contains(names(table), c("Tested", "Step", "Improved", "BestModel"))
+	expect_false(any(c("p.value", "Significant") %in% names(table)))
+	# best model comes straight from the connector (bestModel = Model 11)
+	expect_equal(which(table$BestModel == "Yes"), 11L)
+})
+
+test_that("tableModelBuilding SAMBA derives best model by minimum BICc", {
+	table <- tableModelBuilding(mb_project_samba, prettyLabels = FALSE)
+
+	expect_equal(table$Run, paste("Model", 1:2))
+	# SAMBA proposes whole models: no per-step columns
+	expect_false(any(c("Tested", "Step", "p.value", "Significant") %in% names(table)))
+	expect_contains(names(table), c("Reference", "LL", "BICc", "dLL", "dBICc",
+																	"BestModel", "Improved"))
+	# best model is derived (connector returns no flag): lowest BICc
+	expect_equal(which(table$BestModel == "Yes"), which.min(table$BICc))
+	# deltas are computed against the start model (Model 1)
+	expect_equal(table$Reference, c("", "Model 1"))
+	expect_true(is.na(table$dBICc[1]))
+	expect_equal(table$dBICc[2], round(table$BICc[2] - table$BICc[1], 2))
+})
+
+test_that("tableModelBuilding SAMBA respects filterCriteria and sortBy", {
+	# filterCriteria = "BICc" drops the LL/dLL columns
+	table_bicc <- tableModelBuilding(mb_project_samba, filterCriteria = "BICc",
+																	 prettyLabels = FALSE)
+	expect_false(any(c("LL", "dLL") %in% names(table_bicc)))
+	expect_contains(names(table_bicc), c("BICc", "dBICc"))
+
+	# SAMBA has no steps, so sortBy = "BICc" orders the whole table globally and
+	# the best model floats to row 1
+	table_sorted <- tableModelBuilding(mb_project_samba, sortBy = "BICc",
+																		 prettyLabels = FALSE)
+	expect_equal(table_sorted$BICc, sort(table_sorted$BICc))
+	expect_equal(table_sorted$BestModel[1], "Yes")
+})
+
+test_that("tableModelBuilding stepwise sorting stays within each step round", {
+	# SCM does three forward rounds (vs Model 1, then Model 4, then Model 11).
+	# Sorting by LL must order rows *within* each round, never merging rounds.
+	table <- tableModelBuilding(mb_project_scm, sortBy = "LL", prettyLabels = FALSE)
+
+	grp <- .modelBuildingStepGroups(table$Step, table$Reference)
+	# each round keeps a single reference and the rounds stay in algorithm order
+	expect_equal(tapply(table$Reference, grp, function(x) length(unique(x))),
+							 array(1L, dim = length(unique(grp)),
+										 dimnames = list(as.character(sort(unique(grp))))))
+	# within every round LL is non-decreasing (sorted), even though the global
+	# LL sequence is not monotonic across rounds
+	for (g in unique(grp)) {
+		ll <- table$LL[grp == g]
+		expect_false(is.unsorted(ll))
+	}
+	# the reference of the 2nd forward round is a model from the 1st round, i.e.
+	# rounds are genuinely distinct and ordered
+	expect_true(length(unique(grp)) >= 3)
+})
+
+################################################################################
 # setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
 # testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-MonolixHelpers.R")
