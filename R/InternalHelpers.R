@@ -759,6 +759,32 @@ utils::globalVariables(c("."))
 	stats::pchisq(lrtStat, df = dof, lower.tail = FALSE)
 }
 
+#' Contiguous step-group ids for a stepwise model-building history
+#'
+#' Stepwise model building (COSSAC/SCM) proceeds in *rounds*: within a round the
+#' algorithm tests candidate relationships against the same current-best model
+#' (the `Reference`) in the same direction, then keeps the winner and starts the
+#' next round against it. A round is a maximal run of consecutive models (in
+#' algorithm order) sharing the same `(step, reference)` pair, which separates a
+#' 2nd forward round from the 1st and backward phases from forward ones.
+#'
+#' The returned id increments at each round boundary, so callers can sort *within*
+#' a round (`order(group, criterion)`) while the rounds keep their algorithm order.
+#'
+#' @param step Character vector of step labels (e.g. "Base"/"Forward"/"Backward").
+#' @param reference Character vector of reference-model labels, same length.
+#' @return Integer vector of 1-based contiguous group ids (`integer(0)` if empty).
+#' @keywords internal
+.modelBuildingStepGroups <- function(step, reference) {
+	n <- length(step)
+	if (n == 0) return(integer(0))
+	step <- as.character(step)
+	reference <- as.character(reference)
+	# new group at row 1 and wherever step or reference changes vs the previous row
+	changed <- c(TRUE, step[-1] != step[-n] | reference[-1] != reference[-n])
+	cumsum(changed)
+}
+
 
 ################################################################################
 #' .applyCustomAliasesUnits
