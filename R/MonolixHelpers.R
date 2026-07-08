@@ -247,27 +247,45 @@ tableRunHistory <- function(sycomoreProjectFile,
 #'
 #' @description
 #' Creates a summary table of an automatic covariate/statistical model building
-#' run (COSSAC, SCM, or SAMBA) for a Monolix project. Each row is one model that
-#' the algorithm evaluated, with its covariate structure, objective function value
+#' run (COSSAC, SCM, SAMBA) for a Monolix project. Each row is one model run that
+#' was evaluated, with its covariate structure, objective function value
 #' (OFV, i.e. -2*log-likelihood), BICc, and the change relative to the nested
-#' parent model. For COSSAC runs the tested parameter-covariate relationship, the
-#' step direction (forward addition / backward removal) and the selected best
-#' model are also reported.
+#' parent model. For COSSAC runs tested param.-cov. relationship,
+#' step direction (forward inclusion / backward elimination) and the selected best
+#' model are reported.
 #'
 #' @details
 #' The results are read directly from the loaded Monolix project via
-#' [lixoftConnectors::getModelBuildingResults()], so the location of the
-#' `ModelBuilding` folder on disk is irrelevant: the base project is the single
-#' source of truth. Model building must already have been run for the project.
+#' [lixoftConnectors::getModelBuildingResults()].
+#' Model building must already have been run for the project.
 #'
-#' **Reference model and deltas.** For each tested model the *nested parent* is
-#' the model whose covariate structure is identical except for the single tested
-#' relationship. `dOFV`/`dBICc` are computed against that parent. In the first
-#' forward round the parent is the model building start model, which already
-#' reflects any covariate relationships defined in the base project.
+#' **Strategy (auto-detected).** The strategy is read from
+#' [lixoftConnectors::getModelBuildingSettings()]. COSSAC and SCM build the model
+#' one relationship at a time and the connector returns the tested relationship,
+#' the step direction and the selected `bestModel`. SAMBA (`"covSamba"`) instead
+#' proposes whole candidate covariate models per iteration, it has no single
+#' nested parent and the connector returns neither `tested` nor `bestModel` (see
+#' SAMBA note below).
 #'
-#' **Selection criterion (auto-detected).** The columns adapt to the criterion
-#' used for the run, read from [lixoftConnectors::getModelBuildingSettings()]:
+#' **Reference model and deltas.** For COSSAC/SCM each tested model's *nested
+#' parent* is the model whose covariate structure is identical except for the
+#' single tested relationship. `dOFV`/`dBICc` are computed against that parent. In
+#' the first forward round the parent is the model building start model, which
+#' already reflects any covariate relationships defined in the base project. For
+#' SAMBA the deltas are computed against the start model (`Model 1`) instead.
+#'
+#' **SAMBA.** Covariate model building with SAMBA always selects by BICc. The
+#' connector reports `criterion = "LRT"`, but that setting only governs
+#' *statistical* model building (not covered here), so it is ignored for
+#' `"covSamba"`. Because the connector does not flag a best model, the best model
+#' is derived as the one with the lowest BICc (`BestModel = "Yes"`); when SAMBA
+#' finds no improvement this is the start model. An `Improved` flag reports
+#' whether BICc decreased vs the start model. No `Tested`, `Step`, `p.value` or
+#' `Significant` columns are produced (the candidates are not nested).
+#'
+#' **Selection criterion (auto-detected, COSSAC/SCM).** The columns adapt to the
+#' criterion used for the run, read from
+#' [lixoftConnectors::getModelBuildingSettings()]:
 #'   - **LRT**: a likelihood-ratio-test `p.value` and a `Significant` flag are
 #'     added. The p-value is *computed by this function* (see [.lrtPValue()]) from
 #'     the difference in -2*log-likelihood between the reduced and full model,
@@ -301,10 +319,13 @@ tableRunHistory <- function(sycomoreProjectFile,
 #'   - `"index"` (default): keep the algorithm's model order
 #'   - `"BICc"`: sort by BICc (lowest first = best model)
 #'   - `"LL"`: sort by OFV/-2LL (lowest first)
-#'   - `"pValue"`: sort by LRT p-value *within* each step group (Base, then
-#'     Forward, then Backward), smallest p-value first. Forward and backward are
-#'     separate phases with different thresholds, so they are not mixed into a
-#'     single global p-value ordering. LRT criterion only.
+#'   - `"pValue"`: sort by LRT p-value, smallest first (LRT criterion only)
+#'
+#'   For stepwise strategies (COSSAC/SCM) sorting stays *within* each step group
+#'   (a round: candidates tested in the same direction against the same reference
+#'   model), so the forward and backward phases - and repeated rounds within a
+#'   phase (e.g. a 2nd forward inclusion) - are never mixed; the rounds keep their
+#'   algorithm order. SAMBA has no steps and is sorted globally.
 #' @param roundDigits Integer specifying the number of digits for rounding
 #'   numeric values. Default is `2`.
 #' @param roundMethod Character string specifying the rounding method:
@@ -316,24 +337,27 @@ tableRunHistory <- function(sycomoreProjectFile,
 #'   without information for the chosen strategy/criterion are dropped):
 #'   \itemize{
 #'     \item \code{Run}: model label (e.g. "Model 1")
-#'     \item \code{Reference}: label of the nested parent model that \code{dLL}/
-#'       \code{dBICc}/\code{p.value} are computed against (empty for the start model)
-#'     \item \code{Tested}: parameter-covariate relationship tested (COSSAC)
+#'     \item \code{Reference}: label of the reference model that \code{dLL}/
+#'       \code{dBICc}/\code{p.value} are computed against (the nested parent for
+#'       COSSAC/SCM, the start model for SAMBA; empty for the start model)
+#'     \item \code{Tested}: parameter-covariate relationship tested (COSSAC/SCM)
 #'     \item \code{Description}: per-model description (only if \code{customDescriptions}
 #'       is supplied)
 #'     \item \code{Step}: "Base" (start model), "Forward" (add), or "Backward"
-#'       (remove) (COSSAC)
+#'       (remove) (COSSAC/SCM)
 #'     \item \code{CovariateModel}: compact covariate structure string;
 #'       \code{"(no covariates)"} for a covariate-free model
 #'     \item \code{LL}: OFV (-2*log-likelihood)
 #'     \item \code{BICc}: modified BIC
-#'     \item \code{dLL}, \code{dBICc}: change vs the nested parent (\code{Reference})
+#'     \item \code{dLL}, \code{dBICc}: change vs the reference model (\code{Reference})
 #'     \item \code{p.value}, \code{Significant}: LRT p-value and direction-aware
-#'       significance flag (LRT criterion only). The reduced/full roles are set by
-#'       the step direction (see [.lrtPValue()]), so \code{p.value} is meaningful
-#'       for both forward and backward steps.
-#'     \item \code{Improved}: whether BICc decreased vs the reference (BICc criterion only)
-#'     \item \code{BestModel}: "Yes" for the best model chosen by the algorithm (COSSAC)
+#'       significance flag (LRT criterion, COSSAC/SCM only). The reduced/full roles
+#'       are set by the step direction (see [.lrtPValue()]), so \code{p.value} is
+#'       meaningful for both forward and backward steps.
+#'     \item \code{Improved}: whether BICc decreased vs the reference (BICc criterion
+#'       and SAMBA)
+#'     \item \code{BestModel}: "Yes" for the best model. For COSSAC/SCM this is the
+#'       model the connector flags; for SAMBA it is derived as the lowest-BICc model.
 #'   }
 #'
 #' @export
@@ -372,105 +396,140 @@ tableModelBuilding <- function(projectFile        = NULL,
 	# COSSAC provides 'tested' and 'bestModel'; SAMBA may not.
 	hasTested <- any(vapply(res, function(m) !is.null(m$tested), logical(1)))
 
-	# Selection criterion + thresholds drive which decision columns are shown.
+	# Strategy + selection criterion drive which decision columns are shown.
 	settings  <- suppressMessages(lixoftConnectors::getModelBuildingSettings())
+	strategy  <- if (!is.null(settings$strategy)) settings$strategy else ""
+	isSamba   <- identical(strategy, "covSamba")
+	# Covariate model building with SAMBA always selects by BICc. The connector
+	# reports criterion = "LRT", but that setting only applies to *statistical*
+	# model building (not covered here), so it is ignored for covSamba.
 	criterion <- if (!is.null(settings$criterion)) toupper(settings$criterion) else "LRT"
-	useLRT    <- criterion == "LRT"
+	useLRT    <- criterion == "LRT" && !isSamba
 	lrtThr    <- if (!is.null(settings$threshold$lrt)) settings$threshold$lrt else c(0.05, 0.01)
 	covInfo   <- if (useLRT) suppressMessages(lixoftConnectors::getCovariateInformation()) else NULL
 
-	# Structural key per model, to locate nested parents
-	keys <- vapply(res, function(m) .imKey(m$individualModels), character(1))
+	if (isSamba) {
+		# SAMBA proposes whole candidate covariate models rather than toggling one
+		# relationship at a time, so there is no nested parent to test against and
+		# the connector returns neither `tested` nor `bestModel`. The best model is
+		# derived here as the one with the lowest BICc. Deltas are reported against
+		# the start model (Model 1), which reflects the base project's covariates.
+		bestIdx   <- which.min(vapply(res, function(m) m$BICc, numeric(1)))
+		llStart   <- res[[1]]$LL
+		bICcStart <- res[[1]]$BICc
 
-	rows <- lapply(seq_along(res), function(i) {
-		m  <- res[[i]]
-		im <- m$individualModels
+		rows <- lapply(seq_along(res), function(i) {
+			m <- res[[i]]
+			data.frame(
+				Run            = paste("Model", i),
+				Reference      = if (i == 1) "" else "Model 1",
+				CovariateModel = .covStructureString(m$individualModels),
+				LL             = m$LL,
+				BICc           = m$BICc,
+				dLL            = if (i == 1) NA_real_ else m$LL   - llStart,
+				dBICc          = if (i == 1) NA_real_ else m$BICc - bICcStart,
+				BestModel      = if (i == bestIdx) "Yes" else "",
+				stringsAsFactors = FALSE
+			)
+		})
+		df <- do.call(rbind, rows)
 
-		tested   <- m$tested
-		hasStep  <- !is.null(tested) && length(tested) == 2 && all(nzchar(tested))
-		param    <- if (hasStep) tested[1] else NA_character_
-		cov      <- if (hasStep) tested[2] else NA_character_
-
-		# nested parent = same structure with the tested cell toggled
-		dLL <- NA_real_; dBICc <- NA_real_; step <- if (hasStep) NA_character_ else "Base"
-		reference <- ""
-		pValue <- NA_real_
-		if (hasStep) {
-			added <- isTRUE(as.logical(im[param, cov]))
-			step  <- if (added) "Forward" else "Backward"
-			imParent <- im
-			imParent[param, cov] <- !added
-			j <- match(.imKey(imParent), keys)
-			if (!is.na(j)) {
-				reference <- paste("Model", j)
-				dLL   <- m$LL   - res[[j]]$LL
-				dBICc <- m$BICc - res[[j]]$BICc
-				if (useLRT) {
-					# Step direction sets the reduced/full roles (not the LL values):
-					# forward -> this model is full, reference is reduced; backward -> vice versa.
-					if (added) {
-						llReduced <- res[[j]]$LL; llFull <- m$LL
-					} else {
-						llReduced <- m$LL;        llFull <- res[[j]]$LL
-					}
-					pValue <- .lrtPValue(llReduced, llFull, .covDf(cov, covInfo))
-				}
-			}
-		}
-
-		data.frame(
-			Run            = paste("Model", i),
-			Reference      = reference,
-			Tested         = if (hasStep) paste0(cov, " on ", param) else "",
-			Step           = step,
-			CovariateModel = .covStructureString(im),
-			LL             = m$LL,
-			BICc           = m$BICc,
-			dLL            = dLL,
-			dBICc          = dBICc,
-			p.value        = pValue,
-			BestModel      = if (isTRUE(m$bestModel)) "Yes" else "",
-			stringsAsFactors = FALSE
-		)
-	})
-
-	df <- do.call(rbind, rows)
-
-	# Decision column, driven by the selection criterion
-	if (useLRT) {
-		# direction-aware LRT threshold: forward vs backward
-		thr <- ifelse(df$Step == "Forward",  lrtThr[1],
-					 ifelse(df$Step == "Backward", lrtThr[2], NA_real_))
-		df$Significant <- ifelse(is.na(df$p.value) | is.na(thr), "",
-														 ifelse(df$p.value < thr, "Yes", "No"))
-	} else {
-		# BICc criterion: no statistical test, just whether BICc improved
-		df$p.value  <- NULL
+		# BICc decision flag: whether BICc improved vs the start model
 		df$Improved <- ifelse(is.na(df$dBICc), "",
 													ifelse(df$dBICc < 0, "Yes", "No"))
-	}
 
-	# Drop columns that carry no information for this strategy
-	if (!hasTested) {
-		df <- df[, setdiff(names(df), c("Reference", "Tested", "Step", "BestModel"))]
+	} else {
+		# Structural key per model, to locate nested parents
+		keys <- vapply(res, function(m) .imKey(m$individualModels), character(1))
+
+		rows <- lapply(seq_along(res), function(i) {
+			m  <- res[[i]]
+			im <- m$individualModels
+
+			tested   <- m$tested
+			hasStep  <- !is.null(tested) && length(tested) == 2 && all(nzchar(tested))
+			param    <- if (hasStep) tested[1] else NA_character_
+			cov      <- if (hasStep) tested[2] else NA_character_
+
+			# nested parent = same structure with the tested cell toggled
+			dLL <- NA_real_; dBICc <- NA_real_; step <- if (hasStep) NA_character_ else "Base"
+			reference <- ""
+			pValue <- NA_real_
+			if (hasStep) {
+				added <- isTRUE(as.logical(im[param, cov]))
+				step  <- if (added) "Forward" else "Backward"
+				imParent <- im
+				imParent[param, cov] <- !added
+				j <- match(.imKey(imParent), keys)
+				if (!is.na(j)) {
+					reference <- paste("Model", j)
+					dLL   <- m$LL   - res[[j]]$LL
+					dBICc <- m$BICc - res[[j]]$BICc
+					if (useLRT) {
+						# Step direction sets the reduced/full roles (not the LL values):
+						# forward -> this model is full, reference is reduced; backward -> vice versa.
+						if (added) {
+							llReduced <- res[[j]]$LL; llFull <- m$LL
+						} else {
+							llReduced <- m$LL;        llFull <- res[[j]]$LL
+						}
+						pValue <- .lrtPValue(llReduced, llFull, .covDf(cov, covInfo))
+					}
+				}
+			}
+
+			data.frame(
+				Run            = paste("Model", i),
+				Reference      = reference,
+				Tested         = if (hasStep) paste0(cov, " on ", param) else "",
+				Step           = step,
+				CovariateModel = .covStructureString(im),
+				LL             = m$LL,
+				BICc           = m$BICc,
+				dLL            = dLL,
+				dBICc          = dBICc,
+				p.value        = pValue,
+				BestModel      = if (isTRUE(m$bestModel)) "Yes" else "",
+				stringsAsFactors = FALSE
+			)
+		})
+
+		df <- do.call(rbind, rows)
+
+		# Decision column, driven by the selection criterion
+		if (useLRT) {
+			# direction-aware LRT threshold: forward vs backward
+			thr <- ifelse(df$Step == "Forward",  lrtThr[1],
+						 ifelse(df$Step == "Backward", lrtThr[2], NA_real_))
+			df$Significant <- ifelse(is.na(df$p.value) | is.na(thr), "",
+															 ifelse(df$p.value < thr, "Yes", "No"))
+		} else {
+			# BICc criterion: no statistical test, just whether BICc improved
+			df$p.value  <- NULL
+			df$Improved <- ifelse(is.na(df$dBICc), "",
+														ifelse(df$dBICc < 0, "Yes", "No"))
+		}
+
+		# Drop columns that carry no information for this strategy
+		if (!hasTested) {
+			df <- df[, setdiff(names(df), c("Reference", "Tested", "Step", "BestModel"))]
+		}
 	}
 	df <- df[, vapply(df, function(x) any(nzchar(as.character(x)) & !is.na(x)), logical(1)) |
 					 	names(df) %in% c("LL", "BICc", "dLL", "dBICc"), drop = FALSE]
 
-	# Sorting (before criteria filtering, so sort columns are still present)
-	if (sortBy == "BICc") {
-		df <- df[order(df$BICc), , drop = FALSE]
-	} else if (sortBy == "LL") {
-		df <- df[order(df$LL), , drop = FALSE]
-	} else if (sortBy == "pValue" && "p.value" %in% names(df)) {
-		# Forward and backward are separate phases with different thresholds, so
-		# sort by p-value *within* each step group (Base, Forward, Backward) rather
-		# than across the whole table.
+	# Sorting (before criteria filtering, so sort columns are still present).
+	# For stepwise strategies (COSSAC/SCM) the sort stays *within* each step group
+	# (a round: same direction against the same reference model), so forward and
+	# backward phases - and repeated rounds within a phase - are never mixed while
+	# the rounds keep their algorithm order. SAMBA has no steps and sorts globally.
+	sortCol <- switch(sortBy, BICc = "BICc", LL = "LL", pValue = "p.value", NULL)
+	if (!is.null(sortCol) && sortCol %in% names(df)) {
 		if ("Step" %in% names(df)) {
-			stepOrder <- factor(df$Step, levels = c("Base", "Forward", "Backward"))
-			df <- df[order(stepOrder, df$p.value), , drop = FALSE]
+			grp <- .modelBuildingStepGroups(df$Step, df$Reference)
+			df  <- df[order(grp, df[[sortCol]]), , drop = FALSE]
 		} else {
-			df <- df[order(df$p.value), , drop = FALSE]
+			df  <- df[order(df[[sortCol]]), , drop = FALSE]
 		}
 	}
 
