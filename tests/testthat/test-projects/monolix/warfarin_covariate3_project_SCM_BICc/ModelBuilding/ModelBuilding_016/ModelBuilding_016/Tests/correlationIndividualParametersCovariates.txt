@@ -1,0 +1,6 @@
+parameter,covariate,statistics,p-value,test
+V,beta_V_lw70,4.74694,5.1234e-05,t-Test
+V,beta_V_tSex_F,-1.04689,0.303796,t-Test
+Cl,beta_Cl_lw70,2.37472,0.0246512,t-Test
+Cl,beta_Cl_sex_1,-10.5683,2.80207e-11,t-Test
+Cl,beta_Cl_tSex_F,-4.70647,6.18674e-05,t-Test

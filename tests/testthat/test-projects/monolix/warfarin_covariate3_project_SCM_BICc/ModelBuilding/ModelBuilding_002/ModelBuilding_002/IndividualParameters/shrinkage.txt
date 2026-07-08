@@ -1,0 +1,5 @@
+parameters,shrinkage_mode,shrinkage_mean,shrinkage_condDist
+Tlag,50.4805,47.604,-6.47653
+ka,46.0585,44.1028,5.39874
+V,4.32971,3.56074,-4.23744
+Cl,-0.616876,-0.620799,0.0457018

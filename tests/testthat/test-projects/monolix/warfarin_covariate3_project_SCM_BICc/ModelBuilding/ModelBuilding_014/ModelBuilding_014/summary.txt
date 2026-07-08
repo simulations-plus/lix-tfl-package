@@ -1,0 +1,89 @@
+********************************************************************************
+*                          ModelBuilding_014.mlxtran                           *
+*                          July 07, 2026 at 13:39:35                           *
+*                          Monolix version : 2024R1                            *
+********************************************************************************
+
+
+ESTIMATION OF THE POPULATION PARAMETERS ________________________________________
+
+Fixed Effects ----------------------------
+Tlag_pop       :                     0.771
+ka_pop         :                      1.45
+beta_ka_sex_1  :                   -0.0681
+V_pop          :                       8.2
+beta_V_lw70    :                     0.752
+beta_V_tSex_F  :                    -0.102
+Cl_pop         :                      0.13
+beta_Cl_lw70   :                     0.918
+beta_Cl_tSex_F :                     0.234
+
+Standard Deviation of the Random Effects -
+omega_Tlag     :                     0.616
+omega_ka       :                     0.928
+omega_V        :                     0.135
+omega_Cl       :                     0.259
+
+Error Model Parameters -------------------
+a              :                     0.236
+b              :                     0.053
+
+Elapsed time (seconds):      4.7
+Exploratory phase iterations:      217 (Autostop)
+Smoothing phase iterations:        117 (Autostop)
+
+ _______________________________________________________________________________
+
+
+
+ESTIMATION OF THE INDIVIDUAL PARAMETERS ________________________________________
+
+
+Estimation of the individual parameters by Conditional Distribution ------------
+                 min            Q1        median            Q3           max  shrinkage(%)
+Tlag :         0.571         0.801         0.879         0.973          2.85          52.6
+ka   :         0.306          1.97          2.15          2.34          5.38          46.2
+V    :          5.01          7.08          8.04          8.91            13          9.24
+Cl   :        0.0718         0.108         0.127         0.164         0.284         0.407
+
+Elapsed time (seconds):      1.4
+Iterations:      100 (Autostop)
+
+ -------------------------------------------------------------------------------
+
+
+Estimation of the individual parameters by Conditional Mode --------------------
+                 min            Q1        median            Q3           max  shrinkage(%)
+Tlag :         0.543         0.741         0.778         0.807          2.76          56.2
+ka   :          0.29          1.22          1.34          1.53          3.42          50.7
+V    :          5.01          7.06             8          8.78          12.9          10.7
+Cl   :        0.0721         0.108         0.127         0.164         0.286         0.401
+
+Elapsed time (seconds):    0.034
+
+ -------------------------------------------------------------------------------
+
+ _______________________________________________________________________________
+
+
+
+
+ESTIMATION OF THE LOG-LIKELIHOOD _______________________________________________
+
+                                                           (lin)
+-2 x log-likelihood                       (OFV) :         619.31
+Akaike Information Criteria               (AIC) :         649.31
+Corrected Bayesian Information Criteria  (BICc) :         683.56
+Bayesian Information Criteria             (BIC) :         671.30
+
+Elapsed time                          (seconds) :           0.01
+CPU time                              (seconds) :           0.00
+
+ _______________________________________________________________________________
+
+DATASET INFORMATION
+Number of individuals: 32
+Number of observations (obsid 1): 247
+Number of observations (obsid 2): 232
+Number of doses: 32
+

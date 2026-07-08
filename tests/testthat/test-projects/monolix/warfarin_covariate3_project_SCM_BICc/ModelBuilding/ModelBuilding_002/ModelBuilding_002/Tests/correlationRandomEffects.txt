@@ -1,0 +1,7 @@
+eta1,eta2,coeff,statistics,p-value
+eta_Tlag,eta_ka,0,-0.321711,0.749831
+eta_Tlag,eta_V,0,-1.56832,0.12696
+eta_Tlag,eta_Cl,0,-0.629383,0.533709
+eta_ka,eta_V,0,1.95052,0.0602055
+eta_ka,eta_Cl,0,-0.755598,0.455593
+eta_V,eta_Cl,0,2.20409,0.0350721
