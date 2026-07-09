@@ -55,11 +55,11 @@ test_that("tableCategoricalCovariateSummary label df", {
 
 test_that("tableContinuousCovariateSummary digits and rounding arguments", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
-	table = tableContinuousCovariateSummary(mono_project_1, digits = 3, roundingMethod = "signif")
+	table = tableContinuousCovariateSummary(mono_project_1, digits = 3, roundMethod = "signif")
 	expect_equal(dim(table), c(3,9))
 	expect_equal(table$Mean, c(50.3, 180, 93.6))
 
-	table = tableContinuousCovariateSummary(mono_project_1, digits = 1, roundingMethod = "monolix")
+	table = tableContinuousCovariateSummary(mono_project_1, digits = 1, roundMethod = "monolix")
 	expect_equal(dim(table), c(3,9))
 	expect_equal(table$Mean, c(50.3, 180.2, 93.6))
 })

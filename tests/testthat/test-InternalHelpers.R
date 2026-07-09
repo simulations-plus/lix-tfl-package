@@ -180,3 +180,23 @@ test_that("round_num keep NA/NaN as is", {
 	expect_equal(.round_num(NaN, 3, rounding_method = "signif"), NaN)
 	expect_equal(.round_num(c(1.2345, NA, 1.2, NaN, -1.2345), 2), c(1.23, NA, 1.2, NaN, -1.23))
 })
+
+test_that("modelBuildingStepGroups separates rounds by (step, reference)", {
+	# empty input
+	expect_equal(.modelBuildingStepGroups(character(0), character(0)), integer(0))
+
+	# base + two forward rounds against different references + a backward round;
+	# same direction but different reference must start a new group
+	step <- c("Base", "Forward", "Forward", "Forward", "Forward", "Backward")
+	ref  <- c("",     "Model 1", "Model 1", "Model 4", "Model 4", "Model 4")
+	expect_equal(.modelBuildingStepGroups(step, ref), c(1, 2, 2, 3, 3, 4))
+
+	# interleaved forward/backward (COSSAC-style): every row is its own round
+	step2 <- c("Base", "Backward", "Forward", "Backward")
+	ref2  <- c("", "Model 1", "Model 2", "Model 3")
+	expect_equal(.modelBuildingStepGroups(step2, ref2), c(1, 2, 3, 4))
+
+	# single group when step and reference never change
+	expect_equal(.modelBuildingStepGroups(rep("Forward", 3), rep("Model 1", 3)),
+							 c(1, 1, 1))
+})

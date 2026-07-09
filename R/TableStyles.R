@@ -258,12 +258,80 @@
 	table_type <- attr(data.flex, "table_type")
 	is_pop_table <- !is.null(table_type) && table_type == "pop"
 	is_nca_table <- !is.null(table_type) && grepl("^nca_", table_type)
+	is_mb_table  <- !is.null(table_type) && table_type == "modelBuilding"
 	table_format <- attr(data.flex, "format")
 	is_wide <- !is.null(table_format) && table_format == "wide"
 
 	# Initialize return values
 	section_header_rows <- integer(0)
 	wide_split_col <- NULL
+
+	# ============================================================================
+	# MODEL BUILDING TABLE HANDLING (sections derived from the Step column)
+	# ============================================================================
+	# Unlike pop/NCA tables (fixed set of sections in a dedicated `Section` column),
+	# a model building run alternates between forward and backward phases, so a new
+	# section header is emitted at every change of the `Step` column value. This
+	# yields, e.g., Base Model / Forward Inclusion / Backward Elimination / Forward
+	# Inclusion / ... as the algorithm switches phases.
+	if (is_mb_table && "Step" %in% colnames(data.flex)) {
+		step_labels <- c(
+			Base     = "Base Model",
+			Forward  = "Forward Inclusion",
+			Backward = "Backward Elimination"
+		)
+		step_col <- as.character(data.flex$Step)
+
+		# Convert factor columns to character to avoid issues inserting header rows
+		for (col in names(data.flex)) {
+			if (is.factor(data.flex[[col]])) {
+				data.flex[[col]] <- as.character(data.flex[[col]])
+			}
+		}
+
+		# Section label per row (fall back to the raw step value if unmapped)
+		row_labels <- ifelse(step_col %in% names(step_labels),
+												 step_labels[step_col], step_col)
+
+		# A header row at row 1 and at every change of the step block
+		insert_positions <- integer(0)
+		section_names <- character(0)
+		for (i in seq_len(nrow(data.flex))) {
+			if (i == 1 || !identical(row_labels[i], row_labels[i - 1])) {
+				insert_positions <- c(insert_positions, i)
+				section_names <- c(section_names, row_labels[i])
+			}
+		}
+
+		# Insert header rows from bottom to top so earlier positions stay valid
+		for (idx in length(insert_positions):1) {
+			pos <- insert_positions[idx]
+			header_row <- data.flex[pos, , drop = FALSE]
+			header_row[1, ] <- ""
+			header_row[1, 1] <- section_names[idx]
+			if (pos == 1) {
+				data.flex <- rbind(header_row, data.flex)
+			} else {
+				data.flex <- rbind(
+					data.flex[1:(pos - 1), , drop = FALSE],
+					header_row,
+					data.flex[pos:nrow(data.flex), , drop = FALSE]
+				)
+			}
+			section_header_rows <- c(pos + (idx - 1), section_header_rows)
+		}
+		rownames(data.flex) <- NULL
+
+		# Consume the Step column: its information now lives in the section headers
+		data.flex$Step <- NULL
+
+		return(list(
+			data.flex           = data.flex,
+			section_header_rows = section_header_rows,
+			wide_split_col      = wide_split_col,
+			is_wide             = FALSE
+		))
+	}
 
 	# If not a pop or nca table, or no Section column, return unchanged
 	if ((!is_pop_table && !is_nca_table) || !"Section" %in% colnames(data.flex)) {
@@ -607,9 +675,22 @@
 		}
 	}
 	# -------------------------------------------------------------------------
-	# Project source footnote
+	# Source footnotes (project + R script).
+	# Both lines are emitted as a single footer entry joined by "\n" so that
+	# they render as adjacent lines inside one paragraph - no blank/extra
+	# spacing between them, even when flextable adds inter-paragraph margins.
+	# - project_source: the Monolix/PKanalix project the table is based on.
+	# - r_source: the .R/.Rmd/.qmd script that generated the data frame
+	#   (captured by helpers via .getRScriptPath() at table-creation time).
+	source_lines <- character(0)
 	if (!is.null(attrs$project_source)) {
-		footnotes <- c(footnotes, paste0("Source: ", attrs$project_source))
+		source_lines <- c(source_lines, paste0("Project source: ", attrs$project_source))
+	}
+	if (!is.null(attrs$r_source)) {
+		source_lines <- c(source_lines, paste0("Script source: ", attrs$r_source))
+	}
+	if (length(source_lines) > 0) {
+		footnotes <- c(footnotes, paste(source_lines, collapse = "\n"))
 	}
 	# -------------------------------------------------------------------------
 	# Future: Add more auto-footnote detection here
@@ -678,14 +759,14 @@
 #' \dontrun{
 #' # Basic usage
 #' df <- data.frame(Parameter = c("Cl", "V"), Estimate = c(1.5, 20.3), RSE = c(45, 120))
-#' print_table_flex(df, color = c("RSE"))
+#' style_tfl(df, color = c("RSE"))
 #'
 #' # Population table with section headers
-#' pop_table <- tableParameterEstimates(use_wide_format = TRUE)
-#' print_table_flex(pop_table, color = c("RSE"), theme_fn = theme_booktabs)
+#' pop_table <- tableParameterEstimates(useWideFormat = TRUE)
+#' style_tfl(pop_table, color = c("RSE"), theme_fn = theme_booktabs)
 #'
 #' # With grouping columns and custom headers
-#' print_table_flex(df,
+#' style_tfl(df,
 #'                  grouping.columns = c("Parameter"),
 #'                  header_level1 = "Population PK Parameters",
 #'                  color = c("RSE"))
@@ -708,7 +789,7 @@ style_tfl <- function(data.flex,
 	##############################################################################
 	# 0. Check required packages
 	if (!requireNamespace("flextable", quietly = TRUE)) {
-		stop("Package 'flextable' is required for print_table_flex(). ",
+		stop("Package 'flextable' is required for style_tfl(). ",
 				 "Install it with: install.packages('flextable')", call. = FALSE)
 	}
 	#-----------------------------------------------------------------------------
@@ -830,7 +911,12 @@ style_tfl <- function(data.flex,
 		RSE.flag <- length(RSE.cols) > 0
 	}
 
-	flextable::set_flextable_defaults(na_str = "NA")
+	# Display rule for missing values (applies to every table rendered via style_tfl):
+	# NaN (e.g. a failed computation): shown as "NaN"
+	# any other NA (a value that does not apply e.g missing description, CV for a
+	# FEs, IIV/IOV for params w/o variability, ...) is left blank.
+	# Works for both numeric and character columns.
+	flextable::set_flextable_defaults(na_str = "", nan_str = "NaN")
 
 	# Save attributes before reordering (bc subsetting can lose attributes)
 	saved_attrs <- attributes(data.flex)
@@ -861,10 +947,10 @@ style_tfl <- function(data.flex,
 
 	#-----------------------------------------------------------------------------
 	# [Code Chunk of Section Headers]
-	# For parameter tables (population or NCA), add section header rows to
-	# visually separate different sections:
+	# For param. tables (pop or nca), add section header rows to separate different sections:
 	# - Population: Fixed effects, Random effects, Correlations, Residual error
-	# - NCA: Summary Statistics, Individual data (Parameters/Concentrations/Ratios)
+	# - NCA: Summary Statistics, Individual data (Params/Concs/Ratios)
+	# - Model building: Base Model / Forward Inclusion / Backward Elimination,
 	# Wide format (pop only) uses a split header at top for FE/RE.
 	#-----------------------------------------------------------------------------
 	# Save table_type before calling .add_section_headers (it may be lost during processing)

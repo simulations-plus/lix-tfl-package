@@ -2,29 +2,92 @@
 % Please edit documentation in R/MonolixHelpers.R
 \name{tableRunHistory}
 \alias{tableRunHistory}
-\title{Created a data.frame table of the Monolix run history from a Sycomore project.}
+\title{tableRunHistory}
 \usage{
 tableRunHistory(
   sycomoreProjectFile,
-  digits = 2,
-  roundingMethod = c("monolix", "signif", "none")
+  roundDigits = 2,
+  roundMethod = c("monolix", "signif", "none"),
+  sortByCriteria = c("LL", "BICc", "none"),
+  filterCriteria = c("none", "LL", "BICc"),
+  prettyLabels = TRUE
 )
 }
 \arguments{
-\item{sycomoreProjectFile}{path to Sycomore .syc project file}
+\item{sycomoreProjectFile}{Character string specifying the path to a Sycomore
+project file (.syc). This argument is mandatory.}
 
-\item{digits}{number of digits to display}
+\item{roundDigits}{Integer specifying the number of digits for rounding
+numeric values. Default is \code{2}.}
 
-\item{roundingMethod}{"monolix" to use MonolixSuite rounding where digits specifies the number of places after the decimal, or "signif"
-for digits to specify the number of significant figures}
+\item{roundMethod}{Character string specifying the rounding method:
+\itemize{
+\item \code{"monolix"} (default): Adaptive rounding where digits specifies decimal places
+\item \code{"signif"}: Standard significant figures rounding
+\item \code{"none"}: No rounding applied
+}}
+
+\item{sortByCriteria}{Character string specifying which criteria to sort by:
+\itemize{
+\item \code{"LL"} (default): Sort by log-likelihood/OFV (lowest first = best model)
+\item \code{"BICc"}: Sort by BICc (lowest first = best model)
+\item \code{"none"}: No sorting applied
+}
+
+When both linearization and importance sampling results are available,
+the function automatically detects which method to use based on the
+root/parent project.}
+
+\item{filterCriteria}{Character string specifying which criteria columns to display:
+\itemize{
+\item \code{"none"} (default): Show all criteria columns (LL and BICc)
+\item \code{"LL"}: Show only LL columns (removes BICc columns)
+\item \code{"BICc"}: Show only BICc columns (removes LL columns)
+}
+
+Note: When sorting by a criteria, \code{filterCriteria} must be \code{"none"} or
+match the sorting criteria. For example, \code{sortByCriteria = "LL"} with
+\code{filterCriteria = "BICc"} will produce an error.}
+
+\item{prettyLabels}{Logical; if \code{TRUE} (default), applies human-readable
+column labels (e.g., "LL (Imp. Sampling)" instead of "LLis").}
 }
 \value{
-data.frame, including the run name, the parent run, the rating and comments, as well as the
--2 * loglikelihood (OFV) and BICc values and the difference from the parent, if available
+A data.frame containing:
+\itemize{
+\item \code{Run}: Project/run name
+\item \code{Parent}: Parent run name (empty for root projects)
+\item \code{LLlin}, \code{LLis}: Log-likelihood from linearization/importance sampling
+\item \code{BICclin}, \code{BICcis}: BICc from linearization/importance sampling
+\item \code{dLLlin}, \code{dLLis}: Delta LL from parent
+\item \code{dBICclin}, \code{dBICcis}: Delta BICc from parent
+\item \code{Comments}: Comments from the mlxtran file
+\item \code{Rating}: User rating from Sycomore
+}
+Columns with all NA values are automatically removed.
 }
 \description{
-Created a data.frame table of the Monolix run history from a Sycomore project.
+Creates a summary table of the Monolix run history from a Sycomore project,
+including model selection criteria (OFV/LL and BICc), parent relationships,
+ratings, and comments.
+}
+\details{
+The function parses the Sycomore project file to extract the run hierarchy
+and relationships, then loads each individual Monolix project to retrieve
+the log-likelihood results and comments.
+
+Delta values (dLL, dBICc) represent the difference between each run and
+its parent run, useful for comparing nested models.
 }
 \examples{
-# TODO
+\dontrun{
+# Basic usage - sorted by LL, showing all criteria
+tableRunHistory("path/to/project.syc")
+
+# Sort by BICc, show only BICc columns
+tableRunHistory("path/to/project.syc", sortByCriteria = "BICc", filterCriteria = "BICc")
+
+# No sorting, show all criteria with 3 decimal places
+tableRunHistory("path/to/project.syc", sortByCriteria = "none", roundDigits = 3)
+}
 }

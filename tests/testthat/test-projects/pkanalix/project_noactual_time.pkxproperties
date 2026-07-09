@@ -1,0 +1,6 @@
+[SETTINGS]
+outputplot%3ACONC%3A0\xvariable=nominalTime
+
+[PROPERTIES]
+outputplot%3ACONC%3A0\legend=true
+outputplot%3ACONC%3A0\yLog=true

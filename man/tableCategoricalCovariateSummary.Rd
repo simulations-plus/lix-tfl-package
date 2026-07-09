@@ -5,24 +5,62 @@
 \title{Creates a table summarizing the frequency of categorical covariates in the dataset.}
 \usage{
 tableCategoricalCovariateSummary(
-  projectFile,
+  projectFile = NULL,
   covDisplayLabels = NULL,
   categoryDisplayLabels = NULL,
-  digits = 2,
-  roundingMethod = c("monolix", "signif", "none")
+  splitCovariates = NULL,
+  stratifyColumns = FALSE,
+  covariateLabels = NULL,
+  filterCovariates = NULL,
+  filterIds = NULL,
+  roundDigits = 2,
+  roundMethod = c("monolix", "signif", "none"),
+  mock = list(enable = FALSE, max_rows = "all")
 )
 }
 \arguments{
-\item{projectFile}{path to project file (Monolix: .mlxtran or PKanalix: .pkx) or NULL to use the currently loaded project}
+\item{projectFile}{path to project file (Monolix: .mlxtran or PKanalix: .pkx) or
+NULL to use the currently loaded project.}
 
-\item{covDisplayLabels}{(optional) data.frame with columns covariate and label for the dataset covariate name}
+\item{covDisplayLabels}{(optional) data.frame with columns covariate and label for
+the dataset covariate name.}
 
-\item{categoryDisplayLabels}{(optional) data.frame with columns covariate, category, and label for the dataset categorical covariate categories}
+\item{categoryDisplayLabels}{(optional) data.frame with columns covariate, category,
+and label for the dataset categorical covariate categories.}
 
-\item{digits}{number of digits to display}
+\item{splitCovariates}{Character vector of categorical covariates to stratify by.
+Allowed types from \code{getCovariateInformation()}: "categorical",
+"additionalstratificationcategorical", "stratificationcategorical". Default NULL.}
 
-\item{roundingMethod}{"monolix" to use MonolixSuite rounding where digits specifies the number of places after the decimal, or "signif"
-for digits to specify the number of significant figures}
+\item{stratifyColumns}{Logical; if \code{TRUE}, creates a stratified table layout with
+separate columns for each covariate combination plus an "Overall" column. If
+\code{FALSE} (default), \code{splitCovariates} appear as separate columns on the left side
+of the table. Only applicable when \code{splitCovariates} is specified.}
+
+\item{covariateLabels}{Character vector of custom labels for \code{splitCovariates},
+must be the same length as \code{splitCovariates}. If \code{NULL} (default), the original
+covariate names are used. These labels appear in column headers when
+\code{stratifyColumns = TRUE}.}
+
+\item{filterCovariates}{Named list where names are categorical covariate names
+(type "categorical", "additionalstratificationcategorical" or
+"stratificationcategorical" in \code{getCovariateInformation()}) and values are
+vectors of allowed values. Example:
+\code{list(SEX = "Male", AVISIT = c("Week 1","Week 2"))}. If \code{NULL}, no covariate
+filtering is applied.}
+
+\item{filterIds}{Character or numeric vector of subject IDs to include. If \code{NULL},
+no ID filtering is applied.}
+
+\item{roundDigits}{number of digits to display.}
+
+\item{roundMethod}{"monolix" to use MonolixSuite rounding where digits specifies
+the number of places after the decimal, or "signif" for digits to specify the
+number of significant figures.}
+
+\item{mock}{List controlling output masking. \code{mock$enable = TRUE} replaces data
+values with placeholders for documentation outputs. \code{mock$max_rows} controls
+the number of rows kept (default \code{"all"}).}
 }
 \value{
 a data.frame
@@ -31,5 +69,18 @@ a data.frame
 Creates a table summarizing the frequency of categorical covariates in the dataset.
 }
 \examples{
-# TODO
+\dontrun{
+# Overall frequency of all categorical covariates
+tableCategoricalCovariateSummary()
+
+# Stratify by one categorical covariate (long format, splitter as left column)
+tableCategoricalCovariateSummary(splitCovariates = "ATRTNCA")
+
+# Stratified-columns layout: one column per stratum + Overall
+tableCategoricalCovariateSummary(
+    splitCovariates  = "ATRTNCA",
+    stratifyColumns = TRUE,
+    covariateLabels = "Treatment"
+)
+}
 }

@@ -26,7 +26,7 @@
 #' **Design Philosophy:**
 #' - Table helpers should be presentation-agnostic (don't know about flextable)
 #' - Placeholders serve as an intermediate format between HTML and flextable
-#' - Actual rendering (as_sub(), as_sup()) happens in print_table_flex()
+#' - Actual rendering (as_sub(), as_sup()) happens in style_tfl()
 #'
 #' @param df A data frame containing an "aliases" column with HTML-formatted text.
 #'   Typically obtained from getNCAParameterStatistics()$information
@@ -86,7 +86,7 @@
 	# Case 2: Dataframe -> rename columns
 	if (is.data.frame(mapping)) {
 		if (ncol(mapping) < 2) {
-			stop("custom_aliases/custom_units dataframe must have at least 2 columns.", call. = FALSE)
+			stop("customAliases/customUnits dataframe must have at least 2 columns.", call. = FALSE)
 		}
 		# Take first two columns and rename
 		result <- mapping[, 1:2, drop = FALSE]
@@ -98,7 +98,7 @@
 	}
 
 	# Invalid input
-	stop("custom_aliases/custom_units must be a named vector or a 2-column dataframe.", call. = FALSE)
+	stop("customAliases/customUnits must be a named vector or a 2-column dataframe.", call. = FALSE)
 }
 
 ###############################################################################
@@ -267,9 +267,9 @@
 
 	df <- df %>%
 		dplyr::mutate(display_name = dplyr::case_when(
-			!is.na(aliases) & !is.na(units) & units != "" ~ paste0(aliases, "\n(", units, ")"),
+			!is.na(aliases) & !is.na(units) & units != "" ~ paste0(aliases, " (", units, ")"),
 			!is.na(aliases) ~ aliases,
-			is.na(aliases) & !is.na(units) & units != "" ~ paste0(parameter, "\n(", units, ")"),
+			is.na(aliases) & !is.na(units) & units != "" ~ paste0(parameter, " (", units, ")"),
 			TRUE ~ parameter))
 
 	df <- df %>%
@@ -857,20 +857,19 @@
 	}
 
 	if (ratio) {
-		# For ratio tables: intersection of ratio columns and data variables
-		# This excludes parameters (which only appear in ratio results, not in data)
-		ratio_result <- lixoftConnectors::getNCAIndividualRatios()
-		ratio_cols   <- setdiff(names(ratio_result), "id")
-		# Get all variables from data
-		data_vars <- lixoftConnectors::getData()$header
-		# Available splitCovariates = intersection (parameters are filtered out)
-		available_covs <- intersect(ratio_cols, data_vars)
-		context_msg    <- "splitCovariates in ratio results"
-	} else {
-		# For other tables/listings: use getData(), allow catcov or occ
 		project_data   <- lixoftConnectors::getData()
-		available_covs <- project_data$header[project_data$headerTypes %in% c("catcov", "occ")]
-		context_msg    <- "splitCovariates (catcov or occ)"
+		available_covs <- project_data$header[project_data$headerTypes %in% c("catcov", "stratcatcov")]
+		cov_info       <- lixoftConnectors::getCovariateInformation()
+		available_covs <- c(available_covs, cov_info$name[cov_info$type == "additionalstratificationcategorical"])
+		context_msg    <- "splitCovariates in ratio results (categorical or stratification categorical; occasions not allowed for ratios)"
+
+		.assertOccasionInvariantForRatio(splitCovariates, cov_info = cov_info, arg_name = "splitCovariates")
+	} else {
+		project_data   <- lixoftConnectors::getData()
+		available_covs <- project_data$header[project_data$headerTypes %in% c("catcov", "occ", "stratcatcov")]
+		cov_info       <- lixoftConnectors::getCovariateInformation()
+		available_covs <- c(available_covs, cov_info$name[cov_info$type == "additionalstratificationcategorical"])
+		context_msg    <- "splitCovariates (catcov, occ, or stratification categorical)"
 	}
 
 	# Check if provided splitCovariates are valid
@@ -895,16 +894,16 @@
 
 #' Validate Filter Arguments
 #'
-#' Internal helper to validate covariate_filter and id_filter arguments.
+#' Internal helper to validate filterCovariates and filterIds arguments.
 #' Checks that filter splitCovariates are categorical (catcov or occ) based on
 #' the resultType. Does NOT validate that filter values exist in data
 #' (that is handled by .applyFilters()).
 #'
-#' @param covariate_filter Named list where names are categorical covariate names
+#' @param filterCovariates Named list where names are categorical covariate names
 #'   and values are vectors of allowed values. Example:
 #'   `list(DOSE = c("100mg", "200mg"), SEX = "Male")`. If NULL, no covariate
 #'   filtering is applied.
-#' @param id_filter Character or numeric vector of subject IDs to include.
+#' @param filterIds Character or numeric vector of subject IDs to include.
 #'   If NULL, no ID filtering is applied.
 #' @param resultType Character string specifying the result type context.
 #'   Determines which splitCovariates are valid for filtering:
@@ -918,9 +917,9 @@
 #' @details
 #' Validation checks performed:
 #' \itemize{
-#'   \item covariate_filter must be a named list (or NULL)
+#'   \item filterCovariates must be a named list (or NULL)
 #'   \item Filter covariate names must be categorical splitCovariates (catcov or occ)
-#'   \item id_filter must be a vector (or NULL)
+#'   \item filterIds must be a vector (or NULL)
 #' }
 #'
 #' Note: This function does NOT validate that filter values exist in the data.
@@ -928,66 +927,84 @@
 #'
 #' @keywords internal
 #'
-.validateFilters <- function(covariate_filter = NULL,
-                             id_filter        = NULL,
-                             resultType       = c("nca", "ncaRatio")) {
+.validateFilters <- function(filterCovariates = NULL,
+                             filterIds        = NULL,
+                             resultType       = c("nca", "ncaRatio", "covariateSummary")) {
 
 	resultType <- match.arg(resultType)
 
 	# Early return if no filters specified
-	if (is.null(covariate_filter) && is.null(id_filter)) {
+	if (is.null(filterCovariates) && is.null(filterIds)) {
 		return(invisible(NULL))
 	}
 
 	# --------------------------------------------------------------------------
-	# Validate covariate_filter
+	# Validate filterCovariates
 	# --------------------------------------------------------------------------
-	if (!is.null(covariate_filter)) {
+	if (!is.null(filterCovariates)) {
 
 		# Must be a named list
-		if (!is.list(covariate_filter) || is.null(names(covariate_filter))) {
-			stop("covariate_filter must be a named list. Example: list(DOSE = c('100mg', '200mg'), SEX = 'Male')",
+		if (!is.list(filterCovariates) || is.null(names(filterCovariates))) {
+			stop("filterCovariates must be a named list. Example: list(DOSE = c('100mg', '200mg'), SEX = 'Male')",
 					 call. = FALSE)
 		}
 
 		# Check for empty names
-		if (any(names(covariate_filter) == "")) {
-			stop("All elements in covariate_filter must be named.", call. = FALSE)
+		if (any(names(filterCovariates) == "")) {
+			stop("All elements in filterCovariates must be named.", call. = FALSE)
 		}
 
 		# Get available categorical splitCovariates based on resultType
 		if (resultType == "ncaRatio") {
-			# For ratio tables: intersection of ratio columns and data variables
-			ratio_result       <- lixoftConnectors::getNCAIndividualRatios()
-			ratio_cols         <- setdiff(names(ratio_result), "id")
-			data_vars          <- lixoftConnectors::getData()$header
-			available_cat_covs <- intersect(ratio_cols, data_vars)
-		} else {
-			# For nca and ncaConcentration: categorical splitCovariates and occasions
 			project_data       <- lixoftConnectors::getData()
-			available_cat_covs <- project_data$header[project_data$headerTypes %in% c("catcov", "occ")]
+			available_cat_covs <- project_data$header[project_data$headerTypes %in% c("catcov", "stratcatcov")]
+			cov_info_filt      <- lixoftConnectors::getCovariateInformation()
+			available_cat_covs <- c(available_cat_covs, cov_info_filt$name[cov_info_filt$type == "additionalstratificationcategorical"])
+
+			.assertOccasionInvariantForRatio(names(filterCovariates), cov_info = cov_info_filt, arg_name = "filterCovariates")
+		} else if (resultType == "covariateSummary") {
+			cov_info_filt      <- lixoftConnectors::getCovariateInformation()
+			cat_types          <- c("categorical", "additionalstratificationcategorical", "stratificationcategorical")
+			available_cat_covs <- cov_info_filt$name[cov_info_filt$type %in% cat_types]
+			# allow occasion index columns (in $covariate but not in $name) as filter keys
+			occ_cols           <- setdiff(names(cov_info_filt$covariate), c("id", cov_info_filt$name))
+			available_cat_covs <- c(available_cat_covs, occ_cols)
+		} else {
+			project_data       <- lixoftConnectors::getData()
+			available_cat_covs <- project_data$header[project_data$headerTypes %in% c("catcov", "occ", "stratcatcov")]
+			cov_info_filt      <- lixoftConnectors::getCovariateInformation()
+			available_cat_covs <- c(available_cat_covs,
+															cov_info_filt$name[cov_info_filt$type == "additionalstratificationcategorical"])
 		}
 
 		# Check that filter splitCovariates are valid categorical splitCovariates
-		filter_covs  <- names(covariate_filter)
+		filter_covs  <- names(filterCovariates)
 		invalid_covs <- setdiff(filter_covs, available_cat_covs)
 
 		if (length(invalid_covs) > 0) {
 			# Check if they're continuous splitCovariates (more specific error message)
-			project_data <- lixoftConnectors::getData()
-			cont_covs    <- project_data$header[project_data$headerTypes == "contcov"]
+			if (resultType == "covariateSummary") {
+				cov_info_filt <- lixoftConnectors::getCovariateInformation()
+				cont_types    <- c("continuous",
+													 "additionalstratificationcontinuous",
+													 "stratificationcontinuous")
+				cont_covs     <- cov_info_filt$name[cov_info_filt$type %in% cont_types]
+			} else {
+				project_data <- lixoftConnectors::getData()
+				cont_covs    <- project_data$header[project_data$headerTypes == "contcov"]
+			}
 			invalid_cont <- intersect(invalid_covs, cont_covs)
 
 			if (length(invalid_cont) > 0) {
 				stop(sprintf(
-					"covariate_filter can only filter categorical covariates (catcov or occ).\n'%s' %s continuous covariate%s and cannot be filtered.\nAvailable categorical covariates: %s",
+					"filterCovariates can only filter categorical covariates.\n'%s' %s continuous covariate%s and cannot be filtered.\nAvailable categorical covariates: %s",
 					paste(invalid_cont, collapse = "', '"),
 					if (length(invalid_cont) > 1) "are" else "is a",
 					if (length(invalid_cont) > 1) "s" else "",
 					if (length(available_cat_covs) > 0) paste(available_cat_covs, collapse = ", ") else "none"), call. = FALSE)
 			} else {
 				stop(sprintf(
-					"Invalid covariate%s in covariate_filter: %s\nAvailable categorical covariates: %s",
+					"Invalid covariate%s in filterCovariates: %s\nAvailable categorical covariates: %s",
 					if (length(invalid_covs) > 1) "s" else "",
 					paste(invalid_covs, collapse = ", "),
 					if (length(available_cat_covs) > 0) paste(available_cat_covs, collapse = ", ") else "none"), call. = FALSE)
@@ -996,18 +1013,18 @@
 	}
 
 	# --------------------------------------------------------------------------
-	# Validate id_filter
+	# Validate filterIds
 	# --------------------------------------------------------------------------
-	if (!is.null(id_filter)) {
+	if (!is.null(filterIds)) {
 
 		# Must be a vector (character or numeric)
-		if (!is.vector(id_filter) || is.list(id_filter)) {
-			stop("id_filter must be a character or numeric vector of IDs.", call. = FALSE)
+		if (!is.vector(filterIds) || is.list(filterIds)) {
+			stop("filterIds must be a character or numeric vector of IDs.", call. = FALSE)
 		}
 
 		# Check it's not empty
-		if (length(id_filter) == 0) {
-			stop("id_filter cannot be an empty vector.", call. = FALSE)
+		if (length(filterIds) == 0) {
+			stop("filterIds cannot be an empty vector.", call. = FALSE)
 		}
 	}
 
@@ -1021,11 +1038,11 @@
 #' Internal helper to apply covariate and ID filters to a dataframe.
 #'
 #' @param data Data frame to filter.
-#' @param covariate_filter Named list where names are categorical covariate names
+#' @param filterCovariates Named list where names are categorical covariate names
 #'   and values are vectors of allowed values. Example:
 #'   `list(DOSE = c("100mg", "200mg"), SEX = "Male")`. If NULL, no covariate
 #'   filtering is applied.
-#' @param id_filter Character or numeric vector of subject IDs to include.
+#' @param filterIds Character or numeric vector of subject IDs to include.
 #'   If NULL, no ID filtering is applied.
 #' @param id_col Character string specifying the name of the ID column.
 #'   Default is "id".
@@ -1046,12 +1063,12 @@
 #' @keywords internal
 #'
 .applyFilters <- function(data,
-                          covariate_filter = NULL,
-                          id_filter        = NULL,
+                          filterCovariates = NULL,
+                          filterIds        = NULL,
                           id_col           = "id") {
 
 	# Early return if no filters specified
-	if (is.null(covariate_filter) && is.null(id_filter)) {
+	if (is.null(filterCovariates) && is.null(filterIds)) {
 		return(data)
 	}
 
@@ -1061,11 +1078,11 @@
 	# --------------------------------------------------------------------------
 	# Apply ID filter
 	# --------------------------------------------------------------------------
-	if (!is.null(id_filter)) {
+	if (!is.null(filterIds)) {
 		if (id_col %in% names(data)) {
 			# Convert both to character for consistent comparison
 			data_ids <- as.character(data[[id_col]])
-			filter_ids <- as.character(id_filter)
+			filter_ids <- as.character(filterIds)
 
 			data <- data[data_ids %in% filter_ids, , drop = FALSE]
 		} else {
@@ -1077,10 +1094,10 @@
 	# --------------------------------------------------------------------------
 	# Apply covariate filters
 	# --------------------------------------------------------------------------
-	if (!is.null(covariate_filter)) {
-		for (cov_name in names(covariate_filter)) {
+	if (!is.null(filterCovariates)) {
+		for (cov_name in names(filterCovariates)) {
 			if (cov_name %in% names(data)) {
-				filter_values <- covariate_filter[[cov_name]]
+				filter_values <- filterCovariates[[cov_name]]
 
 				# Convert both to character for consistent comparison
 				data_values <- as.character(data[[cov_name]])
@@ -1101,7 +1118,7 @@
 
 	if (n_filtered == 0) {
 		warning(sprintf(
-			"Filter resulted in empty dataset (0 of %d rows remaining).\nCheck your covariate_filter and id_filter values.",
+			"Filter resulted in empty dataset (0 of %d rows remaining).\nCheck your filterCovariates and filterIds values.",
 			n_original
 		), call. = FALSE)
 	}
@@ -1113,23 +1130,29 @@
 #' Internal helper to validate stratification arguments
 #'
 #' @param splitCovariates Vector of covariate names (or NULL).
-#' @param stratify_columns Boolean flag indicating if stratification is requested.
+#' @param stratifyColumns Boolean flag indicating if stratification is requested.
+#' @param allowed_types Optional character vector of allowed `getCovariateInformation()$type`
+#'   values (e.g. `c("categorical", "additionalstratificationcategorical", "stratificationcategorical")`).
+#'   If `NULL` (default), only existence of `splitCovariates` is checked. If provided,
+#'   each split covariate must additionally have a `type` in `allowed_types`.
+#' @param allow_occasions Logical; if TRUE, occasion index columns (columns in
+#'   `cov_info$covariate` that are not `id` and not in `cov_info$name`) are also
+#'   accepted as split covariates, even though they are not in `allowed_types`.
 #'
-#' @return Boolean. Returns FALSE if splitCovariates are missing, otherwise returns original stratify_columns.
+#' @return Boolean. Returns FALSE if splitCovariates are missing, otherwise returns original stratifyColumns.
 #'
-.validateStratificationArgs <- function(splitCovariates, stratify_columns) {
+.validateStratificationArgs <- function(splitCovariates, stratifyColumns,
+																				allowed_types = NULL, allow_occasions = FALSE) {
 	# 1. Argument consistency check
-	if (isTRUE(stratify_columns) && is.null(splitCovariates)) {
-		warning("stratify_columns=TRUE requires covariates. Resetting stratify_columns to FALSE.")
+	if (isTRUE(stratifyColumns) && is.null(splitCovariates)) {
+		warning("stratifyColumns=TRUE requires covariates. Resetting stratifyColumns to FALSE.")
 		return(FALSE)
 	}
 	# 2. Covariate existence check (if splitCovariates provided)
 	if (!is.null(splitCovariates)) {
-		# Get available splitCovariates from current PKanalix project
-		cov_info                  <- lixoftConnectors::getCovariateInformation()$covariate
-		available_splitCovariates <- setdiff(names(cov_info), "id")
+		cov_info                  <- lixoftConnectors::getCovariateInformation()
+		available_splitCovariates <- setdiff(names(cov_info$covariate), "id")
 
-		# Validate requested splitCovariates exist
 		bad_splitCovariates <- setdiff(splitCovariates, available_splitCovariates)
 		if (length(bad_splitCovariates) > 0) {
 			stop(
@@ -1137,10 +1160,191 @@
 				"Available splitCovariates: ", paste(available_splitCovariates, collapse = ", ")
 			)
 		}
+
+		# 3. Optional type check
+		if (!is.null(allowed_types)) {
+			valid_covs <- cov_info$name[cov_info$type %in% allowed_types]
+			if (isTRUE(allow_occasions)) {
+				# occasion index columns: present in $covariate but not a covariate name
+				occ_cols   <- setdiff(names(cov_info$covariate), c("id", cov_info$name))
+				valid_covs <- c(valid_covs, occ_cols)
+			}
+			bad_type <- setdiff(splitCovariates, valid_covs)
+			if (length(bad_type) > 0) {
+				stop(
+					"Covariate(s) with invalid type for stratification: ",
+					paste(bad_type, collapse = ", "), "\n",
+					"Allowed types: ", paste(allowed_types, collapse = ", "),
+					if (isTRUE(allow_occasions)) " (plus occasion variables)" else "", "\n",
+					"Available covariates of allowed type(s): ",
+					if (length(valid_covs) > 0) paste(valid_covs, collapse = ", ") else "none",
+					call. = FALSE
+				)
+			}
+		}
 	}
-	return(stratify_columns)
+	return(stratifyColumns)
 }
 
+##################################################################################
+#' .getOccasionInvariantCovariates()
+#' Classify covariates as occasion-invariant or occasion-varying
+#'
+#' Inspects \code{getCovariateInformation()$covariate} (one row per subject and
+#' occasion) and determines, for each requested covariate, whether it keeps a
+#' single value within every subject (occasion-invariant, e.g. WEIGHT, BMI, a
+#' treatment-sequence covariate) or changes between a subject's occasions
+#' (occasion-varying, e.g. TRT or a per-period covariate).
+#'
+#' This distinction matters for NCA ratio tables: ratios are computed within a
+#' subject across occasions, so only occasion-invariant covariates have an
+#' unambiguous single value per subject and can be safely merged onto / used to
+#' stratify or filter the ratio results. Occasion-varying covariates would both
+#' duplicate rows on an id-only merge and have no well-defined value per ratio.
+#'
+#' @param cov_info Optional result of \code{lixoftConnectors::getCovariateInformation()}.
+#'   Fetched automatically when \code{NULL}.
+#' @param covariates Optional character vector restricting the covariates to
+#'   classify. When \code{NULL}, all covariates in \code{cov_info$name} are used.
+#' @param group_by Optional character vector of extra columns to add to the
+#'   grouping key alongside `id`. NULL (default) = constancy within `id` only.
+#' @return A list with two character vectors: \code{invariant} (constant within
+#'   each subject) and \code{varying} (changes across a subject's occasions).
+#'
+#' @keywords internal
+#' @noRd
+.getOccasionInvariantCovariates <- function(cov_info = NULL, covariates = NULL, group_by = NULL) {
+	if (is.null(cov_info)) {
+		cov_info <- lixoftConnectors::getCovariateInformation()
+	}
+
+	cov_df <- cov_info$covariate
+
+	candidates <- cov_info$name
+	if (!is.null(covariates)) {
+		candidates <- intersect(candidates, covariates)
+	}
+	candidates <- intersect(candidates, names(cov_df))
+
+	# Grouping key: id, plus any extra columns (e.g. current splitCovariates).
+	group_by <- intersect(group_by, names(cov_df))
+	key_cols <- c("id", group_by)
+	key      <- do.call(paste, c(lapply(key_cols, function(cc) as.character(cov_df[[cc]])),
+															 sep = "\r"))
+
+	invariant <- character(0)
+	varying   <- character(0)
+
+	for (nm in candidates) {
+		# Count distinct (non-NA) values within each grouping key.
+		n_distinct_per_key <- tapply(as.character(cov_df[[nm]]), key,
+																 function(x) length(unique(x[!is.na(x)])))
+
+		if (all(n_distinct_per_key <= 1, na.rm = TRUE)) {
+			invariant <- c(invariant, nm)
+		} else {
+			varying <- c(varying, nm)
+		}
+	}
+
+	list(invariant = invariant, varying = varying)
+}
+
+##################################################################################
+
+#' .getCovariateOccasionDependency()
+#' Find the occasion variable(s) a covariate varies along
+#'
+#' For each requested covariate, decide whether it is constant within every
+#' (id + `group_by`) combination (delegated to `.getOccasionInvariantCovariates`).
+#' If not, find which occasion index column(s) make it constant when added to the
+#' grouping — i.e. the occasion variable(s) the user should add to
+#' `splitCovariates` to obtain a well-defined table.
+#'
+#' Occasion index columns are taken to be the columns of `cov_info$covariate`
+#' that are neither `id` nor a covariate name (`cov_info$name`).
+#'
+#' @param cov_info Optional `getCovariateInformation()` result (fetched when NULL).
+#' @param covariates Character vector of covariate names to test. NULL = all.
+#' @param group_by Character vector of columns already used to stratify
+#'   (typically the current `splitCovariates`); occasions already listed here are
+#'   not re-reported. Default NULL.
+#'
+#' @return Named list (one entry per varying covariate). Each entry is a
+#'   character vector of occasion column(s) the covariate varies along given
+#'   `group_by`. Covariates already constant within `id + group_by` are omitted.
+#'
+#' @keywords internal
+#' @noRd
+.getCovariateOccasionDependency <- function(cov_info = NULL, covariates = NULL, group_by = NULL) {
+	if (is.null(cov_info)) {
+		cov_info <- lixoftConnectors::getCovariateInformation()
+	}
+
+	occ_cols      <- setdiff(names(cov_info$covariate), c("id", cov_info$name))
+	candidate_occ <- setdiff(occ_cols, group_by)
+
+	# Which requested covariates still vary within (id + group_by)?
+	varying <- .getOccasionInvariantCovariates(cov_info, covariates = covariates,
+																						 group_by = group_by)$varying
+
+	result <- list()
+	for (nm in varying) {
+		# Occasion column(s) that make `nm` constant within (id + group_by + occ).
+		resolving <- character(0)
+		for (occ in candidate_occ) {
+			is_invariant <- nm %in% .getOccasionInvariantCovariates(
+				cov_info, covariates = nm, group_by = c(group_by, occ))$invariant
+			if (is_invariant) resolving <- c(resolving, occ)
+		}
+		# If no single occasion resolves it, the combination of all remaining
+		# occasion columns is required.
+		if (length(resolving) == 0 && length(candidate_occ) > 0) {
+			resolving <- candidate_occ
+		}
+		result[[nm]] <- resolving
+	}
+
+	result
+}
+
+##################################################################################
+
+#' .assertOccasionInvariantForRatio()
+#' Assert that covariates are occasion-invariant for ratio results
+#'
+#' Stops with an informative error when any of the requested covariates changes
+#' between a subject's occasions. Used by the ratio-table validation helpers so
+#' that occasion-varying covariates cannot be used to stratify or filter NCA
+#' ratio tables (where they have no single value per subject).
+#'
+#' @param covariates Character vector of covariate names (or NULL).
+#' @param cov_info Optional \code{getCovariateInformation()} result (fetched when NULL).
+#' @param arg_name Name of the calling argument, used in the error message.
+#'
+#' @return Invisible NULL when all covariates are occasion-invariant.
+#'
+#' @keywords internal
+#' @noRd
+.assertOccasionInvariantForRatio <- function(covariates, cov_info = NULL, arg_name = "splitCovariates") {
+	if (is.null(covariates) || length(covariates) == 0) {
+		return(invisible(NULL))
+	}
+
+	cls <- .getOccasionInvariantCovariates(cov_info = cov_info, covariates = covariates)
+
+	if (length(cls$varying) > 0) {
+		stop(sprintf(
+			paste0(
+				"Occasion-varying covariate(s) cannot be used for %s in ratio results: %s\n",
+				"Use a covariate that is constant within each subject."),
+			arg_name,
+			paste(cls$varying, collapse = ", ")),
+			call. = FALSE)
+	}
+
+	invisible(NULL)
+}
 
 ##################################################################################
 
@@ -1189,7 +1393,7 @@
 #' For non-ratio tables, validates against computed NCA parameters from getNCASettings().
 #' Stops if none of the requested parameters are found; warns if some are missing.
 #'
-#' @param NCAparams Character vector of NCA parameter names to validate, or NULL
+#' @param ncaParams Character vector of NCA parameter names to validate, or NULL
 #' @param ratio Logical; if TRUE, validates for ratio tables (checks ratio parameters).
 #'   If FALSE (default), validates against computed NCA parameters.
 #'
@@ -1212,9 +1416,9 @@
 #'   - Warns if SOME parameters are missing (continues with valid ones)
 #'
 #' @noRd
-.validateNCAParametersSelection <- function(NCAparams, ratio = FALSE, be = FALSE) {
+.validateNCAParametersSelection <- function(ncaParams, ratio = FALSE, be = FALSE) {
 	# Skip validation if no parameters specified
-	if (is.null(NCAparams)) {
+	if (is.null(ncaParams)) {
 		return(invisible(NULL))
 	}
 	if (be) {
@@ -1241,15 +1445,15 @@
 	}
 
 	# Find intersection of requested and available
-	valid_params   <- intersect(NCAparams, available_params)
-	missing_params <- setdiff(NCAparams, available_params)
+	valid_params   <- intersect(ncaParams, available_params)
+	missing_params <- setdiff(ncaParams, available_params)
 
 	# Stop if none of the requested parameters are available
 	if (length(valid_params) == 0) {
 		stop(sprintf(
 			"None of the requested %s were found.\nRequested: %s\nAvailable: %s",
 			context_msg,
-			paste(NCAparams, collapse = ", "),
+			paste(ncaParams, collapse = ", "),
 			if (length(available_params) > 0) paste(available_params, collapse = ", ") else "none"
 		), call. = FALSE)
 	}
@@ -1358,7 +1562,7 @@
 #'   or in wide format with time columns for concentrations)
 #' @param splitCovariates Character vector of covariate names (optional)
 #' @param resultType Type of result: "ncaParameters", "ncaRatio", or "ncaConcentration"
-#' @param params Parameter names to include (NCAparams for parameters, ratioParams for ratios, NULL for all)
+#' @param params Parameter names to include (ncaParams for parameters, ratioParams for ratios, NULL for all)
 #' @param roundDigits Number of decimal places for rounding
 #' @param roundMethod Rounding method ("monolix", "signif", or "none")
 #' @param units Logical; include units for parameter names (only for ncaParameters)
@@ -1846,7 +2050,7 @@
 #' }
 #'
 #' @param project A character string representing the path to the PKanalix project file (.pkx).
-#' @param NCAparams A character vector of NCA parameter names to filter by.
+#' @param ncaParams A character vector of NCA parameter names to filter by.
 #'   If `NULL`, all available parameters are retrieved.
 #'   \emph{Applicable only when `by_time = FALSE`.}
 #' @param splitCovariates A character vector of covariate names to stratify the results by.
@@ -1875,7 +2079,7 @@
 #' @keywords internal
 #'
 .prepareNCASummaryStats <- function(projectFile,
-																		NCAparams = NULL,
+																		ncaParams = NULL,
 																		splitCovariates = NULL,
 																		roundDigits,
 																		roundMethod,
@@ -1960,7 +2164,7 @@
 		}
 
 		# Get Summary Stats (from getNCAParameterStatistics)
-		summary_stats <- lixoftConnectors::getNCAParameterStatistics(parameters = NCAparams)$statistics
+		summary_stats <- lixoftConnectors::getNCAParameterStatistics(parameters = ncaParams)$statistics
 		if (is.null(summary_stats)) {
 			# Return NULL if no stats, parent function will handle
 			return(NULL)
@@ -2173,7 +2377,7 @@
 #' # .calc_format_stratum(df, digits = 1, method = "monolix", exclude_cols = c("variable", "Modalities", "N"))
 #'
 .calc_format_stratum <- function(df_input, digits, method, exclude_cols) {
-	raw_stats <- .calculate_raw_freq(df_input)
+	raw_stats <- .calculateCategoricalFrequencies(df_input)
 	final_stats <- .format_frequency_table(raw_stats, digits, method, exclude_cols)
 	return(final_stats)
 }
@@ -2347,10 +2551,10 @@
 #' @keywords internal
 #' @noRd
 .buildStratifiedTable <- function(summary_stats, overall_stats = NULL, splitCovariates,
-																	selected_metrics, param_col, covariate_labels = NULL) {
+																	selected_metrics, param_col, covariateLabels = NULL) {
 	if (!is.null(splitCovariates)) {
 		# Prepare covariate labels
-		if (is.null(covariate_labels)) labels <- splitCovariates else labels <- covariate_labels
+		if (is.null(covariateLabels)) labels <- splitCovariates else labels <- covariateLabels
 
 		# Create header column combining splitCovariates
 		df_prepared <- summary_stats %>%
@@ -2639,4 +2843,138 @@
 	# Remove Original_Parameter column
 	df[[orig_col]] <- NULL
 	df
+}
+
+################################################################################
+#' .isCensoredFlag
+#'
+#' Interprets a single value from the interpreted-data censoring column as a
+#' censored / not-censored indicator. The column may be reported either as a
+#' string label (PKanalix \code{getInterpretedData()} emits
+#' \code{"leftCensored"}, \code{"rightCensored"}, \code{"intervalCensored"},
+#' \code{"notCensored"} or \code{""}) or as a numeric flag (Monolix-style
+#' censoring columns use \code{0}/\code{1}). Returns \code{TRUE} only for an
+#' actively-censored value.
+#'
+#' @param x A single censoring-column value (character or numeric).
+#' @return TRUE if the value denotes a censored observation, FALSE otherwise.
+#' @keywords internal
+.isCensoredFlag <- function(x) {
+	x <- trimws(as.character(x))
+	if (length(x) == 0 || is.na(x) || x == "") {
+		return(FALSE)
+	}
+	# String labels: anything "...Censored" except "notCensored".
+	if (grepl("censored", x, ignore.case = TRUE)) {
+		return(!grepl("^not", x, ignore.case = TRUE))
+	}
+	# Numeric flag (e.g. 0 = not censored, 1 = censored).
+	num <- suppressWarnings(as.numeric(x))
+	!is.na(num) && num != 0
+}
+
+################################################################################
+#' .isCensoredObservation
+#'
+#' Determines whether a raw observation that does not numerically match the
+#' interpreted data corresponds to a censored (BLQ / ALQ) measurement that was
+#' kept in the analysis through Data Formatting rather than excluded.
+#'
+#' @param obsValueRaw Character scalar; raw observation string (e.g. a BLQ tag).
+#' @param matchingRows Data frame; interpreted-data rows matching this
+#'   id/time/occasion combination.
+#' @param iObs Integer; column index of the observation in the interpreted data.
+#' @param censCol Character scalar or NULL; name of the censoring column in the
+#'   interpreted data, or NULL when the project has none.
+#'
+#' @return TRUE if the row is a kept censored observation, FALSE otherwise.
+#' @keywords internal
+.isCensoredObservation <- function(obsValueRaw, matchingRows, iObs, censCol) {
+	# No censoring column => the project does not use Data-Formatting censoring.
+	if (is.null(censCol) || !(censCol %in% names(matchingRows))) {
+		return(FALSE)
+	}
+
+	# Only relevant when the raw value is a non-numeric tag (e.g. "BLQ").
+	# A numeric-but-mismatching value is a genuine discrepancy, not censoring.
+	if (!is.na(suppressWarnings(as.numeric(obsValueRaw)))) {
+		return(FALSE)
+	}
+
+	# A kept censored row carries an active censoring flag together with a
+	# numeric LLOQ/ULOQ value substituted for the original tag.
+	for (idx in seq_len(nrow(matchingRows))) {
+		interpNum <- suppressWarnings(as.numeric(matchingRows[idx, iObs]))
+		if (.isCensoredFlag(matchingRows[idx, censCol]) && !is.na(interpNum)) {
+			return(TRUE)
+		}
+	}
+
+	FALSE
+}
+
+################################################################################
+#' .warnUnsuitableGrouping
+#'
+#' Warns when a chosen grouping variable has too many distinct values relative
+#' to the number of subjects (\code{n_modalities / n_subjects > maxSubjectRatio})
+#' to be a useful stratification key.
+#'
+#' @param data A data frame containing the grouping columns and the ID column.
+#' @param splitCovariates Character vector of chosen grouping columns.
+#' @param id_col Name of the subject-ID column in \code{data}.
+#' @param maxSubjectRatio Ratio above which a warning is emitted (default 0.5).
+#' @return Invisibly NULL. Emits a warning per unsuitable variable.
+#' @keywords internal
+.warnUnsuitableGrouping <- function(data, splitCovariates, id_col, maxSubjectRatio = 0.5) {
+	if (length(splitCovariates) == 0 || !(id_col %in% names(data))) {
+		return(invisible(NULL))
+	}
+
+	n_subj <- length(unique(as.character(data[[id_col]])))
+	if (n_subj == 0) {
+		return(invisible(NULL))
+	}
+
+	for (v in splitCovariates) {
+		if (!(v %in% names(data))) next
+		vals <- trimws(as.character(data[[v]]))
+		vals <- vals[!is.na(vals) & vals != "" & vals != "."]
+		k     <- length(unique(vals))
+		ratio <- k / n_subj
+		if (ratio > maxSubjectRatio) {
+			warning(sprintf(
+				paste0("Grouping variable '%s' has %d distinct values across %d subjects ",
+							 "(%.0f%% of subjects); it might not be a suitable grouping variable."),
+				v, k, n_subj, 100 * ratio), call. = FALSE)
+		}
+	}
+	invisible(NULL)
+}
+
+################################################################################
+
+#' .groupableExclusionColumns
+#'
+#' Suggests likely grouping columns for an exclusion table by dropping
+#' structural/role columns (by header type); used only for messaging, not to
+#' restrict what \code{tableExclusions()} accepts.
+#'
+#' @param hdr A tibble/data frame with columns \code{col} and \code{type} from
+#'   \code{lixoftConnectors::getData()}.
+#' @param listing Optional exclusion listing; if supplied, the result is
+#'   restricted to columns actually present in the listing.
+#' @return Character vector of permitted grouping column names.
+#' @keywords internal
+.groupableExclusionColumns <- function(hdr, listing = NULL) {
+	disallow_types <- c("id", "amount", "observation", "cens", "censored",
+											"limit", "mdv", "time", "nominaltime",
+											"regressor", "evid", "date", "ss", "ii", "addl",
+											"tinf", "rate", "admid", "ytype", "obsid")
+
+	candidates <- hdr$col[!(hdr$type %in% disallow_types)]
+	if (!is.null(listing)) {
+		candidates <- intersect(candidates, names(listing))
+	}
+	candidates
 }

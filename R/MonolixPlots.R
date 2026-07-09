@@ -1,3 +1,21 @@
+#' Internal helper: Derive omega population-parameter name from an eta column
+#'
+#' Strips the leading "eta_" and, for simulated estimates with a specific
+#' variabilityLevel, the trailing "_<level>" suffix, then prepends "omega_".
+#'
+#' @param param Single eta column name (e.g. "eta_V", "eta_Cl_ID")
+#' @param settings List with indivEstimate and variabilityLevel
+#' @return Character scalar omega name (e.g. "omega_V")
+#' @keywords internal
+.omegaNameForEta <- function(param, settings) {
+	param_suffix <- sub("^eta_", "", param)
+	if (settings$indivEstimate == "simulated" && !is.null(settings$variabilityLevel)) {
+		suffix_pattern <- paste0("_", settings$variabilityLevel, "$")
+		param_suffix <- sub(suffix_pattern, "", param_suffix)
+	}
+	paste0("omega_", param_suffix)
+}
+
 #' Internal helper: Prepare QQ plot data for standardized random effects
 #'
 #' @param parameters Character vector of parameter names
@@ -171,6 +189,24 @@
 	# Retrieve population parameters omegas to standardize random effects
 	pop_params <- getEstimatedPopulationParameters()
 
+	# Skip parameters whose omega is absent (no between-subject variability on
+	# that parameter). Keeps the plot useful for models where only a subset of
+	# parameters has random effects.
+	omega_names <- vapply(parameters, .omegaNameForEta, character(1),
+												settings = settings)
+	has_omega <- omega_names %in% names(pop_params) &
+		!is.na(pop_params[omega_names])
+	if (any(!has_omega)) {
+		skipped <- sub("^eta_", "", parameters[!has_omega])
+		message(sprintf(
+			"QQ plot unavailable for parameter(s) without random effects: %s.",
+			paste(skipped, collapse = ", ")))
+		parameters <- parameters[has_omega]
+	}
+	if (length(parameters) == 0) {
+		stop("No random effects with an estimated omega were found; nothing to plot.")
+	}
+
 	alpha <- 1 - settings$level
 
 	# Determine grouping variable for QQ computation:
@@ -189,25 +225,7 @@
 	# Build data list (one data frame per parameter x split group)
 	plot_data_list <- lapply(parameters, function(param) {
 
-		# omega parameter name convention: omega_<param_suffix>
-		# e.g. eta_V -> omega_V, eta_V_ID -> omega_V
-		param_suffix <- sub("^eta_", "", param)
-
-		# For simulated with variability level, also remove the suffix
-		# e.g. Cl_ID -> Cl, V_OCCevid -> V
-		if (settings$indivEstimate == "simulated" && !is.null(settings$variabilityLevel)) {
-			suffix_pattern <- paste0("_", settings$variabilityLevel, "$")
-			param_suffix <- sub(suffix_pattern, "", param_suffix)
-		}
-
-		omega_name <- paste0("omega_", param_suffix)
-
-		if (is.null(pop_params[omega_name]) || is.na(pop_params[omega_name])) {
-			stop(sprintf(
-				"Could not find population variance parameter '%s' for random effect '%s'.",
-				omega_name, param))
-		}
-		omega  <- pop_params[omega_name]
+		omega  <- pop_params[.omegaNameForEta(param, settings)]
 		std_re <- rand_eff_df[[param]] / sqrt(omega)
 
 		# Compute QQ statistics per group (split or color when mergedSplits)

@@ -1,0 +1,6 @@
+criteria,linearization
+OFV,628.252664
+AIC,654.252664
+BIC,673.307231
+BICc,685.569145
+standardError,

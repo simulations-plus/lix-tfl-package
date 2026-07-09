@@ -1,0 +1,75 @@
+<DATA_FORMATTING>
+
+[FILEINFO]
+file={path='../../../../data_theophylline.csv'}
+header={ID, AMT, TIME, NOMINAL_TIME, CONC, WEIGHT, SEX}
+
+[CONTENT]
+ID = {use=identifier}
+TIME = {use=time}
+
+[SETTINGS]
+LINES:
+header={0}
+excluded={}
+
+[OPERATIONS]
+OBSERVATIONS:
+type=id
+duplicateInfo=true
+censoringTags={'All_Tags'}
+'CONC'={{censoring=left, loq = {constant=0.85}, tags={'All_Tags'}}}
+
+<DATAFILE>
+
+[FILEINFO]
+file={path='../../../../data_theophylline.csv'}
+delimiter = comma
+header={ID, AMT, TIME, NOMINAL_TIME, CONC, WEIGHT, SEX, CENS}
+
+[CONTENT]
+ID = {use=identifier}
+AMT = {use=amount}
+NOMINAL_TIME = {use=nominaltime}
+CONC = {use=observation, type=continuous}
+WEIGHT = {use=covariate, type=continuous}
+SEX = {use=covariate, type=categorical}
+CENS = {use=censored}
+
+[SETTINGS]
+enableUnits = true
+units = {time={factor=1, unit=h}, concentration={factor=1, unit=mg/L}, dose={factor=1}}
+
+<MODEL>
+
+[COVARIATE]
+input = {WEIGHT, SEX}
+
+SEX = {type=categorical, categories={'F', 'M'}}
+
+<PKANALIX>
+
+[TASKS]
+bioequivalence(run=false)
+
+[SETTINGS]
+GLOBAL:
+dataNextToProject = yes
+
+NCA:
+obsIdToUse = 'CONC'
+administrationType = {1 = extravascular}
+startTimeNotBefore = {use=no, value=0}
+partialAUCTime = {use=no, value={{0, 24}}}
+addSteadyState = {use=no, value=24}
+computedParameters = {{value = Rsq}, {value = Rsq_adjusted}, {value = No_points_lambda_z}, {value = Lambda_z}, {value = Lambda_z_intercept}, {value = Tmax_Rate}, {value = Max_Rate}, {value = Rate_last}, {value = AURC_last}, {value = AURC_INF_obs}, {value = Tmax}, {value = Cmax}, {value = Tlast}, {value = Clast}, {value = AUClast}, {value = AUCINF_obs}, {value = Vz_F_obs}, {value = Cl_F_obs}, {value = Cl_obs}, {value = Ctau}, {value = AUC_TAU}, {value = Vz_obs}, {value = Vz_F}, {value = CLss_F}, {value = AURC_Int, partialInt = 0}, {value = AURC_Int_D, partialInt = 0}, {value = AUC_Int, partialInt = 0}, {value = AUC_Int_D, partialInt = 0}}
+sparseDataCensoring = {type = singlerule, rule = zero, checkMeanSamples = {no, {loq = 0.85, blqBeforeTmax = zero, blqAfterTmax = missing}}}
+
+CA:
+initialvalues = {}
+
+BIOEQUIVALENCE:
+computedParameters = {{value = Max_Rate, log = yes}, {value = AURC_last, log = yes}, {value = Cmax, log = yes}, {value = AUClast, log = yes}, {value = AUCINF_obs, log = yes}}
+design = parallel
+factors = {formulation={'SEX'}, reference={'M'}}
+

@@ -1,0 +1,33 @@
+[SETTINGS]
+indfits%3Anca%3A0\splitOccasions=false
+outputplot%3AAVALNCA%3A0\fixedNbBins=5
+outputplot%3AAVALNCA%3A0\nbDataPerBin=4, 200
+outputplot%3AAVALNCA%3A0\obsStatisticsMode=geometric
+
+[PROPERTIES]
+indfits%3Anca%3A0\colorUnusedObservations=true
+indfits%3Anca%3A0\defaultNbIndivPerPage=20
+indfits%3Anca%3A0\indivFits=false
+indfits%3Anca%3A0\obsLines=true
+indfits%3Anca%3A0\showUnits=false
+indfits%3Anca%3A0\xLabel=Time (hr)
+indfits%3Anca%3A0\yLog=false
+outputplot%3AAVALNCA%3A0\obsDots=false
+outputplot%3AAVALNCA%3A0\obsLines=false
+outputplot%3AAVALNCA%3A0\showUnits=false
+outputplot%3AAVALNCA%3A0\xLabel=Time (hr)
+outputplot%3AAVALNCA%3A0\xTicksStep=48
+outputplot%3AAVALNCA%3A0\yLabel=Concentration (ng/mL)
+outputplot%3AAVALNCA%3A0\yLog=true
+
+[PREFERENCES]
+outputplot%3AAVALNCA%3A0\leftAxisLabelOffset=-38
+outputplot%3AAVALNCA%3A0\marginLeft=57
+outputplot%3AAVALNCA%3A0\plotZoom=150
+
+[STRATIFY]
+outputplot%3AAVALNCA%3A0\color=ATRTNCA
+outputplot%3AAVALNCA%3A0\mergedSplits=true
+outputplot%3AAVALNCA%3A0\split=ATRTNCA
+outputplot%3AAVALNCA%3A0\splitAliases="@Variant(\0\0\0\b\0\0\0\x4\0\0\0\x30\0#\0\x41\0T\0R\0T\0N\0\x43\0\x41\0:\0\x41\0 \0(\0\x44\0R\0G\0\x31\0 \0+\0 \0\x44\0R\0G\0\x32\0)\0\0\0\n\0\0\0\x1e\0\x41\0 \0(\0\x44\0R\0G\0\x31\0 \0+\0 \0\x44\0R\0G\0\x32\0)\0\0\0\x30\0#\0\x41\0T\0R\0T\0N\0\x43\0\x41\0:\0\x43\0 \0(\0\x44\0R\0G\0\x31\0 \0+\0 \0\x44\0R\0G\0\x33\0)\0\0\0\n\0\0\0\x1e\0\x43\0 \0(\0\x44\0R\0G\0\x31\0 \0+\0 \0\x44\0R\0G\0\x33\0)\0\0\0>\0#\0\x41\0T\0R\0T\0N\0\x43\0\x41\0:\0\x44\0 \0(\0\x44\0R\0G\0\x31\0 \0+\0 \0\x44\0R\0G\0\x34\0 \0+\0 \0\x44\0R\0G\0\x35\0)\0\0\0\n\0\0\0,\0\x44\0 \0(\0\x44\0R\0G\0\x31\0 \0+\0 \0\x44\0R\0G\0\x34\0 \0+\0 \0\x44\0R\0G\0\x35\0)\0\0\0\x30\0#\0\x41\0T\0R\0T\0N\0\x43\0\x41\0:\0\x45\0 \0(\0\x44\0R\0G\0\x31\0 \0+\0 \0\x44\0R\0G\0\x36\0)\0\0\0\n\0\0\0\x1e\0\x45\0 \0(\0\x44\0R\0G\0\x31\0 \0+\0 \0\x44\0R\0G\0\x36\0))"
+outputplot%3AAVALNCA%3A0\splitOrder=#ATRTNCA:A (DRG1 + DRG2), #ATRTNCA:C (DRG1 + DRG3), #ATRTNCA:D (DRG1 + DRG4 + DRG5), #ATRTNCA:E (DRG1 + DRG6)

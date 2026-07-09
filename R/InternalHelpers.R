@@ -13,6 +13,89 @@ utils::globalVariables(c("."))
 }
 
 
+#' Resolve the path of the R/Quarto/Rmd script that produced the current table
+#'
+#' Determines the file path of the script that called the current helper so it
+#' can be stored as a data-frame attribute (`r_source`) and later rendered as
+#' an auto-footnote by [style_tfl()].
+#'
+#' Detection order (first non-empty result wins):
+#' 1. **Innermost `source()`'d file** — the deepest `ofile` on the call stack.
+#'    When a meta-script `source()`s a table script (or a Quarto chunk does
+#'    the same), this returns the *table* script, i.e. the one that actually
+#'    built the data frame.
+#' 2. **`knitr::current_input(dir = TRUE)`** — the `.Rmd`/`.qmd` being rendered
+#'    when no nested `source()` is in flight.
+#' 3. **`--file=` in `commandArgs()`** — set when launched via `Rscript`.
+#' 4. **`rstudioapi::getSourceEditorContext()$path`** — the active editor tab
+#'    in an interactive RStudio session.
+#'
+#' @return A normalised character path, or `NULL` when no source script can be
+#'   determined (e.g. a plain interactive R console with no editor).
+#'
+#' @keywords internal
+#' @noRd
+.getRScriptPath <- function() {
+	# 1. Innermost source()'d script: walk frames from deepest to outermost so
+	# meta -> table -> helper resolves to "table.R", not "meta.R".
+	frame_count <- sys.nframe()
+	if (frame_count > 0) {
+		for (n in rev(seq_len(frame_count))) {
+			frame <- tryCatch(sys.frame(n), error = function(e) NULL)
+			if (is.null(frame)) next
+			ofile <- tryCatch(
+				get0("ofile", envir = frame, inherits = FALSE),
+				error = function(e) NULL
+			)
+			if (!is.null(ofile) && is.character(ofile) &&
+					length(ofile) == 1 && nzchar(ofile)) {
+				return(tryCatch(normalizePath(ofile, winslash = "/", mustWork = FALSE),
+												error = function(e) ofile))
+			}
+		}
+	}
+
+	# 2. knitr / Quarto rendering context (no source() in flight).
+	if (requireNamespace("knitr", quietly = TRUE)) {
+		knitr_input <- tryCatch(
+			knitr::current_input(dir = TRUE),
+			error = function(e) NULL
+		)
+		if (!is.null(knitr_input) && is.character(knitr_input) && nzchar(knitr_input)) {
+			return(knitr_input)
+		}
+	}
+
+	# 3. Rscript invocation (no source() chain).
+	cmd_args <- commandArgs(trailingOnly = FALSE)
+	file_arg <- grep("^--file=", cmd_args, value = TRUE)
+	if (length(file_arg) > 0) {
+		path <- sub("^--file=", "", file_arg[1])
+		if (nzchar(path)) {
+			return(tryCatch(normalizePath(path, winslash = "/", mustWork = FALSE),
+											error = function(e) path))
+		}
+	}
+
+	# 4. Interactive RStudio: fall back to the active editor tab.
+	if (requireNamespace("rstudioapi", quietly = TRUE)) {
+		rs_avail <- tryCatch(rstudioapi::isAvailable(), error = function(e) FALSE)
+		if (isTRUE(rs_avail)) {
+			rs_path <- tryCatch(
+				rstudioapi::getSourceEditorContext()$path,
+				error = function(e) NULL
+			)
+			if (!is.null(rs_path) && is.character(rs_path) && nzchar(rs_path)) {
+				return(tryCatch(normalizePath(rs_path, winslash = "/", mustWork = FALSE),
+												error = function(e) rs_path))
+			}
+		}
+	}
+
+	return(NULL)
+}
+
+
 # Function to load specified project, which will do nothing in the case that the project
 # is already loaded
 #
@@ -343,7 +426,19 @@ utils::globalVariables(c("."))
 		"dLLlin"              = "ΔLL\n(Linearization)",
 		"dLLis"               = "ΔLL\n(Imp. Sampling)",
 		"dBICclin"            = "ΔBICc\n(Linearization)",
-		"dBICcis"             = "ΔBICc\n(Imp. Sampling)")
+		"dBICcis"             = "ΔBICc\n(Imp. Sampling)",
+		"Run"                 = "Run",
+		"Reference"           = "Reference\nModel",
+		"Tested"              = "Tested\nRelationship",
+		"Step"                = "Step",
+		"CovariateModel"      = "Covariate\nModel",
+		"LL"                  = "OFV\n(-2LL)",
+		"BICc"                = "BICc",
+		"dLL"                 = "ΔOFV",
+		"dBICc"               = "ΔBICc",
+		"Significant"         = "Significant",
+		"Improved"            = "BICc\nImproved",
+		"BestModel"           = "Best\nModel")
 
 	# Process each column name
 	col_names <- names(df)
@@ -563,6 +658,131 @@ utils::globalVariables(c("."))
 	rownames(df) <- NULL
 
 	return(df)
+}
+
+
+################################################################################
+# Helpers for tableModelBuilding()
+################################################################################
+
+#' Compact string describing the covariate model of a single built model
+#'
+#' Turns the logical `individualModels` matrix returned by
+#' [lixoftConnectors::getModelBuildingResults()] into a human readable string
+#' such as `"Cl~lw70, V~tSex"`.
+#'
+#' @param im data.frame of logical values (rows = parameters, cols = covariates).
+#' @return A single character string; `"(no covariates)"` when no covariate is used.
+#' @keywords internal
+.covStructureString <- function(im) {
+	parts <- character(0)
+	for (p in rownames(im)) {
+		covs <- colnames(im)[which(as.logical(unlist(im[p, ])))]
+		if (length(covs)) {
+			parts <- c(parts, paste0(p, "~", paste(covs, collapse = "+")))
+		}
+	}
+	if (!length(parts)) return("(no covariates)")
+	paste(parts, collapse = ", ")
+}
+
+#' Canonical key for a covariate-model matrix
+#'
+#' Flattens the logical `individualModels` matrix into a fixed-order string so
+#' two models can be compared for structural equality (used to find the nested
+#' parent of a tested model).
+#'
+#' @param im data.frame of logical values (rows = parameters, cols = covariates).
+#' @return A character key.
+#' @keywords internal
+.imKey <- function(im) {
+	im <- im[order(rownames(im)), order(colnames(im)), drop = FALSE]
+	paste(as.integer(as.matrix(im)), collapse = "")
+}
+
+#' Degrees of freedom added by a covariate relationship
+#'
+#' Continuous covariates add one coefficient (df = 1); categorical covariates add
+#' one coefficient per non-reference category (df = number of categories - 1).
+#'
+#' @param covName Covariate name (as used in the individual model).
+#' @param covInfo Result of [lixoftConnectors::getCovariateInformation()].
+#' @return Integer degrees of freedom, or `1L` when the covariate type cannot be
+#'   determined.
+#' @keywords internal
+.covDf <- function(covName, covInfo) {
+	if (is.null(covInfo) || is.null(covInfo$covariate)) return(1L)
+	info <- covInfo$covariate
+	idx  <- match(covName, info$name)
+	if (is.na(idx)) return(1L)
+	type <- info$type[idx]
+	if (!is.null(type) && grepl("categorical", type, ignore.case = TRUE)) {
+		# number of categories - 1
+		modalities <- if (!is.null(covInfo$modalityNumber)) covInfo$modalityNumber[idx] else NA
+		if (is.na(modalities)) {
+			# fall back to counting distinct observed values
+			vals <- info[[covName]]
+			modalities <- if (!is.null(vals)) length(unique(stats::na.omit(vals))) else 2L
+		}
+		return(max(1L, as.integer(modalities) - 1L))
+	}
+	1L
+}
+
+#' Likelihood-ratio-test p-value between two nested models
+#'
+#' Computes the LRT p-value for the single relationship that differs between a
+#' *reduced* model (fewer parameters, the null hypothesis) and a *full* model
+#' (more parameters). The LRT statistic is the difference in -2*log-likelihood:
+#' \deqn{\Delta(-2LL) = (-2LL_{reduced}) - (-2LL_{full})}
+#' compared to a chi-squared distribution with `dof` degrees of freedom (the
+#' number of coefficients the relationship contributes).
+#'
+#' The caller identifies which model is reduced/full from the step direction
+#' (forward: reference = reduced, tested = full; backward: tested = reduced,
+#' reference = full), **not** from the likelihood values. With exact maximum
+#' likelihood the full model has the smaller -2LL, but MonolixSuite estimates the
+#' likelihood stochastically (SAEM) and, when linearization is used, only
+#' approximately, so the fuller model can occasionally have a *larger* -2LL. In
+#' that case the statistic is clamped to 0 (no evidence the extra parameter
+#' improves the fit), giving a p-value of 1.
+#'
+#' @param llReduced Numeric -2*log-likelihood (OFV) of the reduced model.
+#' @param llFull Numeric -2*log-likelihood (OFV) of the full model.
+#' @param dof Integer degrees of freedom (see [.covDf()]).
+#' @return The upper-tail chi-squared p-value, or `NA_real_` if any input is
+#'   missing.
+#' @keywords internal
+.lrtPValue <- function(llReduced, llFull, dof) {
+	if (is.na(llReduced) || is.na(llFull) || is.na(dof)) return(NA_real_)
+	lrtStat <- max(0, llReduced - llFull)   # clamp: fuller model never fits worse under H1
+	stats::pchisq(lrtStat, df = dof, lower.tail = FALSE)
+}
+
+#' Contiguous step-group ids for a stepwise model-building history
+#'
+#' Stepwise model building (COSSAC/SCM) proceeds in *rounds*: within a round the
+#' algorithm tests candidate relationships against the same current-best model
+#' (the `Reference`) in the same direction, then keeps the winner and starts the
+#' next round against it. A round is a maximal run of consecutive models (in
+#' algorithm order) sharing the same `(step, reference)` pair, which separates a
+#' 2nd forward round from the 1st and backward phases from forward ones.
+#'
+#' The returned id increments at each round boundary, so callers can sort *within*
+#' a round (`order(group, criterion)`) while the rounds keep their algorithm order.
+#'
+#' @param step Character vector of step labels (e.g. "Base"/"Forward"/"Backward").
+#' @param reference Character vector of reference-model labels, same length.
+#' @return Integer vector of 1-based contiguous group ids (`integer(0)` if empty).
+#' @keywords internal
+.modelBuildingStepGroups <- function(step, reference) {
+	n <- length(step)
+	if (n == 0) return(integer(0))
+	step <- as.character(step)
+	reference <- as.character(reference)
+	# new group at row 1 and wherever step or reference changes vs the previous row
+	changed <- c(TRUE, step[-1] != step[-n] | reference[-1] != reference[-n])
+	cumsum(changed)
 }
 
 
