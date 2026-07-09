@@ -965,81 +965,159 @@ listingExclusions <- function(projectFile = NULL) {
 #-------------------------------------------------------------------------------
 
 #' listingDosingRegimen()
-#' Builds a dosing regimen listing per subject/occasion with dose amount and time,
-#' optionally adding a covariate column (from the dataset) or a constant entry
-#' (e.g., ROUTE) when the covariate is not present. If the custom NCA parameter
-#' `InfDur` was computed, it is merged on the subject identifier.
 #'
-#' @param covariate Character scalar; name of a covariate column present in the
-#'   interpreted dataset. Mutually exclusive with covariateEntry.
-#' @param covariateEntry Character scalar; constant value to inject as a column
-#'   (named ROUTE) when the covariate is not available in the dataset.
-#'   Mutually exclusive with covariate.
+#' Builds a dosing-regimen listing with one row per administration record in the
+#' dataset. For each dose record the admin. amount & admin. time are listed,
+#' together with any regimen-describing columns that are present in the dataset
+#' (occs, adm id, ss flag, ii, nb of addl doses, infusion rate/duration).
 #'
-
+#' Categorical covariates can be shown and the table stratified/sorted via
+#' `splitCovariates`, and rows can be restricted via `filterCovariates` /
+#' `filterIds`, mirroring the other PKanalix listing functions. Stratification-only
+#' and additional-stratification categorical covariates (PKanalix) are merged in
+#' automatically when available.
 #'
-#' @return A data frame with columns: id, occasion columns (if any), time,
-#' amount, optional covariate or ROUTE, and optional InfDur.
+#' @param projectFile Character scalar. Path to a PKanalix (.pkx) or Monolix
+#'   (.mlxtran) project file. If NULL, the currently loaded project is used.
+#' @param splitCovariates Character vector of categorical covariate / occasion
+#'   names to include as columns and sort by. Validated against the project.
+#' @param filterCovariates Named list of categorical covariate filters, e.g.
+#'   `list(SEX = "M", DOSE = c("100", "200"))`. Rows not matching are dropped.
+#' @param filterIds Vector of subject ids to keep. If NULL, no id filtering.
+#'
+#' @return A data frame with columns: id, split covariates / occasion(s),
+#'   administration id (if present), time, amount, and any present regimen
+#'   descriptors (ss, ii, addl, rate, tinf), plus merged stratification
+#'   categorical covariates (if any).
 #'
 #' @examples
-#' # From dataset covariate:
-#' # DosingRegimen_Listing(covariate = "ROUTE")
-#' #
-#' # Inject constant when covariate absent:
-#' # listingDosingRegimen(covariateEntry = "oral")
-listingDosingRegimen <- function(projectFile     = NULL,
-                                 covariate       = NULL,
-                                 covariateEntry = NULL) {
-    # Ensure the correct project is loaded
-    .checkProjectFile(projectFile, c("pkanalix", "monolix"))
-    .ensureProjectLoaded(projectFile)
+#' \dontrun{
+#' # Plain listing
+#' listingDosingRegimen(projectFile = "path/to/project.pkx")
+#'
+#' # Stratified by SEX and filtered to oral administrations (admid == 2)
+#' listingDosingRegimen(
+#'   splitCovariates  = "SEX",
+#'   filterCovariates = list(ADM = "2"))
+#' }
+#'
+#' @export
+listingDosingRegimen <- function(projectFile      = NULL,
+																 splitCovariates  = NULL,
+																 filterCovariates = NULL,
+																 filterIds        = NULL) {
 
-    # CASE 1: covariate and covariateEntry are mutually exclusive: only one should be set depending on whether the covariate exists in the dataset
-    if (!is.null(covariate) && !is.null(covariateEntry)) {
-        stop(paste("Invalid input: covariate:'", covariate, "' and covariateEntry:'", covariateEntry, "' are mutually exclusive."))
-    }
+	# Load project & validate arguments
+	.checkProjectFile(projectFile, c("pkanalix", "monolix"))
+	.ensureProjectLoaded(projectFile)
 
-    headers <- lixoftConnectors::getData()$header
-    header_types <- lixoftConnectors::getData()$headerTypes
+	.validateCovariateSelection(splitCovariates, ratio = FALSE)
+	.validateFilters(filterCovariates, filterIds, resultType = "covariateSummary")
 
-    amount_col <- lixoftConnectors::getData()$header[which(lixoftConnectors::getData()$headerTypes == "amount")]
-    time_col <- lixoftConnectors::getData()$header[which(lixoftConnectors::getData()$headerTypes == "time")]
-    id_col <- lixoftConnectors::getData()$header[which(lixoftConnectors::getData()$headerTypes == "id")]
+	# Detect header-typed columns (only used if present in dataset)
+	project_data <- lixoftConnectors::getData()
+	headers      <- project_data$header
+	types        <- project_data$headerTypes
 
-    occ_cols <- headers[which(header_types == "occ")]
+	col_of <- function(t) headers[types == t]
 
-    df <- lixoftConnectors::getInterpretedData()
+	id_col     <- col_of("id")
+	time_col   <- col_of("time")
+	amount_col <- col_of("amount")
 
-    # Build initial listing
-    listing <- df %>%
-        dplyr::select(dplyr::all_of(c(id_col, occ_cols, time_col, amount_col))) %>%
-        dplyr::filter(!is.na(.data[[amount_col]]) & .data[[amount_col]] != "") %>%
-        dplyr::rename(id = dplyr::all_of(id_col)) # rename to id column header used in lixoftConnectors::getNCAIndividualParameters()$parameters
+	if (length(id_col) == 0 || length(time_col) == 0 || length(amount_col) == 0) {
+		stop("Dataset must define id, time and amount columns to build a dosing regimen listing.",
+				 call. = FALSE)
+	}
 
-    # CASE 2: Covariate exists in dataset
-    if (!is.null(covariate) && is.null(covariateEntry)) {
-        if (!(covariate %in% colnames(df))) {
-            stop(paste("Covariate", covariate, "not found in dataset"))
-        }
-        listing[[covariate]] <- df %>%
-            dplyr::filter(!is.na(!!rlang::sym(amount_col)) & !!rlang::sym(amount_col) != "") %>%
-            dplyr::pull(!!rlang::sym(covariate))
-    }
+	occ_cols   <- col_of("occ")     # may be several
+	admid_col  <- col_of("admid")
+	ss_col     <- col_of("ss")
+	ii_col     <- col_of("ii")
+	addl_col   <- col_of("addl")
+	rate_col   <- col_of("rate")
+	tinf_col   <- col_of("tinf")
+	evid_col   <- col_of("evid")
 
-    # CASE 3: Covariate not in dataset – inject constant value
-    if (is.null(covariate) && !is.null(covariateEntry)) {
-        listing[["ROUTE"]] <- covariateEntry
-    }
+	# Regimen-describing columns, kept in a stable display order when present
+	descriptor_cols <- c(ss_col, ii_col, addl_col, rate_col, tinf_col)
 
-    # Merge with InfDur if available — using the same ID column name
-    if (any(lixoftConnectors::getNCASettings()$computedncaparameters == "InfDur")) {
-        df_InfDur <- as.data.frame(lixoftConnectors::getNCAIndividualParameters()$parameters)
+	# ---------------------------------------------------------------------------
+	# Build listing (one row per dose record)
+	df <- lixoftConnectors::getInterpretedData()
 
-        df_InfDur <- df_InfDur %>% dplyr::select("id", "InfDur")
+	# Split covariates that live directly in the dataset (e.g. catcov columns).
+	split_in_df <- intersect(splitCovariates, colnames(df))
 
-        listing <- merge(listing, df_InfDur, by = c("id"))
-    }
-    attr(listing, "project_source") <- lixoftConnectors::getProjectSettings()$directory
-    attr(listing, "r_source")       <- .getRScriptPath()
-    return(listing)
+	keep_cols <- c(id_col, occ_cols, admid_col, split_in_df, time_col, amount_col,
+								 descriptor_cols, evid_col)
+	keep_cols <- intersect(keep_cols, colnames(df))
+
+	listing <- df %>%
+		dplyr::select(dplyr::all_of(keep_cols))
+
+	# Dose-row selection: prefer EVID == 1 (dosing event) when available,
+	# excluding reset events (3, 4); otherwise fall back to a non-empty amount.
+	if (length(evid_col) == 1 && evid_col %in% colnames(listing)) {
+		evid_num <- suppressWarnings(as.numeric(listing[[evid_col]]))
+		listing  <- listing[which(evid_num == 1), , drop = FALSE]
+		listing[[evid_col]] <- NULL
+	} else {
+		amt <- listing[[amount_col]]
+		listing <- listing[!is.na(amt) & amt != "", , drop = FALSE]
+	}
+
+	# Standardize id column name (matches getNCAIndividualParameters()$parameters)
+	listing <- listing %>% dplyr::rename(id = dplyr::all_of(id_col))
+
+	# ---------------------------------------------------------------------------
+	# Covariates: auto-append occasions, merge stratification-only / added covs
+	user_split <- splitCovariates  # user-specified covs as primary sort keys
+	if (length(occ_cols) > 0) {
+		splitCovariates <- unique(c(splitCovariates, occ_cols))
+	}
+
+	# Merge stratification categorical + additional stratification covs.
+	cov_info <- tryCatch(lixoftConnectors::getCovariateInformation(), error = function(e) NULL)
+	strat_cov_names <- character(0)
+	if (!is.null(cov_info) && !is.null(cov_info$name)) {
+		strat_cov_names <- cov_info$name[cov_info$type %in% c("stratificationcategorical", "additionalstratificationcategorical")]
+	}
+	if (length(strat_cov_names) > 0 && !is.null(cov_info$covariate)) {
+		join_keys    <- c("id", intersect(occ_cols, names(cov_info$covariate)))
+		join_keys    <- intersect(join_keys, names(listing))
+		strat_cov_df <- unique(cov_info$covariate[, c(join_keys, strat_cov_names), drop = FALSE])
+		listing      <- merge(listing, strat_cov_df, by = join_keys, all.x = TRUE, sort = FALSE)
+	}
+
+	# ---------------------------------------------------------------------------
+	# Filters
+	listing <- .applyFilters(listing, filterCovariates, filterIds, id_col = "id")
+
+	# ---------------------------------------------------------------------------
+	# Sort & finalize column order.
+	# Primary keys: splitCovariates (grouped modalities) then numeric-then-character id, occs, admid, time.
+	split_sort <- intersect(user_split, names(listing))
+	within_syms <- rlang::syms(c(occ_cols, admid_col))
+	listing <- listing %>%
+		dplyr::mutate(.id_numeric = suppressWarnings(as.numeric(id))) %>%
+		dplyr::arrange(
+			dplyr::across(dplyr::all_of(split_sort)),
+			dplyr::coalesce(.id_numeric, Inf),
+			id,
+			!!!within_syms,
+			suppressWarnings(as.numeric(.data[[time_col]]))) %>%
+		dplyr::select(-.id_numeric)
+
+	# Cross-subject split covariates sit left of id (grouping keys leftmost);
+	# occs stay nested to the right of id (within-subject)
+	strat_front <- intersect(setdiff(splitCovariates, occ_cols), names(listing))
+	front <- c(strat_front, "id", occ_cols, admid_col, time_col, amount_col)
+	listing <- listing %>%
+		dplyr::relocate(dplyr::any_of(front))
+
+	attr(listing, "project_source") <- lixoftConnectors::getProjectSettings()$directory
+	attr(listing, "r_source")       <- .getRScriptPath()
+	return(as.data.frame(listing))
+
 }
