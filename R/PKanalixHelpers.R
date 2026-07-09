@@ -1503,7 +1503,7 @@ listingAbbreviation <- function(data,
 #'
 #' @export
 listingNCAConcentration <- function(projectFile      = NULL,
-																		splitCovariates       = NULL,
+																		splitCovariates  = NULL,
 																		useNominalTime   = FALSE,
 																		filterCovariates = NULL,
 																		filterIds        = NULL,
@@ -1665,11 +1665,16 @@ listingNCAConcentration <- function(projectFile      = NULL,
 	}
 
 	# Continue cleanup
+	# Primary sort by user-specified split covariates (so modalities are grouped),
+	# then the original id / occ / time ordering. occ_vars are excluded here because
+	# they were appended to splitCovariates above and are already sorted below.
+	split_sort <- intersect(setdiff(splitCovariates, occ_vars), names(indiv))
 	indiv <- indiv %>%
 		dplyr::relocate(dplyr::any_of(c("ActualTime", "NominalTime")), .before = Concentration) %>%
 		dplyr::relocate(dplyr::any_of(occ_vars), .after = id) %>%
 		dplyr::mutate(.id_numeric = suppressWarnings(as.numeric(id))) %>% # Try converting to numeric
 		dplyr::arrange(
+			dplyr::across(dplyr::all_of(split_sort)), # split covariates first -> group modalities
 			# Sort by numeric if possible, otherwise by character
 			dplyr::coalesce(.id_numeric, Inf), # Numeric IDs first, non-numeric at end
 			id,                                # Then by character (for non-numeric IDs)
@@ -1844,9 +1849,9 @@ listingNCAParameters <- function(projectFile      = NULL,
 		# Get remaining columns (parameters and non-selected splitCovariates)
 		remaining_cols <- setdiff(names(indivNCA), c("id", splitCovariates))
 
-		# Reorder: id, then splitCovariates in specified order, then rest
+		# Reorder: splitCovariates (left of id, grouping keys leftmost), then id, then rest
 		indivNCA <- indivNCA %>%
-			dplyr::select("id", dplyr::all_of(splitCovariates), dplyr::all_of(remaining_cols)) %>%
+			dplyr::select(dplyr::all_of(splitCovariates), "id", dplyr::all_of(remaining_cols)) %>%
 			dplyr::arrange(!!!rlang::syms(splitCovariates))
 	}
 	attr(indivNCA, "project_source") <- lixoftConnectors::getProjectSettings()$directory
@@ -1995,9 +2000,9 @@ listingNCARatios <- function(projectFile      = NULL,
 		# Get remaining columns (parameters and non-selected splitCovariates)
 		remaining_cols <- setdiff(names(indivRatios), c("id", splitCovariates))
 
-		# Reorder: id, then splitCovariates in specified order, then rest
+		# Reorder: splitCovariates (left of id, grouping keys leftmost), then id, then rest
 		indivRatios <- indivRatios %>%
-			dplyr::select("id", dplyr::all_of(splitCovariates), dplyr::all_of(remaining_cols)) %>%
+			dplyr::select(dplyr::all_of(splitCovariates), "id", dplyr::all_of(remaining_cols)) %>%
 			dplyr::arrange(!!!rlang::syms(splitCovariates))
 	}
 	attr(indivRatios, "project_source") <- lixoftConnectors::getProjectSettings()$directory
