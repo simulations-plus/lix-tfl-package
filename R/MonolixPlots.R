@@ -290,6 +290,9 @@
 #'   - level: CI level, e.g. 0.90 (default)
 #'   - variabilityLevel: In case of IOV, specifies which level to plot
 #'     (default NULL = ID + Occasions)
+#'   - footnote: logical, add a footnote below the plot (and legend) with the
+#'     Monolix project directory and R script path, styled like the table
+#'     footers (small, italic, left-aligned) (default FALSE)
 #'   - ncol: number of columns in facet layout (default 2)
 #' @param stratify List with the stratification arguments:
 #'   \describe{
@@ -325,6 +328,7 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 																															 grid               = TRUE,
 																															 level              = 0.90,
 																															 variabilityLevel   = NULL,
+																															 footnote           = FALSE,
 																															 ncol               = 2),
 																						stratify    = list(),
 																						preferences = list(point = list(color = "#4682B4",
@@ -547,6 +551,21 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 		} else {
 			p <- p + scale_colour_discrete(name = NULL)
 		}
+	}
+
+	# optional source footnote below the plot (and below the legend), styled like
+	# the flextable footers (small, italic, left-aligned). Uses plot.caption so it
+	# stays at the bottom even if the legend is later moved (e.g. to the right).
+	if (isTRUE(settings$footnote)) {
+		proj <- tryCatch(lixoftConnectors::getProjectSettings()$directory,
+										 error = function(e) NULL)
+		rsrc <- tryCatch(.getRScriptPath(), error = function(e) NULL)
+		lines <- c(if (!is.null(proj) && nzchar(proj)) paste0("Monolix project: ", proj),
+							 if (!is.null(rsrc) && nzchar(rsrc)) paste0("R source: ", rsrc))
+		if (length(lines))
+			p <- p +
+				labs(caption = paste(lines, collapse = "\n")) +
+				theme(plot.caption = element_text(size = 7, face = "italic", hjust = 0))
 	}
 
 	return(p)
@@ -1011,6 +1030,10 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 #'       (default FALSE).}
 #'     \item{grid}{(logical) add (TRUE) / remove (FALSE) plot grid
 #'       (default TRUE).}
+#'     \item{footnote}{(logical) If TRUE add a footnote below the plot (and
+#'       below the legend) giving the Monolix project directory and the R script
+#'       path, styled like the table footers (small, italic, left-aligned)
+#'       (default FALSE).}
 #'     \item{ncol}{(integer) number of columns for the x-axis facets when no
 #'       split is applied (default 4).}
 #'   }
@@ -1130,6 +1153,7 @@ plotAbsIWRESScatterPlot <- function(
 		linearInterpolation = TRUE,      # TRUE: interpolate bands between bins; FALSE: steps
 		legend           = FALSE,
 		grid             = TRUE,
+		footnote         = FALSE,        # TRUE: add project/R-script source footnote
 		ncol             = 4L),
 	stratify = list(),
 	preferences = list(
@@ -1414,7 +1438,7 @@ plotAbsIWRESScatterPlot <- function(
 		p <- p + scale_fill_manual(values = fill_val, name = NULL, breaks = names(fill_val),
 															 guide = guide_legend(order = 3))
 
-	p +
+	p <- p +
 		labs(x = NULL, y = "|IWRES|") +
 		base_theme +
 		theme(legend.position  = if (settings$legend) "bottom" else "none",
@@ -1423,4 +1447,20 @@ plotAbsIWRESScatterPlot <- function(
 					strip.placement  = "outside",      # xaxis strip sits below the axis
 					strip.background  = element_blank())
 
+	# optional source footnote below the plot (and below the legend), styled like
+	# the flextable footers (small, italic, left-aligned). Uses plot.caption so it
+	# stays at the bottom even if the legend is later moved (e.g. to the right).
+	if (isTRUE(settings$footnote)) {
+		proj <- tryCatch(lixoftConnectors::getProjectSettings()$directory,
+										 error = function(e) NULL)
+		rsrc <- tryCatch(.getRScriptPath(), error = function(e) NULL)
+		lines <- c(if (!is.null(proj) && nzchar(proj)) paste0("Monolix project: ", proj),
+							 if (!is.null(rsrc) && nzchar(rsrc)) paste0("R source: ", rsrc))
+		if (length(lines))
+			p <- p +
+				labs(caption = paste(lines, collapse = "\n")) +
+				theme(plot.caption = element_text(size = 7, face = "italic", hjust = 0))
+	}
+
+	p
 }
