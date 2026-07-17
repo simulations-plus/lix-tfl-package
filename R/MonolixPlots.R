@@ -581,7 +581,6 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 
 # =============================================================================
 # Modular data-access layer
-# =============================================================================
 
 # Results directory of the currently loaded project ("remember where it lives").
 .projectResultsDir <- function() {
@@ -607,7 +606,7 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 		stop("Unknown obsName '", obsName, "'. Available: ", paste(nms, collapse = ", "))
 	obsName
 }
-
+################################################################################
 # Path to the predictions file for one observation.
 # Multi-output projects write per-output files "predictions_<output>_<obsName>.txt"
 # (e.g. predictions_y1_totDrug.txt); a single modelled output writes plain
@@ -628,15 +627,17 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 	if (file.exists(path)) return(path)
 	stop("No predictions file found for observation '", obsName, "' in ", resultsDir)
 }
-
+################################################################################
 # Per-observation censoring (BLQ) flags. predictions.txt carries no BLQ flag,
-# so we read it from the interpreted dataset and join it back by id + time.
+# so we read it from the interpreted dataset and join it back by id + time
+# (+ occasion column(s), so IOV rows sharing an id/time are disambiguated).
 # Column roles come from getData() (header + headerTypes); the data itself comes
 # from getInterpretedData(), whose `cens` column holds decoded labels
 # ("notCensored", "intervalCensored", "leftCensored", ...). Empty = dose row.
 # When several observations share the dataset (obsid column), rows are filtered
 # to `obsName` so the join targets the matching predictions file.
-# Returns data.frame(id, time, censored) or NULL when there is no cens column.
+# Returns data.frame(id, time, censored, loq, limit, <occ cols>) or NULL when
+# there is no cens column. The occ columns are named as in predictions.txt.
 .getCensoringInfo <- function(obsName) {
 	gd    <- lixoftConnectors::getData()
 	types <- gd$headerTypes
@@ -648,25 +649,29 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 	obs_col   <- hdr[types == "observation"][1]                       # holds LOQ for BLQ rows
 	limit_col <- if ("limit"  %in% types) hdr[types == "limit"][1]  else NA_character_
 	obsid_col <- if ("obsid"  %in% types) hdr[types == "obsid"][1]  else NA_character_
+	occ_cols  <- hdr[types == "occ"]                                  # occasion column(s), if any
 
 	di <- lixoftConnectors::getInterpretedData()
 	if (!is.na(obsid_col))                       # keep only this observation's rows
 		di <- di[as.character(di[[obsid_col]]) == obsName, , drop = FALSE]
 	cens <- as.character(di[[cens_col]])
 	keep <- !is.na(cens) & nzchar(cens)          # observation rows only (not doses)
-	data.frame(id       = as.character(di[[id_col]][keep]),
-						 time     = as.numeric(di[[time_col]][keep]),
-						 censored = !(cens[keep] %in% c("notCensored")),
-						 loq      = suppressWarnings(as.numeric(di[[obs_col]][keep])),
-						 limit    = if (!is.na(limit_col))
-						 	suppressWarnings(as.numeric(di[[limit_col]][keep])) else NA_real_,
-						 stringsAsFactors = FALSE)
+	res <- data.frame(id       = as.character(di[[id_col]][keep]),
+										time     = as.numeric(di[[time_col]][keep]),
+										censored = !(cens[keep] %in% c("notCensored")),
+										loq      = suppressWarnings(as.numeric(di[[obs_col]][keep])),
+										limit    = if (!is.na(limit_col))
+											suppressWarnings(as.numeric(di[[limit_col]][keep])) else NA_real_,
+										stringsAsFactors = FALSE)
+	# carry occasion column(s) so the join can disambiguate IOV rows
+	for (oc in intersect(occ_cols, names(di)))
+		res[[oc]] <- as.character(di[[oc]][keep])
+	res
 }
 
-# -----------------------------------------------------------------------------
+################################################################################
 # Load raw |IWRES| points for one observation model + indivEstimate.
 # Returns: id, time, prediction, absiwres
-# -----------------------------------------------------------------------------
 .getAbsIWRESData <- function(obsName = NULL, settings) {
 	est <- settings$indivEstimate
 	if (!est %in% c("mode", "mean"))
@@ -702,11 +707,18 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 		limit      = NA_real_,
 		stringsAsFactors = FALSE)
 
-	# join censoring (BLQ) info from the dataset, matched by id + time
+	# join censoring (BLQ) info from the dataset, matched by id + time (+ occasion
+	# column(s) when present, so IOV rows sharing an id/time are disambiguated).
 	cinfo <- tryCatch(.getCensoringInfo(obsName), error = function(e) NULL)
 	if (!is.null(cinfo) && nrow(cinfo)) {
-		idx <- match(paste(as.character(out$id), out$time, sep = "\r"),
-								 paste(cinfo$id,             cinfo$time, sep = "\r"))
+		# occ columns are whatever cinfo carries beyond the fixed set; keep those
+		# also present in predictions.txt (df) as extra join keys.
+		occ_cols  <- setdiff(names(cinfo), c("id", "time", "censored", "loq", "limit"))
+		join_cols <- c("id", "time", intersect(occ_cols, names(df)))
+		mkkey <- function(d)
+			do.call(paste, c(lapply(join_cols, function(cc) as.character(d[[cc]])),
+											 list(sep = "\r")))
+		idx <- match(mkkey(df), mkkey(cinfo))    # df holds id/time/occ for the LHS
 		hit <- !is.na(idx)
 		out$censored[hit] <- cinfo$censored[idx[hit]]
 		out$loq[hit]      <- cinfo$loq[idx[hit]]
@@ -742,10 +754,9 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 }
 
 
-# =============================================================================
+################################################################################
 # Package-side stratification (reuses R/PlotStratification.R helpers).
 # Joins covariate groups onto residuals by id -> GUI-independent grouping.
-# =============================================================================
 .attachStratify <- function(dat, stratify, parsed = NULL) {
 	if (is.null(parsed)) parsed <- .parseStratify(stratify)
 	has_strat <- !is.null(parsed$split_specs) || !is.null(parsed$color_specs) ||
@@ -775,10 +786,9 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 }
 
 
-# =============================================================================
+################################################################################
 # Package-side binning (GUI-independent). Returns integer bin index per x.
 # Supports "equalwidth", "equalsize" and "leastsquare" (Monolix default).
-# =============================================================================
 
 # Least-squares binning: optimal contiguous partition of the sorted values into
 # `nbins` groups minimising the total within-bin sum of squares (the 1-D optimal
@@ -838,10 +848,9 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 }
 
 
-# =============================================================================
+################################################################################
 # Per-bin summary: empirical percentiles of |IWRES|, flat half-normal predicted
 # percentiles, and simulation-based (VPC) prediction-interval bands.
-# =============================================================================
 .summariseBins <- function(sub, xvar, binsSettings, percs, level,
 													 nSim = 500L, seed = 12345L) {
 	x      <- as.numeric(sub[[xvar]])
@@ -887,7 +896,7 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 	})
 	do.call(rbind, rows)
 }
-
+################################################################################
 # For linear-interpolation rendering: within each (xaxis, split, perc) group,
 # order rows by bin centre and append the first/last bin's values at the outer
 # bin edges, so an interpolated line/ribbon still spans the full x range.
@@ -902,7 +911,7 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 	})
 	do.call(rbind, out)
 }
-
+################################################################################
 # Resample empirical / PI curves of an edge-extended frame onto a fine x-grid
 # per (xaxis, split, perc), so that pmax()/pmin() outlier-area shading captures
 # the true crossing between the observed line and the PI bound (not just the
@@ -925,7 +934,7 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 	do.call(rbind, out)
 }
 
-
+################################################################################
 #' Scatter plot of the absolute individual weighted residuals |IWRES|
 #'
 #' Plot the scatter plot of the absolute individual weighted residuals,
