@@ -573,6 +573,20 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 ################################################################################
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
+# Evaluate `expr` under a fixed seed without perturbing the caller's global RNG
+# stream. set.seed() overwrites .Random.seed for the whole session, so we save
+# and restore it (or remove it if it did not exist) on exit.
+.withSeed <- function(seed, expr) {
+	if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
+		old <- get(".Random.seed", envir = globalenv(), inherits = FALSE)
+		on.exit(assign(".Random.seed", old, envir = globalenv()), add = TRUE)
+	} else {
+		on.exit(suppressWarnings(rm(".Random.seed", envir = globalenv())), add = TRUE)
+	}
+	set.seed(seed)
+	expr
+}
+
 # Half-normal quantile: p-th quantile of |Z|, Z ~ N(0,1)
 .halfNormalQuantile <- function(p) stats::qnorm((1 + p) / 2)
 
@@ -761,9 +775,10 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 			lo <- (out$limit[ci] - f) / g          # (LIMIT - f)/g
 			lo[is.na(lo)] <- -Inf                  # no lower censoring bound
 			ok <- is.finite(g) & g > 0 & is.finite(up)
-			set.seed(12345L)                       # reproducible BLQ draws
-			sim <- stats::qnorm(stats::runif(length(ci),
-																			 stats::pnorm(lo), stats::pnorm(up)))
+			# reproducible BLQ draws without perturbing the caller's RNG stream
+			sim <- .withSeed(12345L,
+											 stats::qnorm(stats::runif(length(ci),
+																								 stats::pnorm(lo), stats::pnorm(up))))
 			out$iwres[ci[ok]] <- sim[ok]
 		}
 	}
@@ -891,9 +906,10 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 
 	a   <- (1 - level / 100) / 2
 	qlo <- a; qhi <- 1 - a
-	set.seed(seed)
 
-	rows <- lapply(seq_along(ub), function(k) {
+	# VPC bands are simulated; seed for reproducibility but do not perturb the
+	# caller's global RNG stream (see .withSeed).
+	rows <- .withSeed(seed, lapply(seq_along(ub), function(k) {
 		b  <- ub[k]
 		m  <- which(binidx == b)
 		n  <- length(m)
@@ -912,7 +928,7 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 								 outlier = emp < band[1] | emp > band[2],
 								 stringsAsFactors = FALSE)
 		}))
-	})
+	}))
 	do.call(rbind, rows)
 }
 ################################################################################
@@ -1001,9 +1017,11 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 #'           else define a range for automatic selection (default TRUE).}
 #'         \item{nbBins}{(integer) Fixed number of bins (default 5).}
 #'         \item{binRange}{(vector(integer, integer)) Range for the number of
-#'           bins (default \code{c(5, 100)}).}
+#'           bins (default \code{c(5, 100)}). Note: automatic bin-count selection
+#'           is not fully implemented; when \code{is.fixedNbBins = FALSE} the
+#'           lower bound \code{binRange[1]} is used as the number of bins.}
 #'         \item{nbBinData}{(vector(integer, integer)) Range for the number of
-#'           data points per bin (default \code{c(5, 200)}).}
+#'           data points per bin (default \code{c(5, 200)}). Currently not used.}
 #'       }}
 #'     \item{residuals}{(logical) If TRUE display the |IWRES| dots
 #'       (default TRUE).}
@@ -1137,8 +1155,8 @@ plotAbsIWRESScatterPlot <- function(
 		indivEstimate    = "mode",       # "mode" | "mean"
 		level            = 90,           # prediction-interval level (percent)
 		higherPercentile = 90,           # upper empirical percentile (percent)
-		useCensored      = TRUE,         # accepted; predictions.txt has no BLQ flag
-		censoring        = "simulated",  # accepted; (see note above)
+		useCensored      = TRUE,         # include BLQ in the statistics (FALSE: exclude)
+		censoring        = "simulated",  # BLQ residuals: "simulated" | "loq"
 		binsSettings     = list(criteria = "leastsquare", is.fixedNbBins = TRUE,
 														nbBins = 5L, binRange = c(5L, 100L),
 														nbBinData = c(5L, 200L)),
@@ -1205,11 +1223,15 @@ plotAbsIWRESScatterPlot <- function(
 							 stringsAsFactors = FALSE)
 	}))
 
-	# per-bin summaries, per x-axis and per grouping level
+	# per-bin summaries, per x-axis and per grouping level. As in Monolix,
+	# useCensored controls only whether BLQ data enter the statistics (empirical
+	# percentiles / bins / prediction interval); the censored dots are still
+	# displayed via point_df above. Drop censored rows from the stats when FALSE.
+	stat_raw <- if (isTRUE(settings$useCensored)) raw else raw[!raw$censored, , drop = FALSE]
 	summ_df <- do.call(rbind, lapply(xaxis, function(ax) {
 		xv <- if (ax == "time") "time" else "prediction"
-		do.call(rbind, lapply(levels(raw[[grp_col]]), function(g) {
-			sub <- raw[raw[[grp_col]] == g, , drop = FALSE]
+		do.call(rbind, lapply(levels(stat_raw[[grp_col]]), function(g) {
+			sub <- stat_raw[stat_raw[[grp_col]] == g, , drop = FALSE]
 			if (nrow(sub) < 2L) return(NULL)
 			s <- .summariseBins(sub, xv, settings$binsSettings, percs, settings$level,
 													nSim = nSim, seed = seed)
