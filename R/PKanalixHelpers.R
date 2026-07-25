@@ -1383,54 +1383,100 @@ tableBEResults <- function(projectFile    = NULL,
 
 #' listingAbbreviation
 #'
-#' Produces a two-column abbreviation listing initialized from an input table,
-#' returning unique abbreviations and an empty \code{Full Term} column for later
-#' completion, sorted alphabetically.
+#' Builds an abbreviation listing for the computed NCA parameters of a PKanalix
+#' project. The full list of computed parameters is always kept (it is never
+#' reduced to those that happen to have an alias). When \code{aliases = TRUE}
+#' the \code{Abbreviation} column shows each parameter's alias where one exists
+#' and the original parameter name where it does not, so a mix of aliases and
+#' raw names is expected when aliases are only defined for some parameters. The
+#' listing also carries an (initially empty) \code{Full term} column that can be
+#' pre-populated from a user-supplied mapping. Rows are de-duplicated and sorted.
 #'
-#' @param data A data frame containing an abbreviation column or a \code{parameter}
-#'   column that will be mapped to the abbreviation list.
-#' @param abbrevCol Character scalar; name of the input column that holds the
-#'   abbreviations. Defaults to \code{"Abbreviation"}. If not present, the
-#'   function will construct it from \code{data$parameter}.
+#' @param projectFile Character path to the PKanalix project (\code{.pkx}). If
+#'   \code{NULL}, the currently loaded project is used.
+#' @param aliases Logical; if \code{TRUE} (default) parameter names in the
+#'   \code{Abbreviation} column are replaced by their alias where available,
+#'   falling back to the original name otherwise. Aliases come from
+#'   \code{customAliases} when supplied, otherwise they are fetched from the
+#'   project. HTML \code{<sub>text</sub>} markup in aliases is converted for
+#'   flextable rendering. If \code{FALSE}, the original parameter names are used.
+#' @param customAliases Optional custom alias mapping used instead of the
+#'   project aliases. Either a named vector (e.g.
+#'   \code{c(Cmax = "C<sub>max</sub>")}) or a 2-column data frame whose first
+#'   column holds parameter names and second column the aliases.
+#' @param fullTerms Optional mapping used to fill the \code{Full term} column.
+#'   Keyed on the original parameter names. Same accepted forms as
+#'   \code{customAliases}: a named vector (e.g.
+#'   \code{c(Cmax = "Maximum concentration")}) or a 2-column data frame
+#'   (parameter, full term). Parameters without an entry stay empty. If
+#'   \code{NULL} (default), the \code{Full term} column is left empty.
 #'
-#' @return A data frame with columns \code{Abbreviation} and \code{Full Term},
-#'   de-duplicated and sorted.
+#' @return A data frame with columns \code{Abbreviation} (alias where available,
+#'   original parameter name otherwise) and \code{Full term}, de-duplicated and
+#'   sorted. Rename the returned columns afterwards if different labels are
+#'   desired.
 #'
 #' @examples
-#' # listingAbbreviation(NCAParamSummary_info)
-#' # listingAbbreviation(df, abbrevCol = "abbr")
-# listingAbbreviation	 <- function(data, abbrevCol = "Abbreviation") {
-#' #  dt <- data.frame(Abbreviation = data$parameter, stringsAsFactors = FALSE)
-#' #  abbrev_listing <- dt %>%
-#' #    distinct(!!rlang::sym(abbrevCol)) %>%
-#' #    dplyr::rename(Abbreviation = !!rlang::sym(abbrevCol)) %>%
-#' #    dplyr::mutate(`Full Term` = NA_character_) %>%
-#' #    dplyr::arrange(Abbreviation)
-#' #  return(abbrev_listing)
-# }
-listingAbbreviation <- function(data,
-																abbrevCol = "Abbreviation",
-																fulltermCol = "Full Term") {
-	# Validate: data must have a 'parameter' column
-	if (!"parameter" %in% names(data)) {
-		stop("Input data must contain a column named 'parameter'.")
+#' # listingAbbreviation()
+#' # listingAbbreviation(aliases = FALSE)
+#' # listingAbbreviation(fullTerms = c(Cmax = "Maximum concentration",
+#' #                                   AUClast = "Area under the curve to last obs"))
+listingAbbreviation <- function(projectFile   = NULL,
+																aliases       = TRUE,
+																customAliases = NULL,
+																fullTerms     = NULL) {
+	# Ensure the correct project is loaded
+	.checkProjectFile(projectFile, "pkanalix")
+	.ensureProjectLoaded(projectFile)
+
+	uparams <- unique(getNCASettings()$computedncaparameters)
+	abbrev_listing <- data.frame(parameter = uparams, stringsAsFactors = FALSE)
+	abbrev_listing$abbrev <- abbrev_listing$parameter
+
+	if (isTRUE(aliases)) {
+		aliases_df <- .normalizeAliasMapping(customAliases, "aliases")
+
+		if (is.null(aliases_df)) {
+			# Fetch from PKanalix project (existing behavior)
+			NCAParamSummary_info <- lixoftConnectors::getNCAParameterStatistics(parameters = uparams)$information %>%
+				tibble::rownames_to_column(var = "parameter")
+
+			if ("aliases" %in% names(NCAParamSummary_info)) {
+				aliases_df <- NCAParamSummary_info %>%
+					dplyr::select(parameter, aliases)
+			} else {
+				warning("Aliases were requested (aliases=TRUE) but are not available in the current project. Keeping original parameter names.")
+				aliases_df <- NULL
+			}
+		}
+
+		if (!is.null(aliases_df)) {
+			# Apply HTML conversion so users can use <sub>text</sub> syntax
+			aliases_df <- .convertHtmlAliasesForFlextable(aliases_df)
+			abbrev_listing <- abbrev_listing %>%
+				dplyr::left_join(aliases_df, by = "parameter") %>%
+				dplyr::mutate(abbrev = dplyr::coalesce(
+					dplyr::na_if(as.character(aliases), ""), parameter)) %>%
+				dplyr::select(-aliases)
+		}
 	}
 
-	# Create dataframe with abbreviations from parameter column
-	dt <- data.frame(Abbreviation = data$parameter, stringsAsFactors = FALSE)
+	# ---------------------------------------------------------------------------
+	# Full term column always present: empty unless a mapping is supplied.
+	# The mapping is keyed on the original parameter names.
+	fullterm_df <- .normalizeAliasMapping(fullTerms, "fullterm")
+	if (!is.null(fullterm_df)) {
+		abbrev_listing <- abbrev_listing %>%
+			dplyr::left_join(fullterm_df, by = "parameter")
+	} else {
+		abbrev_listing$fullterm <- NA_character_
+	}
 
-	# Build listing with optional renaming
-	abbrev_listing <- dt %>%
-		dplyr::distinct(Abbreviation) %>%
-		dplyr::mutate(`Full Term` = NA_character_) %>%
-		dplyr::arrange(Abbreviation)
-
-	# Rename columns dynamically according to user input
 	abbrev_listing <- abbrev_listing %>%
-		dplyr::rename(
-			!!abbrevCol := Abbreviation,
-			!!fulltermCol := `Full Term`
-		)
+		dplyr::arrange(parameter) %>%
+		dplyr::transmute(Abbreviation = abbrev,
+										 `Full term`  = fullterm) %>%
+		dplyr::distinct()
 
 	return(abbrev_listing)
 }
