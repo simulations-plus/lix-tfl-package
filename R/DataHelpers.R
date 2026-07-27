@@ -793,11 +793,17 @@ listingExclusions <- function(projectFile = NULL) {
         dataFile <- dataFileProject
         dataFileExt <- tools::file_ext(dataFile)
 
-        # Read raw data, handling CSV or TXT formats only
-        if (dataFileExt %in% c("csv", "txt")) {
+        # Read raw data, handling CSV/TXT and Excel (XLSX/XLS) formats
+        if (tolower(dataFileExt) %in% c("csv", "txt")) {
             dataRaw <- utils::read.csv(dataFile, header = TRUE, sep = .getDelim(dataFile))
+        } else if (tolower(dataFileExt) %in% c("xlsx", "xls")) {
+            if (!requireNamespace("readxl", quietly = TRUE)) {
+                stop("Reading Excel data files requires the 'readxl' package. Install it with install.packages('readxl').")
+            }
+            # as.data.frame() so downstream row/column indexing matches the read.csv path
+            dataRaw <- as.data.frame(readxl::read_excel(dataFile), stringsAsFactors = FALSE)
         } else {
-            stop("Only CSV or TXT format is currently supported.")
+            stop("Only CSV, TXT, or Excel (XLSX/XLS) format is currently supported.")
         }
     } else {
         if (basename(dataFileProject) != basename(dataFile)) {
@@ -871,16 +877,16 @@ listingExclusions <- function(projectFile = NULL) {
             }
         }
 
-        # Create a logical vector to find matching rows in the interpreted dataset
-        # Apply time scaling based on software
-        if (software == "pkanalix") {
-            bInter <- (dataUsed[, iId] == as.character(rawLine[iId])) &
-                (as.numeric(dataUsed[, iTime]) == as.numeric(rawLine[iTime] * gainTime))
-        } else if (software == "monolix") {
-            # No scaling for Monolix
-            bInter <- (dataUsed[, iId] == as.character(rawLine[iId])) &
-                (as.numeric(dataUsed[, iTime]) == as.numeric(rawLine[iTime]))
-        }
+        # Create a logical vector to find matching rows in the interpreted dataset.
+        # Match on id + time, but compare time with a small tolerance instead of
+        # exact equality: raw (Excel/CSV) and interpreted times can differ by
+        # floating-point rounding -- most visibly at fractional timepoints such as
+        # 0.08333333 h -- which exact "==" would wrongly report as excluded.
+        # gainTime applies the PKanalix time scaling (== 1 for Monolix).
+        rawTime  <- as.numeric(rawLine[iTime] * gainTime)
+        usedTime <- as.numeric(dataUsed[, iTime])
+        bInter   <- (dataUsed[, iId] == as.character(rawLine[iId])) &
+            (abs(usedTime - rawTime) <= pmax(abs(rawTime), 1) * 1e-6)
 
         # Check occurrence levels if they exist
         if (nbOccLevel > 0) {
