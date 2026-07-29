@@ -735,6 +735,14 @@
 #' @param align_default Character string for global alignment: "left", "center" (default), "right", or "justify".
 #' @param align_grouping Character string for grouping column alignment. If `NULL` (default), uses `align_default`.
 #' @param align_cols Named character vector for column-specific alignment (e.g., `c("Parameter" = "left", "Estimate" = "right")`). Overrides other alignment settings. If `NULL` (default), no column-specific alignment.
+#' @param autoHighlight Logical; if `TRUE`, shades the best-model-per-step rows of
+#'   a covariate model-building table light gray. Default is `FALSE`. The rows are
+#'   read from the `best_per_step` attribute set by [tableModelBuilding()] (the
+#'   accepted winner of each forward/backward step) and matched by their `Run`
+#'   label, so the shading survives the section-header rows that are inserted for
+#'   model-building tables. When shading is applied, an explanatory footnote is
+#'   added automatically. Has no effect on tables without a `best_per_step`
+#'   attribute (e.g. non-model-building tables or SAMBA runs).
 #'
 #' @return A flextable object with applied styling and formatting.
 #'
@@ -784,7 +792,8 @@ style_tfl <- function(data.flex,
 											align_grouping   = NULL,     # alignment for grouping columns (NULL = use default)
 											align_cols       = NULL,     # named vector for column-specific alignments
 											footnote         = NULL,     # manual footnote text
-											autoFootnote     = TRUE)     # auto-detect footnotes from attributes
+											autoFootnote     = TRUE,     # auto-detect footnotes from attributes
+											autoHighlight    = FALSE)    # shade best-model-per-step rows (model building)
 {
 	##############################################################################
 	# 0. Check required packages
@@ -896,6 +905,11 @@ style_tfl <- function(data.flex,
 	if (!is.logical(autoFootnote) || length(autoFootnote) != 1 || is.na(autoFootnote)) {
 		stop("'autoFootnote' must be TRUE or FALSE.", call. = FALSE)
 	}
+	#-----------------------------------------------------------------------------
+	# 13. autoHighlight
+	if (!is.logical(autoHighlight) || length(autoHighlight) != 1 || is.na(autoHighlight)) {
+		stop("'autoHighlight' must be TRUE or FALSE.", call. = FALSE)
+	}
 	##############################################################################
 	# Check if columns exist
 	pval.flag <- ("PVAL" %in% color) && "p.value" %in% colnames(data.flex)
@@ -956,20 +970,19 @@ style_tfl <- function(data.flex,
 	# Save table_type before calling .add_section_headers (it may be lost during processing)
 	table_type_for_styling <- attr(data.flex, "table_type")
 
-	section_result <- .add_section_headers(data.flex, grouping.columns)
-	data.flex <- section_result$data.flex
+	section_result      <- .add_section_headers(data.flex, grouping.columns)
+	data.flex           <- section_result$data.flex
 	section_header_rows <- section_result$section_header_rows
-	wide_split_col <- section_result$wide_split_col
-	is_wide <- section_result$is_wide
+	wide_split_col      <- section_result$wide_split_col
+	is_wide             <- section_result$is_wide
 	has_section_headers <- length(section_header_rows) > 0 || !is.null(wide_split_col)
-	# --- END: Section Headers ---
+
 
 	ft <- flextable(data.flex)
 
 	#-----------------------------------------------------------------------------
 	# [Alias Conversion]
 	# Apply subscript formatting to both body cells and column headers
-	#-----------------------------------------------------------------------------
 	ft <- .apply_alias_subscripts(ft, data.flex)
 
 
@@ -1090,7 +1103,6 @@ style_tfl <- function(data.flex,
 
 	# ---------------------------------------------------------------------------
 	# Header levels (1 = topmost)
-	# ---------------------------------------------------------------------------
 	h1 <- .as_header_string(header_level1)
 	h2 <- .as_header_string(header_level2)
 	h3 <- .as_header_string(header_level3)
@@ -1117,7 +1129,6 @@ style_tfl <- function(data.flex,
 
 	# ---------------------------------------------------------------------------
 	# Color palette setup
-	# ---------------------------------------------------------------------------
 	base_yellow <- "#FFD700"
 	base_orange <- "#EE7600"
 	base_red    <- "#8B1A1A"
@@ -1135,6 +1146,19 @@ style_tfl <- function(data.flex,
 		col_orange <- .hex_to_rgba(base_orange, html_alpha)
 		col_red    <- .hex_to_rgba(base_red, html_alpha)
 		col_green  <- .hex_to_rgba(base_green, html_alpha)
+	}
+
+	# Best-model-per-step row shading (model building tables)
+	if (isTRUE(autoHighlight)) {
+		best_runs <- saved_attrs[["best_per_step"]]
+		if (length(best_runs) > 0 && "Run" %in% colnames(data.flex)) {
+			col_gray <- if (.is_html_output()) .hex_to_rgba("#808080", html_alpha) else "#ECECEC"
+			hl_rows  <- setdiff(which(as.character(data.flex$Run) %in% best_runs),
+													section_header_rows)
+			if (length(hl_rows) > 0) {
+				ft <- flextable::bg(ft, i = hl_rows, bg = col_gray, part = "body")
+			}
+		}
 	}
 
 	# Apply conditional background formatting for RSE columns
@@ -1189,13 +1213,18 @@ style_tfl <- function(data.flex,
 
 	# ---------------------------------------------------------------------------
 	# Footnotes
-	# ---------------------------------------------------------------------------
 	all_footnotes <- character(0)
 
 	# Auto-detect footnotes from attributes
 	if (isTRUE(autoFootnote)) {
 		auto_notes <- .generateAutoFootnotes(saved_attrs)
 		all_footnotes <- c(all_footnotes, auto_notes)
+	}
+
+	# footnote to explain autoHighlight
+	if (isTRUE(autoHighlight) && length(saved_attrs[["best_per_step"]]) > 0) {
+		all_footnotes <- c(all_footnotes,
+											 paste0("Highlighted rows show the best model chosen at each forward and backward step of the covariate model building."))
 	}
 
 	# Add manual footnotes
