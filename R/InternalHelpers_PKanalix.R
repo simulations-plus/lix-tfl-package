@@ -2586,7 +2586,9 @@
 #'   \item `id` -> generic subject labels `"id1"`, `"id2"`, ... (rows of one subject
 #'     keep the same label, so multi-record subjects stay visible).
 #'   \item `obsid` -> `"obsid1"`, `"obsid2"`, ... (may be strings, so relabeled).
-#'   \item `catcov` / `stratcatcov` -> `"Category 1"`, `"Category 2"`, ... per column.
+#'   \item `admid` / `adm` -> `"adm1"`, `"adm2"`, ... (administration identifier).
+#'   \item `catcov` / `stratcatcov` (and stratification categorical covariate types)
+#'     -> `"Category 1"`, `"Category 2"`, ... per column.
 #'   \item `occ` -> `"occ1"`, `"occ2"`, ... per column.
 #'   \item `date` / `dat1` / `dat2` / `dat3` -> each digit becomes `"x"`, keeping
 #'     separators, e.g. `"03/15/2024"` -> `"xx/xx/xxxx"` (order-agnostic, so one
@@ -2634,7 +2636,10 @@
 		if (is.na(t))                              return("num")
 		if (t == "id")                             return("id")
 		if (t %in% c("obsid", "ytype"))            return("obsid")
-		if (t %in% c("catcov", "stratcatcov"))     return("cat")
+		if (t %in% c("admid", "adm"))              return("adm")
+		if (t %in% c("catcov", "stratcatcov",
+								 "stratificationcategorical",
+								 "additionalstratificationcategorical")) return("cat")
 		if (t == "occ")                            return("occ")
 		if (t %in% c("date", "dat1", "dat2", "dat3")) return("date")
 		"num"
@@ -2645,6 +2650,7 @@
 		df[[col]] <- switch(k,
 			id    = relabel(df[[col]], "id"),
 			obsid = relabel(df[[col]], "obsid"),
+			adm   = relabel(df[[col]], "adm"),
 			cat   = relabel(df[[col]], "Category "),
 			occ   = relabel(df[[col]], "occ"),
 			date  = mask_date(df[[col]]),

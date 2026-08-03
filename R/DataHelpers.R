@@ -1051,6 +1051,10 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
 #' @param filterCovariates Named list of categorical covariate filters, e.g.
 #'   `list(SEX = "M", DOSE = c("100", "200"))`. Rows not matching are dropped.
 #' @param filterIds Vector of subject ids to keep. If NULL, no id filtering.
+#' @param mock Logical; if `TRUE`, masks the listing for documentation / example
+#'   outputs: id -> `"id1"`, administration id -> `"adm1"`, occasions -> `"occ1"`,
+#'   categorical / stratification covariates -> `"Category 1"`, and all numeric
+#'   columns (time, amount, ss, ii, addl, rate, tinf) -> `"xx.xx"`. Default `FALSE`.
 #'
 #' @return A data frame with columns: id, split covariates / occasion(s),
 #'   administration id (if present), time, amount, and any present regimen
@@ -1072,7 +1076,8 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
 listingDosingRegimen <- function(projectFile      = NULL,
 																 splitCovariates  = NULL,
 																 filterCovariates = NULL,
-																 filterIds        = NULL) {
+																 filterIds        = NULL,
+																 mock             = FALSE) {
 
 	# Load project & validate arguments
 	.checkProjectFile(projectFile, c("pkanalix", "monolix"))
@@ -1182,6 +1187,20 @@ listingDosingRegimen <- function(projectFile      = NULL,
 	front <- c(strat_front, "id", occ_cols, admid_col, time_col, amount_col)
 	listing <- listing %>%
 		dplyr::relocate(dplyr::any_of(front))
+
+	# ==========================================================================
+	# MOCKING
+
+	if (isTRUE(mock)) {
+		col_types <- c(
+			stats::setNames("id", "id"),
+			stats::setNames(rep("occ",    length(occ_cols)),        occ_cols),
+			stats::setNames(rep("admid",  length(admid_col)),       admid_col),
+			stats::setNames(rep("catcov", length(split_in_df)),     split_in_df),
+			stats::setNames(rep("catcov", length(strat_cov_names)), strat_cov_names))
+
+		listing <- .mockDataListing(listing, colTypes = col_types)
+	}
 
 	attr(listing, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(listing, "r_source")       <- .getRScriptPath()
