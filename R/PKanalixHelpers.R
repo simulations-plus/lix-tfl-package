@@ -1954,22 +1954,51 @@ listingNCAParameters <- function(projectFile      = NULL,
 #'
 #' @param projectFile Character string. Path to the PKanalix project file (.pkx).
 #'   If NULL, uses the currently loaded project.
-#' @param splitCovariates Character vector. Covariates to include and sort by. If specified,
-#'   the table is sorted by these splitCovariates in the order provided.
+#' @param splitCovariates Character vector. Categorical covariates (type "catcov")
+#'   to include and sort by. If specified, the table is sorted by these
+#'   splitCovariates in the order provided. Occasion-varying covariates are
+#'   rejected, since ratios are computed across occasions and cannot be
+#'   stratified by a covariate that changes within subject.
 #' @param ratioParams Character vector. Ratio parameters to include. If NULL (default),
 #'   all available ratio parameters are included.
+#' @param filterCovariates Named list where names are categorical covariate names
+#'   and values are vectors of allowed values, e.g.
+#'   `list(SEX = "Male", DOSE = c("100", "200"))`. Rows not matching are dropped.
+#'   If `NULL` (default), no covariate filtering is applied.
+#' @param filterIds Character or numeric vector of subject IDs to include. If
+#'   `NULL` (default), no ID filtering is applied.
 #' @param roundDigits Numeric. Number of digits for rounding (default: 3).
 #' @param roundMethod Character. Rounding method: "monolix" (default), "signif", or "none".
 #' @param aliases Logical. If TRUE (default), parameter names are replaced with their aliases.
+#' @param customAliases Named vector or 2-column dataframe mapping parameter names
+#'   to custom alias labels. Example: `c(Cmax_ratio = "C[[sub:max]] ratio")`.
+#'   If provided, these override aliases from the PKanalix project. Supports special
+#'   formatting syntax: `[[sub:text]]` for subscript, `[[sup:text]]` for superscript,
+#'   and `~text~` for italic.
+#' @param mock Logical; if `TRUE`, masks the listing for documentation / example
+#'   outputs: id -> `"id1"`, categorical / stratification covariates ->
+#'   `"Category 1"`, and all numeric columns (continuous covariates, ratio
+#'   parameter values) -> `"xx.xx"`. Default `FALSE`.
 #'
-#' @return A data frame containing individual NCA ratio values with columns for ID,
-#'   splitCovariates (if specified), and ratio parameters.
+#' @return A data frame with one row per subject, containing the `id` column,
+#'   `splitCovariates` (if specified, placed to the left of `id`), any
+#'   occasion-invariant stratification-only / additional-stratification
+#'   categorical covariates (merged in automatically when defined in the
+#'   project), and the selected (or all) ratio parameter columns, with names
+#'   formatted per `aliases`. Ratio parameters are dimensionless, so no `units`
+#'   argument is offered.
 #'
 #' @details
 #' The function validates that:
 #' - NCA analysis has been run (required for ratios)
 #' - NCA ratio module is configured
 #' - Specified splitCovariates and parameters exist in the project
+#'
+#' Stratification-only and additional-stratification categorical covariates
+#' (PKanalix) are merged in automatically when available, independent of
+#' `splitCovariates`. Occasion-varying stratification covariates are skipped
+#' for this merge (with a message) since they are not constant within subject
+#' and ratios are computed across occasions.
 #'
 #' @export
 #'
@@ -1985,6 +2014,15 @@ listingNCAParameters <- function(projectFile      = NULL,
 #'   ratioParams = c("AUC_ratio", "Cmax_ratio"),
 #'   roundDigits = 2
 #' )
+#'
+#' # Restrict to specific subjects and covariate values
+#' ratios <- listingNCARatios(
+#'   filterCovariates = list(SEX = "Male"),
+#'   filterIds        = c(1, 2, 17)
+#' )
+#'
+#' # Masked listing for documentation / example outputs
+#' ratios <- listingNCARatios(mock = TRUE)
 #' }
 listingNCARatios <- function(projectFile      = NULL,
 														 splitCovariates  = NULL,
@@ -1994,7 +2032,8 @@ listingNCARatios <- function(projectFile      = NULL,
 														 roundDigits      = 3,
 														 roundMethod      = c("monolix", "signif", "none"),
 														 aliases          = TRUE,
-														 customAliases   = NULL){
+														 customAliases   = NULL,
+														 mock             = FALSE){
 
 	roundMethod <- match.arg(roundMethod)
 	# Ensure the correct project is loaded
@@ -2094,6 +2133,15 @@ listingNCARatios <- function(projectFile      = NULL,
 			dplyr::select(dplyr::all_of(splitCovariates), "id", dplyr::all_of(remaining_cols)) %>%
 			dplyr::arrange(!!!rlang::syms(splitCovariates))
 	}
+
+	if (isTRUE(mock)) {
+		col_types <- stats::setNames(project_data$headerTypes, project_data$header)
+		col_types["id"]              <- "id"
+		col_types[merged_strat_covs] <- "catcov"
+
+		indivRatios <- .mockDataListing(indivRatios, colTypes = col_types, digits = roundDigits)
+	}
+
 	attr(indivRatios, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(indivRatios, "r_source")       <- .getRScriptPath()
 	return(indivRatios)
