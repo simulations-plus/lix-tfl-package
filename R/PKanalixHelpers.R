@@ -1490,15 +1490,27 @@ listingAbbreviation <- function(projectFile   = NULL,
 #' (including censoring flags). Occasion-level identifiers are concatenated to
 #' form unique subject IDs when applicable.
 #'
+#' @param projectFile Character string. Path to the PKanalix project file (.pkx).
+#'   If NULL, uses the currently loaded project.
+#'
 #' @param splitCovariates Character vector of covariate names to include as
 #'   stratification columns (e.g., \code{c("TREAT","FOOD")}); \code{NULL} for no
-#'   stratification.
+#'   stratification. Occasion columns present in the project are appended
+#'   automatically (see Details).
 #'
 #' @param useNominalTime Logical; if \code{TRUE}, the function attempts to use
 #'   nominal time for the concentration listing. If nominal time is not available
 #'   in the project (checked via \code{lixoftConnectors::getData()} and \code{headerTypes ==
 #'   "nominaltime"}), the function will fall back to actual time and issue a
 #'   warning. Default is \code{FALSE}.
+#'
+#' @param filterCovariates Named list where names are categorical covariate names
+#'   and values are vectors of allowed values, e.g.
+#'   `list(SEX = "Male", DOSE = c("100", "200"))`. Rows not matching are dropped.
+#'   If `NULL` (default), no covariate filtering is applied.
+#'
+#' @param filterIds Character or numeric vector of subject IDs to include. If
+#'   `NULL` (default), no ID filtering is applied.
 #'
 #' @param roundDigits Integer specifying the number of decimal places for rounding
 #'   numeric values. Default is `3`.
@@ -1507,6 +1519,11 @@ listingAbbreviation <- function(projectFile   = NULL,
 #'   - `"monolix"` (default): Adaptive rounding that adds extra digits for values < 1
 #'   - `"signif"`: Standard significant figures rounding
 #'   - `"none"`: No rounding performed
+#'
+#' @param mock Logical; if `TRUE`, masks the listing for documentation / example
+#'   outputs: id -> `"id1"`, categorical covariates / occasions -> `"Category 1"`
+#'   / `"occ1"`, and all numeric columns (time, Concentration, UsedConc,
+#'   Censoring) -> `"xx.xx"`. Default `FALSE`.
 #'
 #' @details
 #'   The function first resets stratification via
@@ -1547,6 +1564,17 @@ listingAbbreviation <- function(projectFile   = NULL,
 #' # Include nominal time if available
 #' listingNCAConcentration(splitCovariates = c("TREAT", "FOOD"), useNominalTime = TRUE)
 #'
+#' \dontrun{
+#' # Restrict to specific subjects and covariate values
+#' listingNCAConcentration(
+#'   filterCovariates = list(TREAT = "A"),
+#'   filterIds        = c(1, 2, 17)
+#' )
+#'
+#' # Masked listing for documentation / example outputs
+#' listingNCAConcentration(mock = TRUE)
+#' }
+#'
 #' @export
 listingNCAConcentration <- function(projectFile      = NULL,
 																		splitCovariates  = NULL,
@@ -1554,7 +1582,8 @@ listingNCAConcentration <- function(projectFile      = NULL,
 																		filterCovariates = NULL,
 																		filterIds        = NULL,
 																		roundDigits      = 3,
-																		roundMethod      = "none") {
+																		roundMethod      = "none",
+																		mock             = FALSE) {
 
 	# Ensure the correct project is loaded
 	.checkProjectFile(projectFile, "pkanalix")
@@ -1751,6 +1780,13 @@ listingNCAConcentration <- function(projectFile      = NULL,
 														digits = roundDigits,
 														rounding_method = roundMethod)) %>%
 		dplyr::select(-.conc_numeric)
+
+	if (isTRUE(mock)) {
+		col_types <- stats::setNames(project_data$headerTypes, project_data$header)
+		col_types["id"] <- "id"
+
+		indiv <- .mockDataListing(indiv, colTypes = col_types, digits = roundDigits)
+	}
 
 	attr(indiv, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(indiv, "r_source")       <- .getRScriptPath()
