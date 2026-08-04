@@ -1764,22 +1764,46 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #'
 #' @param projectFile Character string. Path to the PKanalix project file (.pkx).
 #'   If NULL, uses the currently loaded project.
-#' @param splitCovariates Character vector. Covariates to include and sort by. If specified,
-#'   the table is sorted by these splitCovariates in the order provided.
+#' @param splitCovariates Character vector. Categorical covariates (type "catcov")
+#'   to include and sort by. If specified, the table is sorted by these
+#'   splitCovariates in the order provided.
 #' @param ncaParams Character vector. NCA parameters to include. If NULL (default),
 #'   all computed NCA parameters are included.
+#' @param filterCovariates Named list where names are categorical covariate names
+#'   and values are vectors of allowed values, e.g.
+#'   `list(SEX = "Male", DOSE = c("100", "200"))`. Rows not matching are dropped.
+#'   If `NULL` (default), no covariate filtering is applied.
+#' @param filterIds Character or numeric vector of subject IDs to include. If
+#'   `NULL` (default), no ID filtering is applied.
 #' @param roundDigits Numeric. Number of digits for rounding (default: 3).
 #' @param roundMethod Character. Rounding method: "monolix" (default), "signif", or "none".
 #' @param units Logical. If TRUE (default), parameter units are added to column names.
 #' @param aliases Logical. If TRUE (default), parameter names are replaced with their aliases.
+#' @param customUnits Named vector or 2-column dataframe mapping parameter names
+#'   to custom unit labels. Example: `c(Cmax = "ng/mL", AUClast = "h*ng/mL")`.
+#'   If provided, these override units from the PKanalix project.
+#' @param customAliases Named vector or 2-column dataframe mapping parameter names
+#'   to custom alias labels. Example: `c(Cmax = "C[[sub:max]]", AUClast = "AUC[[sub:0-tlast]]")`.
+#'   If provided, these override aliases from the PKanalix project. Supports special
+#'   formatting syntax: `[[sub:text]]` for subscript, `[[sup:text]]` for superscript,
+#'   and `~text~` for italic.
+#' @param mock Logical; if `TRUE`, masks the listing for documentation / example
+#'   outputs: id -> `"id1"`, occasions -> `"occ1"`, categorical / stratification
+#'   covariates -> `"Category 1"`, and all numeric columns (continuous covariates,
+#'   NCA parameter values) -> `"xx.xx"`. Default `FALSE`.
 #'
-#' @return A data frame containing individual NCA parameter values with columns for ID,
-#'   splitCovariates (if specified), and NCA parameters.
+#' @return A data frame with one row per subject, containing the `id` column,
+#'   `splitCovariates` (if specified, placed to the left of `id`), any
+#'   stratification-only / additional-stratification categorical covariates
+#'   (merged in automatically when defined in the project), and the selected
+#'   (or all) NCA parameter columns, with names formatted per `units`/`aliases`.
 #'
 #' @details
 #' The function validates that NCA analysis has been run and that specified splitCovariates
 #' and parameters exist in the project. Parameter names can be formatted with units
-#' and/or aliases for improved readability.
+#' and/or aliases for improved readability. Stratification-only and
+#' additional-stratification categorical covariates (PKanalix) are merged in
+#' automatically when available, independent of `splitCovariates`.
 #'
 #' @export
 #'
@@ -1797,6 +1821,15 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #'   units = TRUE,
 #'   aliases = TRUE
 #' )
+#'
+#' # Restrict to specific subjects and covariate values
+#' params <- listingNCAParameters(
+#'   filterCovariates = list(SEX = "Male"),
+#'   filterIds        = c(1, 2, 17)
+#' )
+#'
+#' # Masked listing for documentation / example outputs
+#' params <- listingNCAParameters(mock = TRUE)
 #' }
 listingNCAParameters <- function(projectFile      = NULL,
 																 splitCovariates  = NULL,
@@ -1808,7 +1841,8 @@ listingNCAParameters <- function(projectFile      = NULL,
 																 units            = TRUE,
 																 aliases          = TRUE,
 																 customUnits      = NULL,
-																 customAliases    = NULL){
+																 customAliases    = NULL,
+																 mock             = FALSE){
 
 
 	roundMethod <- match.arg(roundMethod)
@@ -1900,6 +1934,15 @@ listingNCAParameters <- function(projectFile      = NULL,
 			dplyr::select(dplyr::all_of(splitCovariates), "id", dplyr::all_of(remaining_cols)) %>%
 			dplyr::arrange(!!!rlang::syms(splitCovariates))
 	}
+
+	if (isTRUE(mock)) {
+		col_types <- stats::setNames(project_data$headerTypes, project_data$header)
+		col_types["id"]            <- "id"
+		col_types[strat_cov_names] <- "catcov"
+
+		indivNCA <- .mockDataListing(indivNCA, colTypes = col_types, digits = roundDigits)
+	}
+
 	attr(indivNCA, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(indivNCA, "r_source")       <- .getRScriptPath()
 	return(indivNCA)
