@@ -2400,10 +2400,14 @@
 #' @param excludeCols Character vector of column names to leave untouched (identifier
 #'   / label columns such as parameter names, statistic names, covariate names).
 #' @param modalityCols Optional named list mapping a category/modality column name to
-#'   the column it should be numbered *within* (its grouping column), or `NA`/`""`
-#'   for column-wide numbering. Each listed column is relabeled with generic
-#'   sequential labels per group and is never token-masked. Example:
-#'   `list(Modalities = "Subject characteristics", SEX = NA)`.
+#'   either (a) the column it should be numbered *within* (its grouping column), or
+#'   `NA`/`""` for column-wide numbering — labels default to `"Category 1"`,
+#'   `"Category 2"`, ...; or (b) a list `list(group = ..., prefix = ...)` to also
+#'   customize the label prefix (`group` defaults to `NA`, `prefix` to
+#'   `"Category "`). Each listed column is relabeled with sequential labels per
+#'   group and is never token-masked. Example:
+#'   `list(Modalities = "Subject characteristics", SEX = NA,`
+#'   `Comparison = list(prefix = "Comparison "))`.
 #' @param naFillAxis Either `"column"` (default) or `"row"`. Tells the masker which
 #'   axis holds a single metric, so uncomputable / missing cells can be filled with
 #'   that metric's format. Use `"column"` for wide layouts (one metric per column)
@@ -2494,10 +2498,17 @@
 	}
 
 	# --------------------------------------------------------------------------
-	# RELABEL CATEGORY / MODALITY COLUMNS  (generic sequential labels per group)
+	# RELABEL CATEGORY / MODALITY COLUMNS  (sequential labels per group)
 	for (col in modality_names) {
 		if (!col %in% names(df_mocked)) next
-		grp_col <- modalityCols[[col]]
+		spec    <- modalityCols[[col]]
+		if (is.list(spec)) {
+			grp_col <- spec$group  %||% NA_character_
+			prefix  <- spec$prefix %||% "Category "
+		} else {
+			grp_col <- spec
+			prefix  <- "Category "
+		}
 		vals    <- as.character(df_mocked[[col]])
 
 		use_group <- !is.null(grp_col) && !is.na(grp_col) && nzchar(grp_col) &&
@@ -2508,7 +2519,7 @@
 		for (g in unique(groups)) {
 			idx           <- which(groups == g & !is.na(vals))
 			distinct_vals <- unique(vals[idx])
-			label_map     <- stats::setNames(paste0("Category ", seq_along(distinct_vals)),
+			label_map     <- stats::setNames(paste0(prefix, seq_along(distinct_vals)),
 																			 distinct_vals)
 			new_vals[idx] <- label_map[vals[idx]]
 		}

@@ -1251,6 +1251,15 @@ tableNCARatios <- function(projectFile      = NULL,
 #' @param prettyLabels Logical; if `TRUE` (default), converts column names to
 #'   human-readable labels (e.g., "Ratio (%)", "Confidence Interval").
 #'
+#' @param mock Logical; if `TRUE`, masks the table for documentation / example
+#'   outputs: the ratio, confidence interval and BE-limits columns become
+#'   placeholders (e.g. `"xx.xx"`, `"(xx.xx;xx.xx)"`); `Comparison`, the
+#'   parameter name, and `Conclusion` (the BE outcome, which would otherwise
+#'   reveal a real result derived from the masked numbers) are relabeled
+#'   generically per unique value (`"Comparison 1"`, `"Parameter 1"`,
+#'   `"Conclusion 1"`, ...). The same parameter keeps the same label across
+#'   all its comparison rows. Default `FALSE`.
+#'
 #' @return A data.frame containing BE results with columns for comparison, parameter,
 #'   GMR (ratio), confidence interval, and optionally BE limits and conclusion.
 #'   Parameters analyzed on log scale are indicated with "ln()" prefix.
@@ -1271,7 +1280,8 @@ tableBEResults <- function(projectFile    = NULL,
 													 customAliases = NULL,
 													 BELimits       = FALSE,
 													 BEConclusion   = TRUE,
-													 prettyLabels   = TRUE){
+													 prettyLabels   = TRUE,
+													 mock           = FALSE){
 
 	roundMethod <- match.arg(roundMethod)
 
@@ -1371,6 +1381,21 @@ tableBEResults <- function(projectFile    = NULL,
 	if (isTRUE(prettyLabels)) {
 		result <- .prettyLabels(result)
 	}
+
+	if (isTRUE(mock)) {
+		param_col     <- if (isTRUE(prettyLabels)) "Parameter" else "parameter"
+		modality_cols <- stats::setNames(list(list(prefix = "Comparison "),
+																					 list(prefix = "Parameter ")),
+																			c("Comparison", param_col))
+		if (isTRUE(BEConclusion)) {
+			modality_cols[["Conclusion"]] <- list(prefix = "Conclusion ")
+		}
+
+		result <- .mockOutputData(result, digits = roundDigits,
+															modalityCols = modality_cols,
+															naFillAxis   = "column")
+	}
+
 	attr(result, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(result, "r_source")       <- .getRScriptPath()
 	return(result)
