@@ -881,9 +881,47 @@ tableNCAParameters <- function(projectFile      = NULL,
 #'  4. Summarises across subjects to provide descriptive statistics (N, Min, Q1, Mean, Median, Q3, Max).
 #'  5. Returns results either in wide format (one row per Parameter × group) or long format (Statistic/Value pairs).
 #'
+#' @param projectFile Character string specifying the path to a PKanalix project file (.pkx).
+#'   If `NULL` (default), uses the currently loaded project.
 #' @param splitCovariates character vector of column names to stratify by (must be in indivratio but not id/ratio columns).
-#' @param digits number of digits to round numeric statistics (default = 3).
+#' @param stratifyColumns Logical; if `TRUE`, creates a stratified table layout with
+#'   separate columns for each covariate combination plus an "Overall" column. If `FALSE`
+#'   (default), splitCovariates appear as separate columns on the left side of the table.
+#'   Only applicable when `splitCovariates` is specified. Only compatible with
+#'   `useWideFormat = FALSE`.
+#' @param covariateLabels Character vector of custom labels for splitCovariates, must be the
+#'   same length as `splitCovariates`. If `NULL` (default), the original covariate names are
+#'   used. These labels appear in column headers when `stratifyColumns = TRUE`.
+#' @param ratioParams Character vector of ratio parameter names to include. If `NULL`
+#'   (default), all available ratio parameters are used.
+#' @param metrics Character vector specifying which summary statistics to include in the
+#'   output table. If `NULL` (default), all available metrics are included.
 #' @param useWideFormat logical; if TRUE (default) results are wide; if FALSE, results are pivoted to long format.
+#' @param includeId Logical. If `TRUE` and `useWideFormat = FALSE`, adds individual
+#'   subject ratio values below the summary statistics in the "Statistic" column.
+#'   Default is `FALSE`. Only works when `useWideFormat = FALSE` and
+#'   `stratifyColumns = FALSE`.
+#' @param filterCovariates Named list where names are categorical covariate names
+#'   and values are vectors of allowed values, e.g. `list(SEX = "Male")`. If `NULL`
+#'   (default), no covariate filtering is applied.
+#' @param filterIds Character or numeric vector of subject IDs to include. If `NULL`
+#'   (default), no ID filtering is applied.
+#' @param roundDigits number of digits to round numeric statistics (default = 3).
+#' @param roundMethod Character string specifying the rounding method. Options are:
+#'   - `"monolix"` (default): Adaptive rounding that adds extra digits for values < 1
+#'   - `"signif"`: Standard significant figures rounding
+#'   - `"none"`: No rounding performed
+#' @param prettyLabels Logical; if `TRUE` (default), converts column names to
+#'   human-readable labels.
+#' @param customAliases Named vector or 2-column dataframe mapping parameter names
+#'   to custom alias labels. Ratios are dimensionless, so no `units` argument is offered.
+#' @param mock Logical; if `TRUE`, masks the table for documentation / example
+#'   outputs: metric values become placeholders (e.g. `"xx.xx"`), and
+#'   `splitCovariates` values become generic labels (`"Category 1"`, ...). The
+#'   parameter name and `Statistic`/`Section` labels are kept, except that with
+#'   `includeId = TRUE` the individual subject IDs listed under `Statistic`
+#'   are relabeled (`"id1"`, `"id2"`, ...), since those are real identifiers.
+#'   Default `FALSE`.
 #'
 #' @return A data.frame with summary statistics for each ratio parameter, optionally stratified.
 #'
@@ -897,21 +935,30 @@ tableNCAParameters <- function(projectFile      = NULL,
 #' # Stratified by DOSE and VISIT, results in long format:
 #' tableNCARatios(splitCovariates = c("DOSE", "VISIT"), useWideFormat = FALSE)
 #'
+#' \dontrun{
+#' # Restrict to specific subjects and covariate values
+#' tableNCARatios(filterCovariates = list(SEX = "Male"), filterIds = c(1, 2, 17))
+#'
+#' # Masked table for documentation / example outputs
+#' tableNCARatios(mock = TRUE)
+#' }
+#'
 #' @export
 tableNCARatios <- function(projectFile      = NULL,
 													 splitCovariates  = NULL,
-													 stratifyColumns = FALSE,
-													 covariateLabels = NULL,
+													 stratifyColumns  = FALSE,
+													 covariateLabels  = NULL,
 													 ratioParams      = NULL,
 													 metrics          = NULL,
-													 useWideFormat  = TRUE,
-													 includeId       = FALSE,
+													 useWideFormat    = TRUE,
+													 includeId        = FALSE,
 													 filterCovariates = NULL,
 													 filterIds        = NULL,
 													 roundDigits      = 3,
 													 roundMethod      = c("monolix", "signif", "none"),
 													 prettyLabels     = TRUE,
-													 customAliases   = NULL) {
+													 customAliases    = NULL,
+													 mock             = FALSE) {
 
 
 
@@ -1217,6 +1264,24 @@ tableNCARatios <- function(projectFile      = NULL,
 		}
 	}
 
+	if (isTRUE(mock)) {
+		param_col_final <- intersect(names(summary_tbl), c("Parameter", "parameter"))[1]
+
+		modality_cols <- list()
+		if (!stratifyColumns && !is.null(splitCovariates)) {
+			for (sc in splitCovariates) modality_cols[[sc]] <- NA_character_
+		}
+
+		summary_tbl <- .mockOutputData(
+			df           = summary_tbl,
+			digits       = roundDigits,
+			excludeCols  = c(param_col_final, "Statistic", "Section"),
+			modalityCols = if (length(modality_cols)) modality_cols else NULL,
+			naFillAxis   = if (stratifyColumns || !useWideFormat) "row" else "column")
+
+		summary_tbl <- .mockIndividualSection(summary_tbl)
+	}
+
 	# ==========================================================================
 	# SET ATTRIBUTES for style_tfl
 	# To recognize this as NCA ratio table with sections
@@ -1227,7 +1292,6 @@ tableNCARatios <- function(projectFile      = NULL,
 	attr(summary_tbl, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(summary_tbl, "r_source")       <- .getRScriptPath()
 	return(as.data.frame(summary_tbl))
-
 
 }
 
