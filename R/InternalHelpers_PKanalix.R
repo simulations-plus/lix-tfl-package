@@ -2539,8 +2539,10 @@
 #' Rewrites stratified column headers of the form `"LABEL=value\\n(N=<n>)"`: the
 #' subject count is masked (`N=25` -> `N=xx`) and each modality value is replaced
 #' with a generic `"Category k"` label numbered consistently per LABEL across all
-#' headers, so per-stratum columns keep distinct names. Headers without an
-#' `=`/`(N=)` segment (e.g. `"Overall"`, plain metric columns) are left unchanged.
+#' headers, so per-stratum columns keep distinct names. Only headers that actually
+#' carry the `(N=<n>)` count suffix are treated as stratified headers; any other
+#' header (e.g. `"Overall"`, plain metric columns, or an incidental `"="` such as
+#' `"Time = 0"`) is left completely unchanged.
 #'
 #' @param df Data frame whose column names may contain stratum headers.
 #' @param protect Character vector of column names to leave untouched.
@@ -2550,12 +2552,13 @@
 .mockStratHeaders <- function(df, protect = character(0)) {
 	nms      <- names(df)
 	is_count <- function(s) grepl("^\\(N=[0-9]+\\)$", s)
+	has_count_suffix <- function(nm) grepl("\\(N=[0-9]+\\)", nm)
 	parse_kv <- function(s) regmatches(s, regexec("^(.+?)=(.+)$", s))[[1]]
 
 	# Build per-LABEL value -> "Category k" map across all (non-protected) headers.
 	strat_maps <- list()
 	for (nm in nms) {
-		if (nm %in% protect) next
+		if (nm %in% protect || !has_count_suffix(nm)) next
 		for (s in strsplit(nm, "\n", fixed = TRUE)[[1]]) {
 			if (is_count(s)) next
 			kv <- parse_kv(s)
@@ -2570,7 +2573,7 @@
 	}
 
 	new_nms <- vapply(nms, function(nm) {
-		if (nm %in% protect) return(nm)
+		if (nm %in% protect || !has_count_suffix(nm)) return(nm)
 		segs <- vapply(strsplit(nm, "\n", fixed = TRUE)[[1]], function(s) {
 			if (is_count(s)) return("(N=xx)")
 			kv <- parse_kv(s)

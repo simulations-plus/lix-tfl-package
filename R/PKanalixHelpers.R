@@ -75,6 +75,14 @@
 #'   human-readable labels (e.g., "CV" becomes "CV (%)", "geoMean" becomes "Geometric Mean").
 #'   If `FALSE`, uses raw column names.
 #'
+#' @param mock Logical; if `TRUE`, masks the table for documentation / example
+#'   outputs: concentration statistic values become placeholders (e.g.
+#'   `"xx.xx"`), and `splitCovariates` values become generic labels
+#'   (`"Category 1"`, ...). The time column/headers and `Statistic`/`Section`
+#'   labels are kept, except that with `includeId = TRUE` the individual
+#'   subject IDs listed under `Statistic` are relabeled (`"id1"`, `"id2"`,
+#'   ...), since those are real identifiers. Default `FALSE`.
+#'
 #' @details
 #' The function resets stratification via `lixoftConnectors::setNCAResultsStratification()` and
 #' optionally splits results by `splitCovariates`. Concentration data are retrieved
@@ -130,7 +138,8 @@ tableNCAConcentration <- function(projectFile      = NULL,
 																	filterIds        = NULL,
 																	roundDigits      = 3,
 																	roundMethod      = c("monolix", "signif", "none"),
-																	prettyLabels     = TRUE) {
+																	prettyLabels     = TRUE,
+																	mock             = FALSE) {
 
 	roundMethod <- match.arg(roundMethod)
 	# # DEBUG EXAMPLE
@@ -435,6 +444,23 @@ tableNCAConcentration <- function(projectFile      = NULL,
 		attr(final_df, "timeDeviationThreshold") <- .time_dev_attrs$threshold
 		attr(final_df, "timeDeviationExcluded")  <- .time_dev_attrs$excluded
 	}
+
+	if (isTRUE(mock)) {
+		modality_cols <- list()
+		if (!stratifyColumns && !is.null(splitCovariates)) {
+			for (sc in splitCovariates) modality_cols[[sc]] <- NA_character_
+		}
+
+		final_df <- .mockOutputData(
+			df           = final_df,
+			digits       = roundDigits,
+			excludeCols  = c(time_col, "Statistic", "Section"),
+			modalityCols = if (length(modality_cols)) modality_cols else NULL,
+			naFillAxis   = if (stratifyColumns || useWideFormat) "row" else "column")
+
+		final_df <- .mockIndividualSection(final_df)
+	}
+
 	# ==========================================================================
 	# SET ATTRIBUTES for style_tfl
 	# To recognize this as NCA concentration table with sections
