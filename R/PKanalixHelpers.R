@@ -520,6 +520,14 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   human-readable labels (e.g., "CV" becomes "CV (%)", "geoMean" becomes "Geometric Mean").
 #'   If `FALSE`, uses raw column names.
 #'
+#' @param mock Logical; if `TRUE`, masks the table for documentation / example
+#'   outputs: metric values become placeholders (e.g. `"xx.xx"`), and
+#'   `splitCovariates` values become generic labels (`"Category 1"`, ...). The
+#'   parameter name and `Statistic`/`Section` labels are kept, except that with
+#'   `includeId = TRUE` the individual subject IDs listed under `Statistic`
+#'   are relabeled (`"id1"`, `"id2"`, ...), since those are real identifiers.
+#'   Default `FALSE`.
+#'
 #' @return A data frame combining standard NCA statistics with additional descriptive statistics
 #'         (Q1, Q3, median, max) for the specified parameters. If `includeId = TRUE`,
 #'         also includes individual parameter values for each subject.
@@ -567,7 +575,8 @@ tableNCAParameters <- function(projectFile      = NULL,
 															 aliases          = TRUE,
 															 customUnits     = NULL,
 															 customAliases   = NULL,
-															 prettyLabels     = TRUE) {
+															 prettyLabels     = TRUE,
+															 mock             = FALSE) {
 
 	roundMethod <- match.arg(roundMethod)
 
@@ -828,6 +837,24 @@ tableNCAParameters <- function(projectFile      = NULL,
 			metric_map      <- setNames(names(dummy_df), curr_metrics)
 			summary_stats$Statistic <- metric_map[summary_stats$Statistic]
 		}
+	}
+
+	if (isTRUE(mock)) {
+		param_col_final <- if (isTRUE(prettyLabels)) "Parameter" else "parameter"
+
+		modality_cols <- list()
+		if (!stratifyColumns && !is.null(splitCovariates)) {
+			for (sc in splitCovariates) modality_cols[[sc]] <- NA_character_
+		}
+
+		summary_stats <- .mockOutputData(
+			df           = summary_stats,
+			digits       = roundDigits,
+			excludeCols  = c(param_col_final, "Statistic", "Section"),
+			modalityCols = if (length(modality_cols)) modality_cols else NULL,
+			naFillAxis   = if (stratifyColumns || !useWideFormat) "row" else "column")
+
+		summary_stats <- .mockIndividualSection(summary_stats)
 	}
 
 	if (includeId && "Section" %in% names(summary_stats)) {

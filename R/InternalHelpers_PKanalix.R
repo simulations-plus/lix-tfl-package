@@ -2670,6 +2670,38 @@
 	df
 }
 
+##################################################################################
+#' Mask individual subject IDs within a Section-tagged summary table
+#'
+#' With `includeId = TRUE`, the "Statistic" column mixes metric names (SUMMARY
+#' rows) with real subject/composite IDs (INDIVIDUAL rows). This relabels only
+#' the individual-row IDs, mirroring the `id` case in `.mockDataListing()`.
+#'
+#' @param df Data frame, possibly containing `sectionCol` / `statCol`.
+#' @param sectionCol Column name holding the `"SUMMARY"`/`"INDIVIDUAL"` flag.
+#' @param statCol Column name holding metric names (SUMMARY) or subject /
+#'   composite IDs (INDIVIDUAL).
+#' @param individualValue Value of `sectionCol` marking individual-level rows.
+#' @param prefix Label prefix for the relabeled IDs (default `"id"`).
+#' @return `df` with individual-row IDs relabeled; a no-op if `sectionCol` or
+#'   `statCol` is absent, or no rows are tagged `individualValue`.
+#' @keywords internal
+#' @noRd
+.mockIndividualSection <- function(df, sectionCol = "Section", statCol = "Statistic",
+																	 individualValue = "INDIVIDUAL", prefix = "id") {
+	if (!sectionCol %in% names(df) || !statCol %in% names(df)) return(df)
+
+	idx <- which(df[[sectionCol]] == individualValue)
+	if (length(idx) == 0) return(df)
+
+	vals          <- as.character(df[[statCol]])
+	distinct_vals <- unique(vals[idx])
+	label_map     <- stats::setNames(paste0(prefix, seq_along(distinct_vals)), distinct_vals)
+	vals[idx]     <- label_map[vals[idx]]
+	df[[statCol]] <- vals
+	df
+}
+
 
 ##################################################################################
 #' Helper: Build stratified table with covariate headers
