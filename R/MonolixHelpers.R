@@ -37,6 +37,17 @@
 #' @param prettyLabels Logical; if `TRUE` (default), applies human-readable
 #'   column labels (e.g., "LL (Imp. Sampling)" instead of "LLis").
 #'
+#' @param mock Logical; if `TRUE`, masks the table for documentation / example
+#'   outputs: the LL/BICc/delta columns become placeholders (e.g. `"xx.xx"`),
+#'   `Comments` is blanked, and `Rating` is masked (numeric values become
+#'   `"xx.xx"`, non-numeric values are blanked). `Run` and `Parent` hold real
+#'   project/file names (which may embed study, compound or company
+#'   identifiers) and are relabeled generically (`"project01"`, `"project02"`,
+#'   ...) using one consistent mapping, so a `Parent` reference always matches
+#'   the generic name assigned to that project's own `Run` row; `Path` is
+#'   rebuilt from the relabeled name (keeping only the file extension).
+#'   Default `FALSE`.
+#'
 #' @return A data.frame containing:
 #'   \itemize{
 #'     \item \code{Run}: Project/run name
@@ -76,7 +87,8 @@ tableRunHistory <- function(sycomoreProjectFile,
 														roundMethod   = c("monolix", "signif", "none"),
 														sortByCriteria   = c("LL", "BICc", "none"),
 														filterCriteria   = c("none", "LL", "BICc"),
-														prettyLabels     = TRUE) {
+														prettyLabels     = TRUE,
+														mock             = FALSE) {
 
 	if (is.null(sycomoreProjectFile)) {
 		stop("The argument 'sycomoreProjectFile' is mandatory.", call. = FALSE)
@@ -231,6 +243,36 @@ tableRunHistory <- function(sycomoreProjectFile,
 
 	# Filter to show only selected criteria columns
 	dfall <- .filterCriteriaColumns(dfall, filterCriteria = filterCriteria)
+
+	if (isTRUE(mock)) {
+		rating_is_num <- if ("Rating" %in% names(dfall)) {
+			!is.na(suppressWarnings(as.numeric(dfall$Rating)))
+		} else {
+			logical(0)
+		}
+		real_names <- unique(c(dfall$Run, dfall$Parent[nzchar(dfall$Parent)]))
+		width      <- max(2L, nchar(as.character(length(real_names))))
+		proj_map   <- stats::setNames(
+			paste0("project", formatC(seq_along(real_names), width = width, flag = "0")),
+			real_names)
+
+		if ("Path" %in% names(dfall)) {
+			ext        <- tools::file_ext(dfall$Path)
+			dfall$Path <- paste0(unname(proj_map[dfall$Run]),
+													 ifelse(nzchar(ext), paste0(".", ext), ""))
+		}
+		dfall$Run    <- unname(proj_map[dfall$Run])
+		dfall$Parent <- ifelse(nzchar(dfall$Parent), unname(proj_map[dfall$Parent]), dfall$Parent)
+
+		dfall <- .mockOutputData(dfall, digits = roundDigits,
+														 excludeCols = c("Run", "Parent", "Path", "Comments"),
+														 naFillAxis  = "column")
+
+		if ("Comments" %in% names(dfall)) dfall$Comments <- ""
+		if ("Rating" %in% names(dfall) && length(rating_is_num) > 0) {
+			dfall$Rating[!rating_is_num] <- ""
+		}
+	}
 
 	if (isTRUE(prettyLabels)) {
 		dfall <- .prettyLabels(dfall)
