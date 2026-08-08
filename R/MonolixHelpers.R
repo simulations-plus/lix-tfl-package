@@ -738,6 +738,12 @@ tableModelBuilding <- function(projectFile        = NULL,
 #'   - `"none"`: No rounding applied
 #' @param prettyLabels Logical; if `TRUE` (default), applies pretty formatting to column names with newline characters for better table display (e.g., "Fixed Effect\\nEstimate", "IIV\\nSD").
 #'   If `FALSE`, uses simpler column names without newlines (e.g., "FE_Estimate", "IIV_SD").
+#' @param mock Logical; if `TRUE`, masks the table for documentation / example
+#'   outputs: every estimate/uncertainty column (`Estimate`/`FE_Estimate`, `RSE`,
+#'   `CV`, the `CI_*` / `IIV_*` / `IOV_*` / `Boot_*` columns, in both wide and
+#'   long format) becomes a placeholder (e.g. `"xx.xx"`, CI intervals become
+#'   `"(xx.xx; xx.xx)"`). `Section`, `Parameter` and `Description` are kept.
+#'   Default `FALSE`.
 #'
 #' @return A data frame containing parameter estimates and uncertainties with the following structure:
 #'   \describe{
@@ -811,7 +817,8 @@ tableParameterEstimates <- function(projectFile         = NULL,
 																		stdErrMethod      = "",
 																		roundDigits         = 3,
 																		roundMethod      = c("monolix", "signif", "none"),
-																		prettyLabels        = TRUE) {
+																		prettyLabels        = TRUE,
+																		mock                = FALSE) {
 
 	roundMethod <- match.arg(roundMethod)
 
@@ -1264,6 +1271,12 @@ tableParameterEstimates <- function(projectFile         = NULL,
 		pop <- dplyr::relocate(pop, "Description", .after = "Parameter")
 	}
 	pop <- .round_num(pop, roundDigits, exclude = c("Section", "Parameter", "Description"), rounding_method = roundMethod)
+
+	if (isTRUE(mock)) {
+		pop <- .mockOutputData(pop, digits = roundDigits,
+													 excludeCols = c("Section", "Parameter", "Description"),
+													 naFillAxis  = "column")
+	}
 
 	# Apply pretty labels if requested for nice column names display
 	if (prettyLabels) {
