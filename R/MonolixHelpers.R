@@ -395,6 +395,15 @@ tableRunHistory <- function(sycomoreProjectFile,
 #'   `"monolix"` (default), `"signif"`, or `"none"`.
 #' @param prettyLabels Logical; if `TRUE` (default), applies human-readable
 #'   column labels.
+#' @param mock Logical; if `TRUE`, masks the table for documentation / example
+#'   outputs: `LL`/`BICc`/`dLL`/`dBICc`/`p.value` become placeholders (e.g.
+#'   `"xx.xx"`); `Description` is blanked; real covariate names embedded in
+#'   `Tested` and `CovariateModel` (e.g. `"WT on CL"`, `"CL~WT+SEX"`) are
+#'   replaced with generic labels (`"Covariate01"`, `"Covariate02"`, ...) using
+#'   one consistent mapping. Parameter names (e.g. `CL`, `V`) are kept, since
+#'   they are standard PK terms rather than dataset-specific identifiers.
+#'   `Run`, `Reference`, `Step`, and the `Significant`/`Improved`/`BestModel`
+#'   flags are kept. Default `FALSE`.
 #'
 #' @return A data.frame with one row per evaluated model containing (columns
 #'   without information for the chosen strategy/criterion are dropped):
@@ -440,7 +449,8 @@ tableModelBuilding <- function(projectFile        = NULL,
 															 displayBestModelPerStep = FALSE,
 															 roundDigits        = 2,
 															 roundMethod        = c("monolix", "none", "signif"),
-															 prettyLabels       = TRUE) {
+															 prettyLabels       = TRUE,
+															 mock               = FALSE) {
 
 	filterCriteria <- match.arg(filterCriteria)
 	sortBy         <- match.arg(sortBy)
@@ -639,6 +649,40 @@ tableModelBuilding <- function(projectFile        = NULL,
 	}
 
 	df <- .round_num(df, roundDigits, rounding_method = roundMethod)
+
+	if (isTRUE(mock)) {
+		# Real covariate names (dataset-specific, may be proprietary/sensitive)
+		# appear inside the free-form Tested/CovariateModel strings. Parameter
+		# names (CL, V, ka, ...) are standard PK terms and stay visible, matching
+		# how parameter names are treated in other tables.
+		cov_names <- unique(unlist(lapply(res, function(m) colnames(m$individualModels))))
+		if (length(cov_names) > 0) {
+			cov_width <- max(2L, nchar(as.character(length(cov_names))))
+			cov_map   <- stats::setNames(
+				paste0("Covariate", formatC(seq_along(cov_names), width = cov_width, flag = "0")),
+				cov_names)
+
+			mask_covs <- function(x) {
+				for (nm in names(cov_map)[order(nchar(names(cov_map)), decreasing = TRUE)]) {
+					esc     <- gsub("([.\\+*?^$()\\[\\]{}|])", "\\\\\\1", nm, perl = TRUE)
+					pattern <- paste0("\\b", esc, "\\b")
+					x <- gsub(pattern, cov_map[[nm]], x, perl = TRUE)
+				}
+				x
+			}
+
+			if ("Tested" %in% names(df))         df$Tested         <- mask_covs(df$Tested)
+			if ("CovariateModel" %in% names(df)) df$CovariateModel <- mask_covs(df$CovariateModel)
+		}
+
+		if ("Description" %in% names(df)) df$Description <- ""
+
+		df <- .mockOutputData(df, digits = roundDigits,
+													 excludeCols = c("Run", "Reference", "Tested", "Step",
+																					 "CovariateModel", "Description",
+																					 "Significant", "Improved", "BestModel"),
+													 naFillAxis  = "column")
+	}
 
 	if (isTRUE(prettyLabels)) {
 		df <- .prettyLabels(df)
