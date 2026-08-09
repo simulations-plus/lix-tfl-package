@@ -37,6 +37,17 @@
 #' @param prettyLabels Logical; if `TRUE` (default), applies human-readable
 #'   column labels (e.g., "LL (Imp. Sampling)" instead of "LLis").
 #'
+#' @param mock Logical; if `TRUE`, masks the table for documentation / example
+#'   outputs: the LL/BICc/delta columns become placeholders (e.g. `"xx.xx"`),
+#'   `Comments` is blanked, and `Rating` is masked (numeric values become
+#'   `"xx.xx"`, non-numeric values are blanked). `Run` and `Parent` hold real
+#'   project/file names (which may embed study, compound or company
+#'   identifiers) and are relabeled generically (`"project01"`, `"project02"`,
+#'   ...) using one consistent mapping, so a `Parent` reference always matches
+#'   the generic name assigned to that project's own `Run` row; `Path` is
+#'   rebuilt from the relabeled name (keeping only the file extension).
+#'   Default `FALSE`.
+#'
 #' @return A data.frame containing:
 #'   \itemize{
 #'     \item \code{Run}: Project/run name
@@ -76,7 +87,8 @@ tableRunHistory <- function(sycomoreProjectFile,
 														roundMethod   = c("monolix", "signif", "none"),
 														sortByCriteria   = c("LL", "BICc", "none"),
 														filterCriteria   = c("none", "LL", "BICc"),
-														prettyLabels     = TRUE) {
+														prettyLabels     = TRUE,
+														mock             = FALSE) {
 
 	if (is.null(sycomoreProjectFile)) {
 		stop("The argument 'sycomoreProjectFile' is mandatory.", call. = FALSE)
@@ -232,6 +244,36 @@ tableRunHistory <- function(sycomoreProjectFile,
 	# Filter to show only selected criteria columns
 	dfall <- .filterCriteriaColumns(dfall, filterCriteria = filterCriteria)
 
+	if (isTRUE(mock)) {
+		rating_is_num <- if ("Rating" %in% names(dfall)) {
+			!is.na(suppressWarnings(as.numeric(dfall$Rating)))
+		} else {
+			logical(0)
+		}
+		real_names <- unique(c(dfall$Run, dfall$Parent[nzchar(dfall$Parent)]))
+		width      <- max(2L, nchar(as.character(length(real_names))))
+		proj_map   <- stats::setNames(
+			paste0("project", formatC(seq_along(real_names), width = width, flag = "0")),
+			real_names)
+
+		if ("Path" %in% names(dfall)) {
+			ext        <- tools::file_ext(dfall$Path)
+			dfall$Path <- paste0(unname(proj_map[dfall$Run]),
+													 ifelse(nzchar(ext), paste0(".", ext), ""))
+		}
+		dfall$Run    <- unname(proj_map[dfall$Run])
+		dfall$Parent <- ifelse(nzchar(dfall$Parent), unname(proj_map[dfall$Parent]), dfall$Parent)
+
+		dfall <- .mockOutputData(dfall, digits = roundDigits,
+														 excludeCols = c("Run", "Parent", "Path", "Comments"),
+														 naFillAxis  = "column")
+
+		if ("Comments" %in% names(dfall)) dfall$Comments <- ""
+		if ("Rating" %in% names(dfall) && length(rating_is_num) > 0) {
+			dfall$Rating[!rating_is_num] <- ""
+		}
+	}
+
 	if (isTRUE(prettyLabels)) {
 		dfall <- .prettyLabels(dfall)
 	}
@@ -326,12 +368,42 @@ tableRunHistory <- function(sycomoreProjectFile,
 #'   model), so the forward and backward phases - and repeated rounds within a
 #'   phase (e.g. a 2nd forward inclusion) - are never mixed; the rounds keep their
 #'   algorithm order. SAMBA has no steps and is sorted globally.
+#' @param displayBestModelPerStep Logical; if `TRUE`, reduces the table to the
+#'   *accepted* best model per step group (round) plus the Base (start) model,
+#'   giving a compact view of the actual model-building path. Default is `FALSE`
+#'   (show every evaluated model). Within each round the winner is the model the
+#'   algorithm would pick, which is direction-aware under the LRT criterion:
+#'   forward steps take the *most* significant candidate (smallest LRT p-value),
+#'   backward steps take the *least* significant candidate (largest p-value - the
+#'   covariate whose removal is best justified). Under the BICc criterion (no
+#'   p-value) the winner is the lowest-BICc model in both directions. The winner
+#'   is kept only if that step was actually **accepted**: forward accepts a
+#'   *significant* addition (`Significant == "Yes"`); backward accepts a
+#'   *non-significant* removal (`Significant == "No"`); under the BICc criterion a
+#'   step is accepted when BICc improved (`Improved == "Yes"`). Rounds that ended
+#'   in no change (dead-ends - e.g. a final forward round whose best candidate is
+#'   not significant) are dropped, so the table reads as the selection path rather
+#'   than a mix of path and rejected candidates. Applies only to stepwise
+#'   strategies (COSSAC/SCM); for SAMBA and other runs without a `Step` column it
+#'   is ignored (with a message) and the full table is returned. The accepted
+#'   per-step winners are also recorded on the returned data.frame's
+#'   `best_per_step` attribute, which [style_tfl()] uses (via `autoHighlight`) to
+#'   shade those rows. See [.modelBuildingBestPerStep()].
 #' @param roundDigits Integer specifying the number of digits for rounding
 #'   numeric values. Default is `2`.
 #' @param roundMethod Character string specifying the rounding method:
 #'   `"monolix"` (default), `"signif"`, or `"none"`.
 #' @param prettyLabels Logical; if `TRUE` (default), applies human-readable
 #'   column labels.
+#' @param mock Logical; if `TRUE`, masks the table for documentation / example
+#'   outputs: `LL`/`BICc`/`dLL`/`dBICc`/`p.value` become placeholders (e.g.
+#'   `"xx.xx"`); `Description` is blanked; real covariate names embedded in
+#'   `Tested` and `CovariateModel` (e.g. `"WT on CL"`, `"CL~WT+SEX"`) are
+#'   replaced with generic labels (`"Covariate01"`, `"Covariate02"`, ...) using
+#'   one consistent mapping. Parameter names (e.g. `CL`, `V`) are kept, since
+#'   they are standard PK terms rather than dataset-specific identifiers.
+#'   `Run`, `Reference`, `Step`, and the `Significant`/`Improved`/`BestModel`
+#'   flags are kept. Default `FALSE`.
 #'
 #' @return A data.frame with one row per evaluated model containing (columns
 #'   without information for the chosen strategy/criterion are dropped):
@@ -374,9 +446,11 @@ tableModelBuilding <- function(projectFile        = NULL,
 															 customDescriptions = NULL,
 															 filterCriteria     = c("none", "LL", "BICc"),
 															 sortBy             = c("index", "BICc", "LL", "pValue"),
+															 displayBestModelPerStep = FALSE,
 															 roundDigits        = 2,
 															 roundMethod        = c("monolix", "none", "signif"),
-															 prettyLabels       = TRUE) {
+															 prettyLabels       = TRUE,
+															 mock               = FALSE) {
 
 	filterCriteria <- match.arg(filterCriteria)
 	sortBy         <- match.arg(sortBy)
@@ -393,27 +467,25 @@ tableModelBuilding <- function(projectFile        = NULL,
 				 call. = FALSE)
 	}
 
-	# COSSAC provides 'tested' and 'bestModel'; SAMBA may not.
+	# COSSAC provides 'tested' and 'bestModel'; SAMBA does not.
 	hasTested <- any(vapply(res, function(m) !is.null(m$tested), logical(1)))
 
 	# Strategy + selection criterion drive which decision columns are shown.
 	settings  <- suppressMessages(lixoftConnectors::getModelBuildingSettings())
 	strategy  <- if (!is.null(settings$strategy)) settings$strategy else ""
 	isSamba   <- identical(strategy, "covSamba")
-	# Covariate model building with SAMBA always selects by BICc. The connector
+	# Covariate model building with SAMBA always selects by BICc. Connector 2024.R1
 	# reports criterion = "LRT", but that setting only applies to *statistical*
-	# model building (not covered here), so it is ignored for covSamba.
+	# model building --> ignored for covSamba.
 	criterion <- if (!is.null(settings$criterion)) toupper(settings$criterion) else "LRT"
 	useLRT    <- criterion == "LRT" && !isSamba
 	lrtThr    <- if (!is.null(settings$threshold$lrt)) settings$threshold$lrt else c(0.05, 0.01)
 	covInfo   <- if (useLRT) suppressMessages(lixoftConnectors::getCovariateInformation()) else NULL
 
 	if (isSamba) {
-		# SAMBA proposes whole candidate covariate models rather than toggling one
-		# relationship at a time, so there is no nested parent to test against and
-		# the connector returns neither `tested` nor `bestModel`. The best model is
-		# derived here as the one with the lowest BICc. Deltas are reported against
-		# the start model (Model 1), which reflects the base project's covariates.
+		# SAMBA proposes whole candidate covariate models rather than one relationship at a time
+		# --> no nested parent to test against connector returns neither `tested` nor `bestModel`.
+		# Best model is derived as the one with the lowest BICc. Deltas are reported vs start model (Model 1),
 		bestIdx   <- which.min(vapply(res, function(m) m$BICc, numeric(1)))
 		llStart   <- res[[1]]$LL
 		bICcStart <- res[[1]]$BICc
@@ -500,7 +572,7 @@ tableModelBuilding <- function(projectFile        = NULL,
 		if (useLRT) {
 			# direction-aware LRT threshold: forward vs backward
 			thr <- ifelse(df$Step == "Forward",  lrtThr[1],
-						 ifelse(df$Step == "Backward", lrtThr[2], NA_real_))
+										ifelse(df$Step == "Backward", lrtThr[2], NA_real_))
 			df$Significant <- ifelse(is.na(df$p.value) | is.na(thr), "",
 															 ifelse(df$p.value < thr, "Yes", "No"))
 		} else {
@@ -518,11 +590,11 @@ tableModelBuilding <- function(projectFile        = NULL,
 	df <- df[, vapply(df, function(x) any(nzchar(as.character(x)) & !is.na(x)), logical(1)) |
 					 	names(df) %in% c("LL", "BICc", "dLL", "dBICc"), drop = FALSE]
 
-	# Sorting (before criteria filtering, so sort columns are still present).
-	# For stepwise strategies (COSSAC/SCM) the sort stays *within* each step group
-	# (a round: same direction against the same reference model), so forward and
-	# backward phases - and repeated rounds within a phase - are never mixed while
-	# the rounds keep their algorithm order. SAMBA has no steps and sorts globally.
+	# For stepwise strategies (COSSAC/SCM): sort stays *within* each step
+	# Forward, backward phases, repeated rounds within a phase are never mixed
+	# rounds keep the  algorithm order; SAMBA has no steps --> sorts globally.
+	bestPerStep <- .modelBuildingBestPerStep(df)
+
 	sortCol <- switch(sortBy, BICc = "BICc", LL = "LL", pValue = "p.value", NULL)
 	if (!is.null(sortCol) && sortCol %in% names(df)) {
 		if ("Step" %in% names(df)) {
@@ -530,6 +602,20 @@ tableModelBuilding <- function(projectFile        = NULL,
 			df  <- df[order(grp, df[[sortCol]]), , drop = FALSE]
 		} else {
 			df  <- df[order(df[[sortCol]]), , drop = FALSE]
+		}
+	}
+
+	# Reduce to *accepted* best model per step (round), i.e. actual model-building path (Base + the per-step winners in `bestPerStep`)
+	# Rounds that ended in no change (dead-ends, e.g. a forward round whose best
+	# candidate is not significant) contribute no winner --> drop out.
+	if (isTRUE(displayBestModelPerStep)) {
+		if (!("Step" %in% names(df))) {
+			.TFL_message(
+				"displayBestModelPerStep applies only to stepwise strategies ",
+				"(COSSAC/SCM); returning the full table.")
+		} else {
+			keepRuns <- c(df$Run[df$Step == "Base"], bestPerStep)  # Base always kept
+			df <- df[df$Run %in% keepRuns, , drop = FALSE]
 		}
 	}
 
@@ -564,11 +650,49 @@ tableModelBuilding <- function(projectFile        = NULL,
 
 	df <- .round_num(df, roundDigits, rounding_method = roundMethod)
 
+	if (isTRUE(mock)) {
+		# Real covariate names (dataset-specific, may be proprietary/sensitive)
+		# appear inside the free-form Tested/CovariateModel strings. Parameter
+		# names (CL, V, ka, ...) are standard PK terms and stay visible, matching
+		# how parameter names are treated in other tables.
+		cov_names <- unique(unlist(lapply(res, function(m) colnames(m$individualModels))))
+		if (length(cov_names) > 0) {
+			cov_width <- max(2L, nchar(as.character(length(cov_names))))
+			cov_map   <- stats::setNames(
+				paste0("Covariate", formatC(seq_along(cov_names), width = cov_width, flag = "0")),
+				cov_names)
+
+			mask_covs <- function(x) {
+				for (nm in names(cov_map)[order(nchar(names(cov_map)), decreasing = TRUE)]) {
+					esc     <- gsub("([.\\+*?^$()\\[\\]{}|])", "\\\\\\1", nm, perl = TRUE)
+					pattern <- paste0("\\b", esc, "\\b")
+					x <- gsub(pattern, cov_map[[nm]], x, perl = TRUE)
+				}
+				x
+			}
+
+			if ("Tested" %in% names(df))         df$Tested         <- mask_covs(df$Tested)
+			if ("CovariateModel" %in% names(df)) df$CovariateModel <- mask_covs(df$CovariateModel)
+		}
+
+		if ("Description" %in% names(df)) df$Description <- ""
+
+		df <- .mockOutputData(df, digits = roundDigits,
+													 excludeCols = c("Run", "Reference", "Tested", "Step",
+																					 "CovariateModel", "Description",
+																					 "Significant", "Improved", "BestModel"),
+													 naFillAxis  = "column")
+	}
+
 	if (isTRUE(prettyLabels)) {
 		df <- .prettyLabels(df)
 	}
 
 	attr(df, "table_type")     <- "modelBuilding"
+	# Run labels of the accepted best model per step, for best-per-step row
+	# highlighting in style_tfl (autoHighlight). Restricted to rows still present
+	# (e.g. after displayBestModelPerStep reduction). Empty for SAMBA.
+	attr(df, "best_per_step")  <- intersect(bestPerStep, df$Run)
 	attr(df, "project_source") <- if (!is.null(projectFile)) projectFile else
 		suppressMessages(lixoftConnectors::getProjectSettings()$project)
 	attr(df, "r_source") <- .getRScriptPath()
@@ -658,6 +782,12 @@ tableModelBuilding <- function(projectFile        = NULL,
 #'   - `"none"`: No rounding applied
 #' @param prettyLabels Logical; if `TRUE` (default), applies pretty formatting to column names with newline characters for better table display (e.g., "Fixed Effect\\nEstimate", "IIV\\nSD").
 #'   If `FALSE`, uses simpler column names without newlines (e.g., "FE_Estimate", "IIV_SD").
+#' @param mock Logical; if `TRUE`, masks the table for documentation / example
+#'   outputs: every estimate/uncertainty column (`Estimate`/`FE_Estimate`, `RSE`,
+#'   `CV`, the `CI_*` / `IIV_*` / `IOV_*` / `Boot_*` columns, in both wide and
+#'   long format) becomes a placeholder (e.g. `"xx.xx"`, CI intervals become
+#'   `"(xx.xx; xx.xx)"`). `Section`, `Parameter` and `Description` are kept.
+#'   Default `FALSE`.
 #'
 #' @return A data frame containing parameter estimates and uncertainties with the following structure:
 #'   \describe{
@@ -731,7 +861,8 @@ tableParameterEstimates <- function(projectFile         = NULL,
 																		stdErrMethod      = "",
 																		roundDigits         = 3,
 																		roundMethod      = c("monolix", "signif", "none"),
-																		prettyLabels        = TRUE) {
+																		prettyLabels        = TRUE,
+																		mock                = FALSE) {
 
 	roundMethod <- match.arg(roundMethod)
 
@@ -1184,6 +1315,12 @@ tableParameterEstimates <- function(projectFile         = NULL,
 		pop <- dplyr::relocate(pop, "Description", .after = "Parameter")
 	}
 	pop <- .round_num(pop, roundDigits, exclude = c("Section", "Parameter", "Description"), rounding_method = roundMethod)
+
+	if (isTRUE(mock)) {
+		pop <- .mockOutputData(pop, digits = roundDigits,
+													 excludeCols = c("Section", "Parameter", "Description"),
+													 naFillAxis  = "column")
+	}
 
 	# Apply pretty labels if requested for nice column names display
 	if (prettyLabels) {

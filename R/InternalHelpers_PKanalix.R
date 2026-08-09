@@ -2384,158 +2384,325 @@
 
 
 ##################################################################################
-#' mockOutputData
+#' Mask table output for documentation / example use
 #'
-#' Masks sensitive data in output tables by replacing numeric values and counts
-#' with placeholder patterns (e.g., "xx.xxx"). Used for creating example outputs
-#' or documentation without revealing actual study data.
+#' Masks sensitive data in output tables by replacing every numeric value with a
+#' placeholder (whole numbers become `"xx"`, decimals become `"xx.xx"` at the
+#' requested width) and replacing real category codes with generic sequential
+#' labels (`"Category 1"`, `"Category 2"`, ...). Used for creating example outputs
+#' or documentation without revealing actual study data. The caller decides
+#' *whether* to mock (guard with `if (isTRUE(mock))`); this helper always masks.
 #'
-#' @param df A data frame containing the table to be mocked.
-#' @param mock_settings A list with the following elements:
-#'   \itemize{
-#'     \item `enable`: Logical. If `FALSE`, the function returns the input unchanged.
-#'     \item `exclude_cols`: Character vector of column names to exclude from mocking
-#'       (e.g., parameter names, variable labels).
-#'     \item `max_rows`: Numeric or `NULL`. Maximum number of rows to include in output.
-#'       If `NULL` or `"all"`, all rows are included.
-#'   }
-#' @param digits Integer specifying the number of decimal places, used to determine
-#'   the pattern for mocked values (e.g., digits = 3 produces "xx.xxx").
-#' @param method Character string specifying the rounding method. Passed to
-#'   `.roundNumericCols()` but primarily used for consistency with other functions.
+#' @param df A data frame containing the table to be masked.
+#' @param digits Integer. Number of decimal places used for the mask width, i.e.
+#'   `digits = 2` produces `"xx.xx"`, `digits = 3` `"xx.xxx"`, `digits = 0` `"xx"`.
+#'   Every numeric value uses this mask (whole numbers included).
+#' @param excludeCols Character vector of column names to leave untouched (identifier
+#'   / label columns such as parameter names, statistic names, covariate names).
+#' @param modalityCols Optional named list mapping a category/modality column name to
+#'   either (a) the column it should be numbered *within* (its grouping column), or
+#'   `NA`/`""` for column-wide numbering — labels default to `"Category 1"`,
+#'   `"Category 2"`, ...; or (b) a list `list(group = ..., prefix = ...)` to also
+#'   customize the label prefix (`group` defaults to `NA`, `prefix` to
+#'   `"Category "`). Each listed column is relabeled with sequential labels per
+#'   group and is never token-masked. Example:
+#'   `list(Modalities = "Subject characteristics", SEX = NA,`
+#'   `Comparison = list(prefix = "Comparison "))`.
+#' @param naFillAxis Either `"column"` (default) or `"row"`. Tells the masker which
+#'   axis holds a single metric, so uncomputable / missing cells can be filled with
+#'   that metric's format. Use `"column"` for wide layouts (one metric per column)
+#'   and `"row"` for long / stratified layouts (one metric per row).
 #'
 #' @details
-#' This function performs three main operations:
-#'
-#' **1. Mock Data Cells**: Replaces numeric values with placeholder patterns:
+#' Cell masking is token-based, so structure and delimiters are preserved. Every
+#' number (whole or decimal) uses the same `digits`-wide mask:
 #' \itemize{
-#'   \item Simple numbers: "xx.xxx" (based on `digits` parameter)
-#'   \item Combined metrics: "xx.xxx (xx.xxx)" for values containing parentheses
-#'   \item Preserves NA values as-is
+#'   \item Values (incl. counts / whole numbers): `25` or `50.0` -> `"xx.xx"`
+#'   \item Combined metrics:      `"12.3 (4.5)"`    -> `"xx.xx (xx.xx)"`
+#'   \item Frequencies:           `"25 (50.00)"`    -> `"xx.xx (xx.xx)"`
+#'   \item Confidence intervals:  `"(0.8; 1.25)"`   -> `"(xx.xx; xx.xx)"`
+#'   \item Uncomputable / missing values (`NA`, or a part of a combined cell such as
+#'     `"83 (NA)"`) are masked to match the format of the same metric's other cells,
+#'     so they do not reveal that a stratum is too small to compute the metric.
 #' }
 #'
-#' **2. Mock Column Headers**: Masks stratification information in column names:
-#' \itemize{
-#'   \item Modality values: "DOSE=100" becomes "DOSE=xx"
-#'   \item Subject counts: "(N=25)" becomes "(N=xx)"
-#' }
+#' Category codes (both in `modalityCols` columns and in stratified column headers
+#' of the form `"LABEL=value\\n(N=<n>)"`) are replaced with `"Category k"` while the
+#' covariate LABEL is kept, so rows and per-stratum columns stay distinct. The
+#' per-stratum subject count is masked (`N=25` -> `N=xx`).
 #'
-#' **3. Limit Rows**: Optionally truncates the output to a maximum number of rows
-#' as specified in `mock_settings$max_rows`.
-#'
-#' The function intelligently detects whether a column contains numeric data or
-#' combined metrics (with parentheses) and applies the appropriate masking pattern.
-#'
-#' @return A data frame with the same structure as the input but with:
-#'   \itemize{
-#'     \item Numeric values replaced with "xx" patterns
-#'     \item Column headers masked if they contain stratification info
-#'     \item Rows limited to `max_rows` if specified
-#'   }
-#'   Returns the original data frame unchanged if `mock_settings$enable` is `FALSE`.
+#' @return A data frame with the same columns as `df`; masked columns are returned
+#'   as character.
 #'
 #' @keywords internal
-#'
-#' @examples
-#' # df <- data.frame(Parameter = c("AUC", "Cmax"),
-#' #                  `Mean (SD)` = c("100.5 (20.3)", "50.2 (10.1)"),
-#' #                  check.names = FALSE)
-#' # mock_settings <- list(enable = TRUE, exclude_cols = "Parameter", max_rows = 10)
-#' # .mockOutputData(df, mock_settings, digits = 1, method = "monolix")
-#' # Result: Parameter column unchanged, Mean (SD) becomes "xx.x (xx.x)"
-#'
-.mockOutputData <- function(df, mock_settings, digits, method) {
-	if (!isTRUE(mock_settings$enable)) {
-		return(df)
-	}
-
-	df_mocked <- df
-	exclude_cols <- mock_settings$exclude_cols %||% character(0)
-
-	# Identify which columns need mocking
-	cols_to_mock <- setdiff(names(df), exclude_cols)
+#' @noRd
+.mockOutputData <- function(df, digits, excludeCols = character(0), modalityCols = NULL,
+														naFillAxis = c("column", "row")) {
+	naFillAxis  <- match.arg(naFillAxis)
+	df_mocked   <- df
+	excludeCols <- excludeCols %||% character(0)
 
 	# --------------------------------------------------------------------------
-	# PREPARE MASKS
-	x_integer_part <- "xx"
-	if (digits > 0) {
-		x_decimal_part <- paste(rep("x", digits), collapse = "")
-		x_base_number <- paste0(x_integer_part, ".", x_decimal_part)
-	} else {
-		x_base_number <- x_integer_part
-	}
-	x_combined_format <- paste0(x_base_number, " (", x_base_number, ")")
+	# PREPARE MASK
+	# Width follows `digits` (roundDigits): digits = 2 -> "xx.xx", digits = 3 ->
+	# "xx.xxx", digits = 0 -> "xx". Every numeric token uses this same mask, so a
+	# value renders "xx.xx" and a combined cell "xx.xx (xx.xx)" even when the real
+	# value happened to be a whole number.
+	num_mask <- if (digits > 0) paste0("xx.", strrep("x", digits)) else "xx"
 
-	n_rows <- nrow(df)
+	# Category columns are relabeled (not token-masked), so protect them here.
+	modality_names <- names(modalityCols)
+	protect        <- union(excludeCols, modality_names)
 
 	# --------------------------------------------------------------------------
-	# MOCK DATA CELLS
+	# MASK DATA CELLS
+	# Token-based replacement over non-protected columns: every number (whole or
+	# decimal) becomes `num_mask`. Surrounding text and delimiters ("N (%)",
+	# "(lo; hi)", ...) are preserved.
+	# "Incomplete" cells (NA, or a combined cell with an uncomputable part such as
+	# "83 (NA)") are then overwritten with the format of the same metric's other
+	# cells, so a missing/uncomputable value never reveals that a stratum is tiny.
+	# `naFillAxis` says which axis holds one metric: "column" (metric per column, the
+	# wide layout) or "row" (metric per row, the long / stratified layout).
+	cols_to_mock <- setdiff(names(df_mocked), protect)
+	if (length(cols_to_mock) > 0 && nrow(df_mocked) > 0) {
+		masked <- lapply(cols_to_mock, function(col) {
+			v <- as.character(df_mocked[[col]])
+			v <- gsub("[0-9]+\\.[0-9]+", num_mask, v)
+			v <- gsub("[0-9]+", num_mask, v)
+			v
+		})
+		M <- do.call(cbind, masked)                       # character matrix
+		incomplete <- is.na(M) | grepl("NA", M)
+		incomplete[is.na(incomplete)] <- TRUE
 
-	for (col in cols_to_mock) {
-		original_data <- df[[col]]
-
-		# Check 1: Is it a combined string? e.g. "10 (2)"
-		contains_combined <- any(grepl("\\(", original_data))
-
-		# Check 2: Is it numeric OR does it look like a number?
-		as_num <- suppressWarnings(as.numeric(original_data))
-		looks_numeric <- is.numeric(original_data) || (!all(is.na(as_num) & !is.na(original_data)))
-
-		if (contains_combined || looks_numeric) {
-			# Create a baseline vector filled with the simple format (xx.xxx)
-			new_vals <- rep(x_base_number, n_rows)
-
-			# Identify specific rows that have the combined format (parentheses)
-			# and overwrite those specific slots with the combined mask
-			has_paren <- grepl("\\(", original_data)
-			new_vals[has_paren] <- x_combined_format
-
-			# Preserve NAs
-			new_vals[is.na(original_data)] <- NA_character_
-
-			# Assign back to df_mocked
-			df_mocked[[col]] <- new_vals
+		# Most frequent complete masked pattern of a set of cells (NA/incomplete ignored).
+		rep_pat <- function(x) {
+			x <- x[!is.na(x) & !grepl("NA", x) & nzchar(x)]
+			if (length(x) == 0) return(NA_character_)
+			names(sort(table(x), decreasing = TRUE))[1]
 		}
-	}
 
-	# --------------------------------------------------------------------------
-	# MOCK HEADERS
-	header_pattern <- "\\n\\(N=(\\d+)\\)$"
-	new_names <- names(df_mocked)
-
-	for (i in seq_along(new_names)) {
-		col_name <- new_names[i]
-
-		if (col_name %in% exclude_cols) next
-
-		if (grepl(header_pattern, col_name)) {
-			# Mask Modality
-			if (grepl("=.*\\n", col_name)) {
-				col_name <- sub("=(.*?)\\n", "=xx\n", col_name)
-			}
-			# Mask N Count
-			col_name <- sub("N=(\\d+)", "N=xx", col_name)
-
-			new_names[i] <- col_name
+		for (idx in which(incomplete)) {
+			r  <- ((idx - 1) %%  nrow(M)) + 1
+			cc <- ((idx - 1) %/% nrow(M)) + 1
+			primary   <- if (naFillAxis == "row") M[r, ] else M[, cc]
+			secondary <- if (naFillAxis == "row") M[, cc] else M[r, ]
+			fill <- rep_pat(primary)
+			if (is.na(fill)) fill <- rep_pat(secondary)
+			if (is.na(fill)) fill <- num_mask
+			M[r, cc] <- fill
 		}
+
+		for (j in seq_along(cols_to_mock)) df_mocked[[cols_to_mock[j]]] <- M[, j]
 	}
-	names(df_mocked) <- new_names
 
 	# --------------------------------------------------------------------------
-	# LIMIT ROWS
-	max_rows_setting <- mock_settings$max_rows
+	# RELABEL CATEGORY / MODALITY COLUMNS  (sequential labels per group)
+	for (col in modality_names) {
+		if (!col %in% names(df_mocked)) next
+		spec    <- modalityCols[[col]]
+		if (is.list(spec)) {
+			grp_col <- spec$group  %||% NA_character_
+			prefix  <- spec$prefix %||% "Category "
+		} else {
+			grp_col <- spec
+			prefix  <- "Category "
+		}
+		vals    <- as.character(df_mocked[[col]])
 
-	# Logic: If NULL (not provided) or "all", show everything. Only limit if numeric.
-	if (is.numeric(max_rows_setting)) {
-		n_limit <- min(nrow(df), max_rows_setting)
-	} else {
-		# Default behavior (NULL, "all", or invalid input) -> Show ALL rows
-		n_limit <- nrow(df)
+		use_group <- !is.null(grp_col) && !is.na(grp_col) && nzchar(grp_col) &&
+			grp_col %in% names(df_mocked)
+		groups <- if (use_group) as.character(df_mocked[[grp_col]]) else rep("", length(vals))
+
+		new_vals <- vals
+		for (g in unique(groups)) {
+			idx           <- which(groups == g & !is.na(vals))
+			distinct_vals <- unique(vals[idx])
+			label_map     <- stats::setNames(paste0(prefix, seq_along(distinct_vals)),
+																			 distinct_vals)
+			new_vals[idx] <- label_map[vals[idx]]
+		}
+		df_mocked[[col]] <- new_vals
 	}
 
-	df_mocked <- df_mocked[1:n_limit, , drop = FALSE]
+	# --------------------------------------------------------------------------
+	# RELABEL STRATIFIED HEADERS  (mask counts + generic labels for modality values)
+	df_mocked <- .mockStratHeaders(df_mocked, protect = protect)
 
 	return(df_mocked)
+}
+
+##################################################################################
+#' Mask stratified column headers
+#'
+#' Rewrites stratified column headers of the form `"LABEL=value\\n(N=<n>)"`: the
+#' subject count is masked (`N=25` -> `N=xx`) and each modality value is replaced
+#' with a generic `"Category k"` label numbered consistently per LABEL across all
+#' headers, so per-stratum columns keep distinct names. Only headers that actually
+#' carry the `(N=<n>)` count suffix are treated as stratified headers; any other
+#' header (e.g. `"Overall"`, plain metric columns, or an incidental `"="` such as
+#' `"Time = 0"`) is left completely unchanged.
+#'
+#' @param df Data frame whose column names may contain stratum headers.
+#' @param protect Character vector of column names to leave untouched.
+#' @return `df` with rewritten column names.
+#' @keywords internal
+#' @noRd
+.mockStratHeaders <- function(df, protect = character(0)) {
+	nms      <- names(df)
+	is_count <- function(s) grepl("^\\(N=[0-9]+\\)$", s)
+	has_count_suffix <- function(nm) grepl("\\(N=[0-9]+\\)", nm)
+	parse_kv <- function(s) regmatches(s, regexec("^(.+?)=(.+)$", s))[[1]]
+
+	# Build per-LABEL value -> "Category k" map across all (non-protected) headers.
+	strat_maps <- list()
+	for (nm in nms) {
+		if (nm %in% protect || !has_count_suffix(nm)) next
+		for (s in strsplit(nm, "\n", fixed = TRUE)[[1]]) {
+			if (is_count(s)) next
+			kv <- parse_kv(s)
+			if (length(kv) == 3) {
+				key <- kv[2]; val <- kv[3]
+				if (is.null(strat_maps[[key]])) strat_maps[[key]] <- character(0)
+				if (!(val %in% names(strat_maps[[key]]))) {
+					strat_maps[[key]][[val]] <- paste0("Category ", length(strat_maps[[key]]) + 1)
+				}
+			}
+		}
+	}
+
+	new_nms <- vapply(nms, function(nm) {
+		if (nm %in% protect || !has_count_suffix(nm)) return(nm)
+		segs <- vapply(strsplit(nm, "\n", fixed = TRUE)[[1]], function(s) {
+			if (is_count(s)) return("(N=xx)")
+			kv <- parse_kv(s)
+			if (length(kv) == 3) return(paste0(kv[2], "=", strat_maps[[kv[2]]][[kv[3]]]))
+			s
+		}, character(1), USE.NAMES = FALSE)
+		paste(segs, collapse = "\n")
+	}, character(1), USE.NAMES = FALSE)
+
+	names(df) <- new_nms
+	df
+}
+
+##################################################################################
+#' Mask a raw-data listing by column data type
+#'
+#' Masks a per-record data listing (as returned by [listingExclusions()]) using the
+#' MonolixSuite header type of each column, so real study data is hidden while the
+#' shape of the dataset (subject grouping, category distinctness, date layout) is
+#' preserved. Missing markers (`"."`, `""`, `NA`) are kept as-is.
+#'
+#' Masking strategy per header type:
+#' \itemize{
+#'   \item `id` -> generic subject labels `"id1"`, `"id2"`, ... (rows of one subject
+#'     keep the same label, so multi-record subjects stay visible).
+#'   \item `obsid` -> `"obsid1"`, `"obsid2"`, ... (may be strings, so relabeled).
+#'   \item `admid` / `adm` -> `"adm1"`, `"adm2"`, ... (administration identifier).
+#'   \item `catcov` / `stratcatcov` (and stratification categorical covariate types)
+#'     -> `"Category 1"`, `"Category 2"`, ... per column.
+#'   \item `occ` -> `"occ1"`, `"occ2"`, ... per column.
+#'   \item `date` / `dat1` / `dat2` / `dat3` -> each digit becomes `"x"`, keeping
+#'     separators, e.g. `"03/15/2024"` -> `"xx/xx/xxxx"` (order-agnostic, so one
+#'     rule covers every date datatype).
+#'   \item everything numeric (`time`, `observation`, `contcov`, `amount`, `rate`,
+#'     `mdv`, `cens`, `limit`, ...) and any unrecognized type -> numeric mask
+#'     (`"xx.xx"` at `digits` width); non-numeric text in such a column is kept.
+#' }
+#'
+#' @param df Data frame (one row per record) to mask.
+#' @param colTypes Named character vector mapping column name -> header type (from
+#'   `getData()`: `setNames(headerTypes, header)`). Columns not found default to the
+#'   numeric mask.
+#' @param digits Integer mask width for numeric columns (default 2 -> `"xx.xx"`).
+#' @return `df` with masked columns (all returned as character).
+#' @keywords internal
+#' @noRd
+.mockDataListing <- function(df, colTypes, digits = 2) {
+	num_mask <- if (digits > 0) paste0("xx.", strrep("x", digits)) else "xx"
+
+	relabel <- function(x, prefix) {
+		x <- as.character(x)
+		codes <- x[!is.na(x) & nzchar(x) & x != "."]
+		u <- unique(codes)
+		if (length(u) == 0) return(x)
+		map <- stats::setNames(paste0(prefix, seq_along(u)), u)
+		hit <- x %in% u
+		x[hit] <- unname(map[x[hit]])
+		x
+	}
+	mask_num <- function(x) {
+		x <- as.character(x)
+		x <- gsub("[0-9]+\\.[0-9]+", num_mask, x)
+		x <- gsub("[0-9]+", num_mask, x)
+		x
+	}
+	mask_date <- function(x) {
+		x  <- as.character(x)
+		ok <- !is.na(x)
+		x[ok] <- gsub("[0-9]", "x", x[ok])
+		x
+	}
+
+	kind_of <- function(t) {
+		if (is.na(t))                              return("num")
+		if (t == "id")                             return("id")
+		if (t %in% c("obsid", "ytype"))            return("obsid")
+		if (t %in% c("admid", "adm"))              return("adm")
+		if (t %in% c("catcov", "stratcatcov",
+								 "stratificationcategorical",
+								 "additionalstratificationcategorical")) return("cat")
+		if (t == "occ")                            return("occ")
+		if (t %in% c("date", "dat1", "dat2", "dat3")) return("date")
+		"num"
+	}
+
+	for (col in names(df)) {
+		k <- kind_of(unname(colTypes[col]))
+		df[[col]] <- switch(k,
+			id    = relabel(df[[col]], "id"),
+			obsid = relabel(df[[col]], "obsid"),
+			adm   = relabel(df[[col]], "adm"),
+			cat   = relabel(df[[col]], "Category "),
+			occ   = relabel(df[[col]], "occ"),
+			date  = mask_date(df[[col]]),
+			mask_num(df[[col]]))
+	}
+	df
+}
+
+##################################################################################
+#' Mask individual subject IDs within a Section-tagged summary table
+#'
+#' With `includeId = TRUE`, the "Statistic" column mixes metric names (SUMMARY
+#' rows) with real subject/composite IDs (INDIVIDUAL rows). This relabels only
+#' the individual-row IDs, mirroring the `id` case in `.mockDataListing()`.
+#'
+#' @param df Data frame, possibly containing `sectionCol` / `statCol`.
+#' @param sectionCol Column name holding the `"SUMMARY"`/`"INDIVIDUAL"` flag.
+#' @param statCol Column name holding metric names (SUMMARY) or subject /
+#'   composite IDs (INDIVIDUAL).
+#' @param individualValue Value of `sectionCol` marking individual-level rows.
+#' @param prefix Label prefix for the relabeled IDs (default `"id"`).
+#' @return `df` with individual-row IDs relabeled; a no-op if `sectionCol` or
+#'   `statCol` is absent, or no rows are tagged `individualValue`.
+#' @keywords internal
+#' @noRd
+.mockIndividualSection <- function(df, sectionCol = "Section", statCol = "Statistic",
+																	 individualValue = "INDIVIDUAL", prefix = "id") {
+	if (!sectionCol %in% names(df) || !statCol %in% names(df)) return(df)
+
+	idx <- which(df[[sectionCol]] == individualValue)
+	if (length(idx) == 0) return(df)
+
+	vals          <- as.character(df[[statCol]])
+	distinct_vals <- unique(vals[idx])
+	label_map     <- stats::setNames(paste0(prefix, seq_along(distinct_vals)), distinct_vals)
+	vals[idx]     <- label_map[vals[idx]]
+	df[[statCol]] <- vals
+	df
 }
 
 

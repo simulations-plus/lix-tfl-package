@@ -785,6 +785,66 @@ utils::globalVariables(c("."))
 	cumsum(changed)
 }
 
+#' Accepted best model per step for a stepwise model-building table
+#'
+#' Given the assembled COSSAC/SCM table, returns the `Run` labels of the single
+#' *accepted* winner of each step group (round) - i.e. the actual model-building
+#' path. Within a round the winner is the model the algorithm would pick:
+#' forward = most significant (smallest LRT p-value), backward = least
+#' significant (largest p-value, the covariate safe to eliminate); under the
+#' BICc criterion the lowest-BICc model in both directions. The winner is kept
+#' only if that step was actually accepted - forward accepts a *significant*
+#' addition (`Significant == "Yes"`), backward accepts a *non-significant*
+#' removal (`Significant == "No"`), and under the BICc criterion a step is
+#' accepted when BICc improved (`Improved == "Yes"`). Rounds that ended in no
+#' change (dead-ends) contribute no winner. The Base (start) model is never a
+#' step winner and is excluded.
+#'
+#' Rounds are the contiguous `(Step, Reference)` groups from
+#' [.modelBuildingStepGroups()], so results are independent of row order.
+#'
+#' @param df Assembled model-building data.frame with a `Run` column and, for
+#'   stepwise strategies, `Step` / `Reference` plus either `p.value` +
+#'   `Significant` (LRT) or `BICc` + `Improved` (BICc criterion).
+#' @return Character vector of `Run` labels of the accepted per-step winners;
+#'   `character(0)` when there is no `Step` column (e.g. SAMBA) or no winner.
+#' @keywords internal
+.modelBuildingBestPerStep <- function(df) {
+	if (!("Step" %in% names(df)) || nrow(df) == 0) return(character(0))
+	grp <- .modelBuildingStepGroups(df$Step, df$Reference)
+	winners <- lapply(split(seq_len(nrow(df)), grp), function(idx) {
+		# A round shares one (Step, Reference) pair, so Step is constant here.
+		step <- df$Step[idx[1]]
+		if (step == "Base") return(character(0))            # Base is not a step winner
+
+		# Winner: the model the algorithm would choose in this round.
+		if ("p.value" %in% names(df)) {
+			metric <- df$p.value[idx]
+			if (all(is.na(metric))) return(character(0))
+			# forward -> most significant (min p); backward -> least significant (max p)
+			pick <- if (step == "Forward") which.min(metric) else which.max(metric)
+		} else {
+			metric <- df$BICc[idx]
+			if (all(is.na(metric))) return(character(0))
+			pick <- which.min(metric)                         # BICc criterion: lowest BICc
+		}
+		row <- idx[pick]
+
+		# Keep the winner only if that step was actually accepted; otherwise the
+		# whole round was a dead-end (nothing added/removed) and contributes none.
+		accepted <- if ("Significant" %in% names(df)) {
+			if (step == "Forward") isTRUE(df$Significant[row] == "Yes")
+			else                   isTRUE(df$Significant[row] == "No")
+		} else if ("Improved" %in% names(df)) {
+			isTRUE(df$Improved[row] == "Yes")                 # BICc criterion, both directions
+		} else {
+			FALSE
+		}
+		if (accepted) df$Run[row] else character(0)
+	})
+	unlist(winners, use.names = FALSE)
+}
+
 
 ################################################################################
 #' .applyCustomAliasesUnits

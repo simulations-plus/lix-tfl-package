@@ -28,6 +28,10 @@
 #' for digits to specify the number of significant figures
 #' @param prettyLabels Logical; if `TRUE` (default), converts column names to
 #'   human-readable labels (e.g., "CV" becomes "CV (%)", "geoMean" becomes "Geometric Mean").
+#' @param mock Logical; if `TRUE`, masks the table for documentation / example
+#'   outputs: data values become placeholders (e.g. `"xx.xx"`) and real category
+#'   codes of `splitCovariates` become generic labels (`"Category 1"`, ...).
+#'   Covariate names and statistic labels are kept. Default `FALSE`.
 #'
 #' @returns a data.frame
 #' @seealso [getDescriptiveStatsMetrics()]
@@ -61,7 +65,8 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 																						filterIds        = NULL,
 																						roundDigits      = 2,
 																						roundMethod      = c("monolix", "signif", "none"),
-																						prettyLabels     = TRUE)
+																						prettyLabels     = TRUE,
+																						mock             = FALSE)
 {
 
 	.checkProjectFile(projectFile, c("monolix", "pkanalix"))
@@ -253,6 +258,26 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 		}
 	}
 
+	# ==========================================================================
+	# MOCKING
+
+	if (isTRUE(mock)) {
+		modality_cols <- list()
+		if (!stratifyColumns && !is.null(splitCovariates)) {
+			for (sc in splitCovariates) modality_cols[[sc]] <- NA_character_
+		}
+
+		cov_summary <- .mockOutputData(
+			df           = cov_summary,
+			digits       = roundDigits,
+			excludeCols  = c("Covariate", "Statistic"),
+			modalityCols = if (length(modality_cols)) modality_cols else NULL,
+			naFillAxis   = if (stratifyColumns || !useWideFormat) "row" else "column")
+	}
+
+	# ==========================================================================
+	# RETURN
+
 	attr(cov_summary, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(cov_summary, "r_source")       <- .getRScriptPath()
 	return(as.data.frame(cov_summary))
@@ -316,9 +341,10 @@ getDescriptiveStatsMetrics <- function() {
 #' @param roundMethod "monolix" to use MonolixSuite rounding where digits specifies
 #'   the number of places after the decimal, or "signif" for digits to specify the
 #'   number of significant figures.
-#' @param mock List controlling output masking. `mock$enable = TRUE` replaces data
-#'   values with placeholders for documentation outputs. `mock$max_rows` controls
-#'   the number of rows kept (default `"all"`).
+#' @param mock Logical; if `TRUE`, masks the table for documentation / example
+#'   outputs: data values become placeholders (e.g. `"xx.xx"`) and real category
+#'   codes become generic labels (`"Category 1"`, ...). Covariate names are kept.
+#'   Default `FALSE`.
 #'
 #' @returns a data.frame
 #' @importFrom dplyr %>%
@@ -350,7 +376,7 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 																						 filterIds             = NULL,
 																						 roundDigits           = 2,
 																						 roundMethod           = c("monolix", "signif", "none"),
-																						 mock                  = list(enable = FALSE, max_rows = "all")) {
+																						 mock                  = FALSE) {
 
 
 	roundMethod <- match.arg(roundMethod)
@@ -550,20 +576,19 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 	# ==========================================================================
 	# MOCKING
 
-	if (isTRUE(mock$enable)) {
-		if (stratifyColumns) {
-			exclusion_vector <- c("Subject characteristics", "Modalities")
-		} else {
-			exclusion_vector <- c("Subject characteristics", "Modalities", final_labels)
+	if (isTRUE(mock)) {
+		modality_cols <- list(Modalities = "Subject characteristics")
+		if (!stratifyColumns && !is.null(splitCovariates)) {
+			for (lbl in final_labels[nzchar(final_labels)]) {
+				modality_cols[[lbl]] <- NA_character_
+			}
 		}
-		exclusion_vector <- exclusion_vector[!is.null(exclusion_vector) & exclusion_vector != ""]
 
 		summary_stats <- .mockOutputData(
-			df            = summary_stats,
-			mock_settings = list(enable = TRUE, max_rows = mock$max_rows,
-													 exclude_cols = exclusion_vector),
-			digits        = roundDigits,
-			method        = roundMethod)
+			df           = summary_stats,
+			digits       = roundDigits,
+			excludeCols  = "Subject characteristics",
+			modalityCols = modality_cols)
 	}
 
 	# ==========================================================================
@@ -600,6 +625,10 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 #' @param maxSubjectRatio Ratio (n_modalities / n_subjects) above which a
 #'   chosen grouping variable triggers a "might not be a suitable grouping
 #'   variable" warning. Default 0.5.
+#' @param mock Logical; if `TRUE`, masks the table for documentation / example
+#'   outputs: the count/summary values become placeholders (e.g. `"xx.xx"`) and
+#'   `splitCovariates` grouping values become generic labels (`"Category 1"`, ...).
+#'   Default `FALSE`.
 #'
 #' @return A data frame summarizing excluded observations and subjects.
 #'
@@ -627,7 +656,8 @@ tableExclusions <- function(projectFile       = NULL,
 														filterCovariates  = NULL,
 														filterIds         = NULL,
 														useWideFormat   = TRUE,
-														maxSubjectRatio = 0.5) {
+														maxSubjectRatio = 0.5,
+														mock            = FALSE) {
 
 	.checkProjectFile(projectFile, c("pkanalix", "monolix"))
 	.ensureProjectLoaded(projectFile)
@@ -719,8 +749,8 @@ tableExclusions <- function(projectFile       = NULL,
 		summary_tbl <- as.data.frame(per_subject) %>%
 			dplyr::group_by(dplyr::across(dplyr::all_of(splitCovariates))) %>%
 			dplyr::summarise(
-				`Nb. of Subjects` = dplyr::n_distinct(.data[[id]]),
-				`Total Nb. of Obs.` = sum(n_obs),
+				`Nb. of Subjects`          = dplyr::n_distinct(.data[[id]]),
+				`Total Nb. of Obs.`        = sum(n_obs),
 				`Mean Nb. of Obs./Subject` = round(mean(n_obs), 2),
 				`Min. Nb. of Obs./Subject` = min(n_obs),
 				`Max. Nb. of Obs./Subject` = max(n_obs),
@@ -731,8 +761,8 @@ tableExclusions <- function(projectFile       = NULL,
 		# Overall summary (no grouping)
 		summary_tbl <- as.data.frame(per_subject) %>%
 			dplyr::summarise(
-				`Nb. of Subjects` = dplyr::n_distinct(.data[[id]]),
-				`Total Nb. of Obs.` = sum(n_obs),
+				`Nb. of Subjects`          = dplyr::n_distinct(.data[[id]]),
+				`Total Nb. of Obs.`        = sum(n_obs),
 				`Mean Nb. of Obs./Subject` = round(mean(n_obs), 2),
 				`Min. Nb. of Obs./Subject` = min(n_obs),
 				`Max. Nb. of Obs./Subject` = max(n_obs)) %>%
@@ -749,6 +779,22 @@ tableExclusions <- function(projectFile       = NULL,
 				values_to = "Value"
 			)
 	}
+
+	# ==========================================================================
+	# MOCKING
+
+	if (isTRUE(mock)) {
+		modality_cols <- list()
+		for (sc in splitCovariates) modality_cols[[sc]] <- NA_character_
+
+		summary_tbl <- .mockOutputData(
+			df           = summary_tbl,
+			digits       = 2,
+			excludeCols  = "Statistic",
+			modalityCols = if (length(modality_cols)) modality_cols else NULL,
+			naFillAxis   = if (useWideFormat) "column" else "row")
+	}
+
 	attr(summary_tbl, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(summary_tbl, "r_source")       <- .getRScriptPath()
 	return(as.data.frame(summary_tbl))
@@ -763,6 +809,15 @@ tableExclusions <- function(projectFile       = NULL,
 #' in the current NCA project (PKanalix) or PKPD project (Monolix). Compares raw data with
 #' interpreted data to find discrepancies and returns the excluded observations as a data frame for review.
 #'
+#' @param projectFile Optional path to the project to load. If NULL, the currently
+#'   loaded project is used.
+#' @param mock Logical; if `TRUE`, masks the listing for documentation / example
+#'   outputs, by column data type (from `getData()`): id -> `"id1"`, obsid ->
+#'   `"obsid1"`, categorical covariates -> `"Category 1"`, occasions -> `"occ1"`,
+#'   dates -> `"xx/xx/xxxx"`, and all numeric columns (times, observations,
+#'   continuous covariates, ...) -> `"xx.xx"`. Missing markers (`"."`) are kept.
+#'   Default `FALSE`.
+#'
 #' @return If exclusions are found, returns a data frame containing the excluded rows from
 #'         the raw dataset. If no exclusions are found, returns NULL and outputs a message.
 #'
@@ -771,7 +826,7 @@ tableExclusions <- function(projectFile       = NULL,
 #' # Example usage:
 #' # excluded_data <- listingExclusions()
 # df <- listingExclusions()
-listingExclusions <- function(projectFile = NULL) {
+listingExclusions <- function(projectFile = NULL, mock = FALSE) {
     # Ensure the correct project is loaded if explicitly provided
     .checkProjectFile(projectFile, c("pkanalix", "monolix"))
     .ensureProjectLoaded(projectFile)
@@ -793,11 +848,17 @@ listingExclusions <- function(projectFile = NULL) {
         dataFile <- dataFileProject
         dataFileExt <- tools::file_ext(dataFile)
 
-        # Read raw data, handling CSV or TXT formats only
-        if (dataFileExt %in% c("csv", "txt")) {
+        # Read raw data, handling CSV/TXT and Excel (XLSX/XLS) formats
+        if (tolower(dataFileExt) %in% c("csv", "txt")) {
             dataRaw <- utils::read.csv(dataFile, header = TRUE, sep = .getDelim(dataFile))
+        } else if (tolower(dataFileExt) %in% c("xlsx", "xls")) {
+            if (!requireNamespace("readxl", quietly = TRUE)) {
+                stop("Reading Excel data files requires the 'readxl' package. Install it with install.packages('readxl').")
+            }
+            # as.data.frame() so downstream row/column indexing matches the read.csv path
+            dataRaw <- as.data.frame(readxl::read_excel(dataFile), stringsAsFactors = FALSE)
         } else {
-            stop("Only CSV or TXT format is currently supported.")
+            stop("Only CSV, TXT, or Excel (XLSX/XLS) format is currently supported.")
         }
     } else {
         if (basename(dataFileProject) != basename(dataFile)) {
@@ -871,16 +932,16 @@ listingExclusions <- function(projectFile = NULL) {
             }
         }
 
-        # Create a logical vector to find matching rows in the interpreted dataset
-        # Apply time scaling based on software
-        if (software == "pkanalix") {
-            bInter <- (dataUsed[, iId] == as.character(rawLine[iId])) &
-                (as.numeric(dataUsed[, iTime]) == as.numeric(rawLine[iTime] * gainTime))
-        } else if (software == "monolix") {
-            # No scaling for Monolix
-            bInter <- (dataUsed[, iId] == as.character(rawLine[iId])) &
-                (as.numeric(dataUsed[, iTime]) == as.numeric(rawLine[iTime]))
-        }
+        # Create logical vector to find matching rows in interpreted dataset.
+        # Match on id + time; compare time with small tolerance instead of
+        # exact equality: raw (Excel/CSV) and interpreted times can differ by
+        # floating-point rounding (most visibly at fractional timepoints such as
+        # 0.08333333h) which exact "==" would wrongly report as excluded.
+        # gainTime applies the PKanalix time scaling (== 1 for Monolix).
+        rawTime  <- as.numeric(rawLine[iTime] * gainTime)
+        usedTime <- as.numeric(dataUsed[, iTime])
+        bInter   <- (dataUsed[, iId] == as.character(rawLine[iId])) &
+            (abs(usedTime - rawTime) <= pmax(abs(rawTime), 1) * 1e-6)
 
         # Check occurrence levels if they exist
         if (nbOccLevel > 0) {
@@ -954,6 +1015,12 @@ listingExclusions <- function(projectFile = NULL) {
     if (length(indexFiltered) > 0) {
         message(paste0(length(indexFiltered), " lines were filtered in ", software))
         excl <- dataRaw[indexFiltered, ]
+
+        if (isTRUE(mock)) {
+            col_types <- stats::setNames(data$headerTypes, data$header)
+            excl <- .mockDataListing(excl, colTypes = col_types)
+        }
+
         attr(excl, "project_source") <- lixoftConnectors::getProjectSettings()$directory
         attr(excl, "r_source")       <- .getRScriptPath()
         return(excl)
@@ -984,6 +1051,10 @@ listingExclusions <- function(projectFile = NULL) {
 #' @param filterCovariates Named list of categorical covariate filters, e.g.
 #'   `list(SEX = "M", DOSE = c("100", "200"))`. Rows not matching are dropped.
 #' @param filterIds Vector of subject ids to keep. If NULL, no id filtering.
+#' @param mock Logical; if `TRUE`, masks the listing for documentation / example
+#'   outputs: id -> `"id1"`, administration id -> `"adm1"`, occasions -> `"occ1"`,
+#'   categorical / stratification covariates -> `"Category 1"`, and all numeric
+#'   columns (time, amount, ss, ii, addl, rate, tinf) -> `"xx.xx"`. Default `FALSE`.
 #'
 #' @return A data frame with columns: id, split covariates / occasion(s),
 #'   administration id (if present), time, amount, and any present regimen
@@ -1005,7 +1076,8 @@ listingExclusions <- function(projectFile = NULL) {
 listingDosingRegimen <- function(projectFile      = NULL,
 																 splitCovariates  = NULL,
 																 filterCovariates = NULL,
-																 filterIds        = NULL) {
+																 filterIds        = NULL,
+																 mock             = FALSE) {
 
 	# Load project & validate arguments
 	.checkProjectFile(projectFile, c("pkanalix", "monolix"))
@@ -1115,6 +1187,20 @@ listingDosingRegimen <- function(projectFile      = NULL,
 	front <- c(strat_front, "id", occ_cols, admid_col, time_col, amount_col)
 	listing <- listing %>%
 		dplyr::relocate(dplyr::any_of(front))
+
+	# ==========================================================================
+	# MOCKING
+
+	if (isTRUE(mock)) {
+		col_types <- c(
+			stats::setNames("id", "id"),
+			stats::setNames(rep("occ",    length(occ_cols)),        occ_cols),
+			stats::setNames(rep("admid",  length(admid_col)),       admid_col),
+			stats::setNames(rep("catcov", length(split_in_df)),     split_in_df),
+			stats::setNames(rep("catcov", length(strat_cov_names)), strat_cov_names))
+
+		listing <- .mockDataListing(listing, colTypes = col_types)
+	}
 
 	attr(listing, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(listing, "r_source")       <- .getRScriptPath()
