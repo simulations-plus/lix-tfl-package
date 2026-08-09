@@ -1571,7 +1571,7 @@ listingAbbreviation <- function(projectFile   = NULL,
 	.checkProjectFile(projectFile, "pkanalix")
 	.ensureProjectLoaded(projectFile)
 
-	uparams <- unique(getNCASettings()$computedncaparameters)
+	uparams <- unique(lixoftConnectors::getNCASettings()$computedncaparameters)
 	abbrev_listing <- data.frame(parameter = uparams, stringsAsFactors = FALSE)
 	abbrev_listing$abbrev <- abbrev_listing$parameter
 
