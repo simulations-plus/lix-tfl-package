@@ -274,19 +274,24 @@ utils::globalVariables(c("."))
 
 #' Rounds numbers to specified number of digits
 #'
-#' Two rounding methods are supported: "monolix" which mirrors the behavior of MonolixSuite
-#' applications where all digits before the decimal are considered significant, and only digits
-#' after the decimal are rounded, and "signif" where the number of significant digits are specified.
-#' To retain the original values and not round, use "none".
+#' Three rounding methods are supported: "monolixSuiteRounding" which mirrors the behavior of
+#' MonolixSuite applications where all digits before the decimal are considered significant, and
+#' only digits after the decimal are rounded; "significantFigures" where the number of significant
+#' digits are specified using the standard/textbook definition (zeroes non-significant digits
+#' before the decimal for large numbers); and "significantFiguresPreserved" which is a modified
+#' significant-figures definition that never zeroes digits before the decimal - once the integer
+#' part already has as many digits as requested, the value is simply rounded to the nearest whole
+#' number. To retain the original values and not round, use "none".
 #'
 #' @param to_round number, vector or data frame to round
 #' @param digits number of digits to round to
 #' @param exclude names of columns to exclude
-#' @param rounding_method "monolix" (default), "signif", or "none"
+#' @param rounding_method "monolixSuiteRounding" (default), "significantFigures",
+#'   "significantFiguresPreserved", or "none"
 #'
 #' @returns rounded number
 #' @noRd
-.round_num = function(to_round, digits, exclude = character(0), rounding_method = c("monolix", "signif", "none")) {
+.round_num = function(to_round, digits, exclude = character(0), rounding_method = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none")) {
 
 	rounding_method <- match.arg(rounding_method)
 
@@ -314,13 +319,23 @@ utils::globalVariables(c("."))
 		# Track NaN positions BEFORE rounding
 		nan_positions <- is.nan(to_round)
 
-		if (rounding_method == "monolix") {
+		if (rounding_method == "monolixSuiteRounding") {
 			# integer_part <- trunc(to_round)
 			# decimal <- to_round - integer_part
 			decimal <- to_round - as.integer(to_round)
 			rr <- as.integer(to_round) + signif(decimal, digits = digits)
-		} else if (rounding_method == "signif") {
+		} else if (rounding_method == "significantFigures") {
 			rr <- signif(to_round, digits = digits)
+		} else if (rounding_method == "significantFiguresPreserved") {
+			# Nb of digits before the decimal point (0 for |x| < 1).
+			# Computed with trunc()+nchar() rather than floor(log10(.))+1 to avoid
+			# floating-point edge cases (e.g. log10(1000) evaluating fractionally below 3).
+			int_digits <- ifelse(abs(to_round) < 1, 0L,
+													 nchar(format(trunc(abs(to_round)), scientific = FALSE, trim = TRUE)))
+
+			rr <- ifelse(int_digits >= digits,
+									 round(to_round, digits = 0),
+									 signif(to_round, digits = digits))
 		}
 
 		# Restore NaN values AFTER rounding
@@ -337,11 +352,12 @@ utils::globalVariables(c("."))
 #' @param value1 main metric
 #' @param value2 metric in parentheses
 #' @param digits number of digits to round to
-#' @param rounding_method "monolix" (default), "signif", or "none"
+#' @param rounding_method "monolixSuiteRounding" (default), "significantFigures",
+#'   "significantFiguresPreserved", or "none"
 #'
 #' @returns "value1 (value2)"
 .combineMetrics <- function(value1, value2,
-														digits, rounding_method = c("monolix", "signif", "none")) {
+														digits, rounding_method = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none")) {
 	paste0(.round_num(value1, digits, rounding_method = rounding_method),
 				 " (", .round_num(value2, digits, rounding_method = rounding_method), ")" )
 }

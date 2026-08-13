@@ -67,8 +67,14 @@
 #'   numeric values. Default is `3`.
 #'
 #' @param roundMethod Character string specifying the rounding method. Options are:
-#'   - `"monolix"` (default): Adaptive rounding that adds extra digits for values < 1
-#'   - `"signif"`: Standard significant figures rounding
+#'   - `"monolixSuiteRounding"` (default): Adaptive rounding that keeps all digits before the
+#'     decimal untouched and rounds only the fractional part to the specified number of
+#'     significant digits (adds extra digits for values < 1)
+#'   - `"significantFigures"`: Standard significant figures rounding - zeroes non-significant
+#'     digits before the decimal for large numbers
+#'   - `"significantFiguresPreserved"`: Modified significant figures rounding that never zeroes
+#'     digits before the decimal - once the integer part already has as many digits as requested,
+#'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding performed
 #'
 #' @param prettyLabels Logical; if `TRUE` (default), converts column names to
@@ -137,7 +143,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 																	filterCovariates = NULL,
 																	filterIds        = NULL,
 																	roundDigits      = 3,
-																	roundMethod      = c("monolix", "signif", "none"),
+																	roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 																	prettyLabels     = TRUE,
 																	mock             = FALSE) {
 
@@ -153,7 +159,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	# maxTimeDeviation = 20
 	# includeId       = TRUE
 	# roundDigits      = 3
-	# roundMethod      = "monolix"
+	# roundMethod      = "monolixSuiteRounding"
 	# prettyLabels     = TRUE
 
 	# ==========================================================================
@@ -525,8 +531,14 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   numeric values. Default is `3`.
 #'
 #' @param roundMethod Character string specifying the rounding method. Options are:
-#'   - `"monolix"` (default): Adaptive rounding that adds extra digits for values < 1
-#'   - `"signif"`: Standard significant figures rounding
+#'   - `"monolixSuiteRounding"` (default): Adaptive rounding that keeps all digits before the
+#'     decimal untouched and rounds only the fractional part to the specified number of
+#'     significant digits (adds extra digits for values < 1)
+#'   - `"significantFigures"`: Standard significant figures rounding - zeroes non-significant
+#'     digits before the decimal for large numbers
+#'   - `"significantFiguresPreserved"`: Modified significant figures rounding that never zeroes
+#'     digits before the decimal - once the integer part already has as many digits as requested,
+#'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding performed
 #'
 #' @param units Logical. If `TRUE` (default), units are appended to parameter names.
@@ -596,7 +608,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 															 filterCovariates = NULL,
 															 filterIds        = NULL,
 															 roundDigits      = 3,
-															 roundMethod      = c("monolix", "signif", "none"),
+															 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 															 units            = TRUE,
 															 aliases          = TRUE,
 															 customUnits     = NULL,
@@ -934,8 +946,14 @@ tableNCAParameters <- function(projectFile      = NULL,
 #'   (default), no ID filtering is applied.
 #' @param roundDigits number of digits to round numeric statistics (default = 3).
 #' @param roundMethod Character string specifying the rounding method. Options are:
-#'   - `"monolix"` (default): Adaptive rounding that adds extra digits for values < 1
-#'   - `"signif"`: Standard significant figures rounding
+#'   - `"monolixSuiteRounding"` (default): Adaptive rounding that keeps all digits before the
+#'     decimal untouched and rounds only the fractional part to the specified number of
+#'     significant digits (adds extra digits for values < 1)
+#'   - `"significantFigures"`: Standard significant figures rounding - zeroes non-significant
+#'     digits before the decimal for large numbers
+#'   - `"significantFiguresPreserved"`: Modified significant figures rounding that never zeroes
+#'     digits before the decimal - once the integer part already has as many digits as requested,
+#'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding performed
 #' @param prettyLabels Logical; if `TRUE` (default), converts column names to
 #'   human-readable labels.
@@ -981,7 +999,7 @@ tableNCARatios <- function(projectFile      = NULL,
 													 filterCovariates = NULL,
 													 filterIds        = NULL,
 													 roundDigits      = 3,
-													 roundMethod      = c("monolix", "signif", "none"),
+													 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 													 prettyLabels     = TRUE,
 													 customAliases    = NULL,
 													 mock             = FALSE) {
@@ -1338,8 +1356,14 @@ tableNCARatios <- function(projectFile      = NULL,
 #'   numeric values. Default is `3`.
 #'
 #' @param roundMethod Character string specifying the rounding method. Options are:
-#'   - `"monolix"` (default): Adaptive rounding that adds extra digits for values < 1
-#'   - `"signif"`: Standard significant figures rounding
+#'   - `"monolixSuiteRounding"` (default): Adaptive rounding that keeps all digits before the
+#'     decimal untouched and rounds only the fractional part to the specified number of
+#'     significant digits (adds extra digits for values < 1)
+#'   - `"significantFigures"`: Standard significant figures rounding - zeroes non-significant
+#'     digits before the decimal for large numbers
+#'   - `"significantFiguresPreserved"`: Modified significant figures rounding that never zeroes
+#'     digits before the decimal - once the integer part already has as many digits as requested,
+#'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding performed
 #'
 #' @param units Logical; if `TRUE` (default), appends units to parameter names
@@ -1390,7 +1414,7 @@ tableNCARatios <- function(projectFile      = NULL,
 tableBEResults <- function(projectFile    = NULL,
 													 BEParams       = NULL,
 													 roundDigits    = 3,
-													 roundMethod    = c("monolix", "signif", "none"),
+													 roundMethod    = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 													 units          = TRUE,
 													 aliases        = TRUE,
 													 customUnits   = NULL,
@@ -1658,8 +1682,14 @@ listingAbbreviation <- function(projectFile   = NULL,
 #'   numeric values. Default is `3`.
 #'
 #' @param roundMethod Character string specifying the rounding method. Options are:
-#'   - `"monolix"` (default): Adaptive rounding that adds extra digits for values < 1
-#'   - `"signif"`: Standard significant figures rounding
+#'   - `"monolixSuiteRounding"` (default): Adaptive rounding that keeps all digits before the
+#'     decimal untouched and rounds only the fractional part to the specified number of
+#'     significant digits (adds extra digits for values < 1)
+#'   - `"significantFigures"`: Standard significant figures rounding - zeroes non-significant
+#'     digits before the decimal for large numbers
+#'   - `"significantFiguresPreserved"`: Modified significant figures rounding that never zeroes
+#'     digits before the decimal - once the integer part already has as many digits as requested,
+#'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding performed
 #'
 #' @param mock Logical; if `TRUE`, masks the listing for documentation / example
@@ -1724,8 +1754,10 @@ listingNCAConcentration <- function(projectFile      = NULL,
 																		filterCovariates = NULL,
 																		filterIds        = NULL,
 																		roundDigits      = 3,
-																		roundMethod      = "none",
+																		roundMethod      = c("none", "monolixSuiteRounding", "significantFigures", "significantFiguresPreserved"),
 																		mock             = FALSE) {
+
+	roundMethod <- match.arg(roundMethod)
 
 	# Ensure the correct project is loaded
 	.checkProjectFile(projectFile, "pkanalix")
@@ -1954,7 +1986,8 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #' @param filterIds Character or numeric vector of subject IDs to include. If
 #'   `NULL` (default), no ID filtering is applied.
 #' @param roundDigits Numeric. Number of digits for rounding (default: 3).
-#' @param roundMethod Character. Rounding method: "monolix" (default), "signif", or "none".
+#' @param roundMethod Character. Rounding method: "monolixSuiteRounding" (default),
+#'   "significantFigures", "significantFiguresPreserved", or "none".
 #' @param units Logical. If TRUE (default), parameter units are added to column names.
 #' @param aliases Logical. If TRUE (default), parameter names are replaced with their aliases.
 #' @param customUnits Named vector or 2-column dataframe mapping parameter names
@@ -2015,7 +2048,7 @@ listingNCAParameters <- function(projectFile      = NULL,
 																 filterCovariates = NULL,
 																 filterIds        = NULL,
 																 roundDigits      = 3,
-																 roundMethod      = c("monolix", "signif", "none"),
+																 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 																 units            = TRUE,
 																 aliases          = TRUE,
 																 customUnits      = NULL,
@@ -2146,7 +2179,8 @@ listingNCAParameters <- function(projectFile      = NULL,
 #' @param filterIds Character or numeric vector of subject IDs to include. If
 #'   `NULL` (default), no ID filtering is applied.
 #' @param roundDigits Numeric. Number of digits for rounding (default: 3).
-#' @param roundMethod Character. Rounding method: "monolix" (default), "signif", or "none".
+#' @param roundMethod Character. Rounding method: "monolixSuiteRounding" (default),
+#'   "significantFigures", "significantFiguresPreserved", or "none".
 #' @param aliases Logical. If TRUE (default), parameter names are replaced with their aliases.
 #' @param customAliases Named vector or 2-column dataframe mapping parameter names
 #'   to custom alias labels. Example: `c(Cmax_ratio = "C[[sub:max]] ratio")`.
@@ -2208,7 +2242,7 @@ listingNCARatios <- function(projectFile      = NULL,
 														 filterCovariates = NULL,
 														 filterIds        = NULL,
 														 roundDigits      = 3,
-														 roundMethod      = c("monolix", "signif", "none"),
+														 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 														 aliases          = TRUE,
 														 customAliases   = NULL,
 														 mock             = FALSE){

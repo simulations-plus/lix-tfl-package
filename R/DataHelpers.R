@@ -24,8 +24,13 @@
 #' @param filterIds Character or numeric vector of subject IDs to include. If `NULL`,
 #'   no ID filtering is applied.
 #' @param roundDigits number of digits to display
-#' @param roundMethod "monolix" to use MonolixSuite rounding where digits specifies the number of places after the decimal, or "signif"
-#' for digits to specify the number of significant figures
+#' @param roundMethod "monolixSuiteRounding" to use MonolixSuite rounding where digits specifies
+#'   the number of significant digits of the fractional part (integer part untouched),
+#'   "significantFigures" for digits to specify the number of significant figures using the
+#'   standard/textbook definition (zeroes non-significant digits before the decimal for large
+#'   numbers), or "significantFiguresPreserved" for the same but never zeroing digits before the
+#'   decimal - once the integer part already has as many digits as requested, the value is simply
+#'   rounded to the nearest whole number
 #' @param prettyLabels Logical; if `TRUE` (default), converts column names to
 #'   human-readable labels (e.g., "CV" becomes "CV (%)", "geoMean" becomes "Geometric Mean").
 #' @param mock Logical; if `TRUE`, masks the table for documentation / example
@@ -64,10 +69,12 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 																						filterCovariates = NULL,
 																						filterIds        = NULL,
 																						roundDigits      = 2,
-																						roundMethod      = c("monolix", "signif", "none"),
+																						roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 																						prettyLabels     = TRUE,
 																						mock             = FALSE)
 {
+
+	roundMethod <- match.arg(roundMethod)
 
 	.checkProjectFile(projectFile, c("monolix", "pkanalix"))
 	.ensureProjectLoaded(projectFile)
@@ -338,9 +345,13 @@ getDescriptiveStatsMetrics <- function() {
 #' @param filterIds Character or numeric vector of subject IDs to include. If `NULL`,
 #'   no ID filtering is applied.
 #' @param roundDigits number of digits to display.
-#' @param roundMethod "monolix" to use MonolixSuite rounding where digits specifies
-#'   the number of places after the decimal, or "signif" for digits to specify the
-#'   number of significant figures.
+#' @param roundMethod "monolixSuiteRounding" to use MonolixSuite rounding where digits specifies
+#'   the number of significant digits of the fractional part (integer part untouched),
+#'   "significantFigures" for digits to specify the number of significant figures using the
+#'   standard/textbook definition (zeroes non-significant digits before the decimal for large
+#'   numbers), or "significantFiguresPreserved" for the same but never zeroing digits before the
+#'   decimal - once the integer part already has as many digits as requested, the value is simply
+#'   rounded to the nearest whole number.
 #' @param mock Logical; if `TRUE`, masks the table for documentation / example
 #'   outputs: data values become placeholders (e.g. `"xx.xx"`) and real category
 #'   codes become generic labels (`"Category 1"`, ...). Covariate names are kept.
@@ -375,7 +386,7 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 																						 filterCovariates      = NULL,
 																						 filterIds             = NULL,
 																						 roundDigits           = 2,
-																						 roundMethod           = c("monolix", "signif", "none"),
+																						 roundMethod           = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 																						 mock                  = FALSE) {
 
 

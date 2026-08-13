@@ -1564,7 +1564,8 @@
 #' @param resultType Type of result: "ncaParameters", "ncaRatio", or "ncaConcentration"
 #' @param params Parameter names to include (ncaParams for parameters, ratioParams for ratios, NULL for all)
 #' @param roundDigits Number of decimal places for rounding
-#' @param roundMethod Rounding method ("monolix", "signif", or "none")
+#' @param roundMethod Rounding method ("monolixSuiteRounding", "significantFigures",
+#'   "significantFiguresPreserved", or "none")
 #' @param units Logical; include units for parameter names (only for ncaParameters)
 #' @param aliases Logical; use parameter aliases (only for ncaParameters)
 #' @param useNominalTime Logical; use nominal time (only for ncaConcentration)
@@ -1591,7 +1592,7 @@
 														resultType     = c("ncaParameters", "ncaRatio", "ncaConcentration"),
 														params         = NULL,
 														roundDigits    = 3,
-														roundMethod    = "monolix",
+														roundMethod    = "monolixSuiteRounding",
 														units          = TRUE,
 														units_df       = NULL,
 														aliases        = TRUE,
@@ -2057,8 +2058,9 @@
 #'   If `NULL`, overall (non-stratified) statistics are calculated.
 #' @param roundDigits Integer. The rounding precision (number of digits).
 #'   Inherited from the parent table/listing function settings.
-#' @param roundMethod Character string. The rounding method (e.g., "monolix" or "signif").
-#'   Inherited from the parent table/listing function settings.
+#' @param roundMethod Character string. The rounding method (e.g., "monolixSuiteRounding",
+#'   "significantFigures", or "significantFiguresPreserved"). Inherited from the parent
+#'   table/listing function settings.
 #' @param units Logical. If `TRUE`, units are appended to parameter names or values.
 #'   \emph{Applicable only when `by_time = FALSE` (NCA Parameter summaries).}
 #' @param aliases Logical. If `TRUE`, parameter aliases (friendly names) are used.
@@ -2297,8 +2299,10 @@
 #'   `Percentage`.
 #' @param digits Integer specifying the number of decimal places for rounding
 #'   the percentage values.
-#' @param method Character string specifying the rounding method. Either
-#'   `"monolix"` (adaptive precision) or `"signif"` (significant figures).
+#' @param method Character string specifying the rounding method: `"monolixSuiteRounding"`
+#'   (adaptive precision), `"significantFigures"` (standard significant figures, zeroes
+#'   non-significant digits before the decimal), or `"significantFiguresPreserved"` (modified
+#'   significant figures that never zeroes digits before the decimal).
 #' @param exclude_cols Character vector of column names to exclude from rounding.
 #'
 #' @details
@@ -2323,7 +2327,7 @@
 #' @examples
 #' # freq_tbl <- data.frame(variable = "SEX", Modalities = c("M", "F"),
 #' #                        Count = c(15, 10), Percentage = c(60.0, 40.0), N = c(25, 25))
-#' # .format_frequency_table(freq_tbl, digits = 1, method = "monolix", exclude_cols = c("variable", "Modalities", "N"))
+#' # .format_frequency_table(freq_tbl, digits = 1, method = "monolixSuiteRounding", exclude_cols = c("variable", "Modalities", "N"))
 #'
 .format_frequency_table <- function(summary_tbl, digits, method, exclude_cols) {
 	# 1. Apply rounding (respects roundMethod)
@@ -2352,7 +2356,8 @@
 #' @param df_input A data frame in long format with columns `id`, `variable`, and `value`.
 #'   See `.calculate_raw_freq()` for details.
 #' @param digits Integer specifying the number of decimal places for rounding percentages.
-#' @param method Character string specifying the rounding method ("monolix" or "signif").
+#' @param method Character string specifying the rounding method ("monolixSuiteRounding",
+#'   "significantFigures", or "significantFiguresPreserved").
 #' @param exclude_cols Character vector of column names to exclude from rounding.
 #'
 #' @details
@@ -2374,7 +2379,7 @@
 #' # df <- data.frame(id = c(1,2,3,1,2,3),
 #' #                  variable = rep(c("SEX", "RACE"), each = 3),
 #' #                  value = c("M", "F", "M", "White", "White", "Asian"))
-#' # .calc_format_stratum(df, digits = 1, method = "monolix", exclude_cols = c("variable", "Modalities", "N"))
+#' # .calc_format_stratum(df, digits = 1, method = "monolixSuiteRounding", exclude_cols = c("variable", "Modalities", "N"))
 #'
 .calc_format_stratum <- function(df_input, digits, method, exclude_cols) {
 	raw_stats <- .calculateCategoricalFrequencies(df_input)
