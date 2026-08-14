@@ -4,7 +4,18 @@
 \alias{listingExclusions}
 \title{listingExclusions()}
 \usage{
-listingExclusions(projectFile = NULL)
+listingExclusions(projectFile = NULL, mock = FALSE)
+}
+\arguments{
+\item{projectFile}{Optional path to the project to load. If NULL, the currently
+loaded project is used.}
+
+\item{mock}{Logical; if \code{TRUE}, masks the listing for documentation / example
+outputs, by column data type (from \code{getData()}): id -> \code{"id1"}, obsid ->
+\code{"obsid1"}, categorical covariates -> \code{"Category 1"}, occasions -> \code{"occ1"},
+dates -> \code{"xx/xx/xxxx"}, and all numeric columns (times, observations,
+continuous covariates, ...) -> \code{"xx.xx"}. Missing markers (\code{"."}) are kept.
+Default \code{FALSE}.}
 }
 \value{
 If exclusions are found, returns a data frame containing the excluded rows from

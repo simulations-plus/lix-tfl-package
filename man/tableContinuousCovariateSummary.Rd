@@ -15,8 +15,10 @@ tableContinuousCovariateSummary(
   filterCovariates = NULL,
   filterIds = NULL,
   roundDigits = 2,
-  roundMethod = c("monolix", "signif", "none"),
-  prettyLabels = TRUE
+  roundMethod = c("monolixSuiteRounding", "significantFigures",
+    "significantFiguresPreserved", "none"),
+  prettyLabels = TRUE,
+  mock = FALSE
 )
 }
 \arguments{
@@ -54,11 +56,21 @@ no ID filtering is applied.}
 
 \item{roundDigits}{number of digits to display}
 
-\item{roundMethod}{"monolix" to use MonolixSuite rounding where digits specifies the number of places after the decimal, or "signif"
-for digits to specify the number of significant figures}
+\item{roundMethod}{"monolixSuiteRounding" to use MonolixSuite rounding where digits specifies
+the number of significant digits of the fractional part (integer part untouched),
+"significantFigures" for digits to specify the number of significant figures using the
+standard/textbook definition (zeroes non-significant digits before the decimal for large
+numbers), or "significantFiguresPreserved" for the same but never zeroing digits before the
+decimal - once the integer part already has as many digits as requested, the value is simply
+rounded to the nearest whole number}
 
 \item{prettyLabels}{Logical; if \code{TRUE} (default), converts column names to
 human-readable labels (e.g., "CV" becomes "CV (\%)", "geoMean" becomes "Geometric Mean").}
+
+\item{mock}{Logical; if \code{TRUE}, masks the table for documentation / example
+outputs: data values become placeholders (e.g. \code{"xx.xx"}) and real category
+codes of \code{splitCovariates} become generic labels (\code{"Category 1"}, ...).
+Covariate names and statistic labels are kept. Default \code{FALSE}.}
 }
 \value{
 a data.frame

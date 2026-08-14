@@ -8,7 +8,8 @@
   value1,
   value2,
   digits,
-  rounding_method = c("monolix", "signif", "none")
+  rounding_method = c("monolixSuiteRounding", "significantFigures",
+    "significantFiguresPreserved", "none")
 )
 }
 \arguments{
@@ -18,7 +19,8 @@
 
 \item{digits}{number of digits to round to}
 
-\item{rounding_method}{"monolix" (default), "signif", or "none"}
+\item{rounding_method}{"monolixSuiteRounding" (default), "significantFigures",
+"significantFiguresPreserved", or "none"}
 }
 \value{
 "value1 (value2)"

@@ -12,7 +12,8 @@ See \code{.calculate_raw_freq()} for details.}
 
 \item{digits}{Integer specifying the number of decimal places for rounding percentages.}
 
-\item{method}{Character string specifying the rounding method ("monolix" or "signif").}
+\item{method}{Character string specifying the rounding method ("monolixSuiteRounding",
+"significantFigures", or "significantFiguresPreserved").}
 
 \item{exclude_cols}{Character vector of column names to exclude from rounding.}
 }
@@ -39,7 +40,7 @@ for categorical splitCovariates in summary reports.
 # df <- data.frame(id = c(1,2,3,1,2,3),
 #                  variable = rep(c("SEX", "RACE"), each = 3),
 #                  value = c("M", "F", "M", "White", "White", "Asian"))
-# .calc_format_stratum(df, digits = 1, method = "monolix", exclude_cols = c("variable", "Modalities", "N"))
+# .calc_format_stratum(df, digits = 1, method = "monolixSuiteRounding", exclude_cols = c("variable", "Modalities", "N"))
 
 }
 \keyword{internal}

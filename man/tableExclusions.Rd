@@ -10,7 +10,8 @@ tableExclusions(
   filterCovariates = NULL,
   filterIds = NULL,
   useWideFormat = TRUE,
-  maxSubjectRatio = 0.5
+  maxSubjectRatio = 0.5,
+  mock = FALSE
 )
 }
 \arguments{
@@ -37,6 +38,11 @@ pivoted into rows (long, Statistic-Value format).}
 \item{maxSubjectRatio}{Ratio (n_modalities / n_subjects) above which a
 chosen grouping variable triggers a "might not be a suitable grouping
 variable" warning. Default 0.5.}
+
+\item{mock}{Logical; if \code{TRUE}, masks the table for documentation / example
+outputs: the count/summary values become placeholders (e.g. \code{"xx.xx"}) and
+\code{splitCovariates} grouping values become generic labels (\code{"Category 1"}, ...).
+Default \code{FALSE}.}
 }
 \value{
 A data frame summarizing excluded observations and subjects.
@@ -47,6 +53,7 @@ identified by \code{\link{listingExclusions}}), optionally stratified and/or
 filtered.
 }
 \examples{
+\dontrun{
 # Overall summary of exclusions (no stratification)
 tableExclusions()
 
@@ -61,4 +68,6 @@ tableExclusions(splitCovariates = c("VISIT", "FOOD"),
 # Restrict to specific subjects
 tableExclusions(splitCovariates = "Exclusion_reason",
                 filterIds = c(1, 2, 17))
+}
+
 }

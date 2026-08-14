@@ -11,13 +11,19 @@ listingNCAConcentration(
   filterCovariates = NULL,
   filterIds = NULL,
   roundDigits = 3,
-  roundMethod = "none"
+  roundMethod = c("none", "monolixSuiteRounding", "significantFigures",
+    "significantFiguresPreserved"),
+  mock = FALSE
 )
 }
 \arguments{
+\item{projectFile}{Character string. Path to the PKanalix project file (.pkx).
+If NULL, uses the currently loaded project.}
+
 \item{splitCovariates}{Character vector of covariate names to include as
 stratification columns (e.g., \code{c("TREAT","FOOD")}); \code{NULL} for no
-stratification.}
+stratification. Occasion columns present in the project are appended
+automatically (see Details).}
 
 \item{useNominalTime}{Logical; if \code{TRUE}, the function attempts to use
 nominal time for the concentration listing. If nominal time is not available
@@ -25,15 +31,34 @@ in the project (checked via \code{lixoftConnectors::getData()} and \code{headerT
   "nominaltime"}), the function will fall back to actual time and issue a
 warning. Default is \code{FALSE}.}
 
+\item{filterCovariates}{Named list where names are categorical covariate names
+and values are vectors of allowed values, e.g.
+\code{list(SEX = "Male", DOSE = c("100", "200"))}. Rows not matching are dropped.
+If \code{NULL} (default), no covariate filtering is applied.}
+
+\item{filterIds}{Character or numeric vector of subject IDs to include. If
+\code{NULL} (default), no ID filtering is applied.}
+
 \item{roundDigits}{Integer specifying the number of decimal places for rounding
 numeric values. Default is \code{3}.}
 
 \item{roundMethod}{Character string specifying the rounding method. Options are:
 \itemize{
-\item \code{"monolix"} (default): Adaptive rounding that adds extra digits for values < 1
-\item \code{"signif"}: Standard significant figures rounding
+\item \code{"monolixSuiteRounding"} (default): Adaptive rounding that keeps all digits before the
+decimal untouched and rounds only the fractional part to the specified number of
+significant digits (adds extra digits for values < 1)
+\item \code{"significantFigures"}: Standard significant figures rounding - zeroes non-significant
+digits before the decimal for large numbers
+\item \code{"significantFiguresPreserved"}: Modified significant figures rounding that never zeroes
+digits before the decimal - once the integer part already has as many digits as requested,
+the value is simply rounded to the nearest whole number
 \item \code{"none"}: No rounding performed
 }}
+
+\item{mock}{Logical; if \code{TRUE}, masks the listing for documentation / example
+outputs: id -> \code{"id1"}, categorical covariates / occasions -> \code{"Category 1"}
+/ \code{"occ1"}, and all numeric columns (time, Concentration, UsedConc,
+Censoring) -> \code{"xx.xx"}. Default \code{FALSE}.}
 }
 \value{
 A data frame in long format containing (if present) \code{splitCovariates},
@@ -79,5 +104,16 @@ listingNCAConcentration(splitCovariates = c("TREAT", "FOOD"))
 
 # Include nominal time if available
 listingNCAConcentration(splitCovariates = c("TREAT", "FOOD"), useNominalTime = TRUE)
+
+\dontrun{
+# Restrict to specific subjects and covariate values
+listingNCAConcentration(
+  filterCovariates = list(TREAT = "A"),
+  filterIds        = c(1, 2, 17)
+)
+
+# Masked listing for documentation / example outputs
+listingNCAConcentration(mock = TRUE)
+}
 
 }

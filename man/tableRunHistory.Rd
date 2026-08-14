@@ -7,10 +7,12 @@
 tableRunHistory(
   sycomoreProjectFile,
   roundDigits = 2,
-  roundMethod = c("monolix", "signif", "none"),
+  roundMethod = c("monolixSuiteRounding", "significantFigures",
+    "significantFiguresPreserved", "none"),
   sortByCriteria = c("LL", "BICc", "none"),
   filterCriteria = c("none", "LL", "BICc"),
-  prettyLabels = TRUE
+  prettyLabels = TRUE,
+  mock = FALSE
 )
 }
 \arguments{
@@ -22,8 +24,14 @@ numeric values. Default is \code{2}.}
 
 \item{roundMethod}{Character string specifying the rounding method:
 \itemize{
-\item \code{"monolix"} (default): Adaptive rounding where digits specifies decimal places
-\item \code{"signif"}: Standard significant figures rounding
+\item \code{"monolixSuiteRounding"} (default): Adaptive rounding that keeps all digits before the
+decimal untouched and rounds only the fractional part to the specified number of
+significant digits
+\item \code{"significantFigures"}: Standard significant figures rounding - zeroes non-significant
+digits before the decimal for large numbers
+\item \code{"significantFiguresPreserved"}: Modified significant figures rounding that never zeroes
+digits before the decimal - once the integer part already has as many digits as requested,
+the value is simply rounded to the nearest whole number
 \item \code{"none"}: No rounding applied
 }}
 
@@ -51,6 +59,17 @@ match the sorting criteria. For example, \code{sortByCriteria = "LL"} with
 
 \item{prettyLabels}{Logical; if \code{TRUE} (default), applies human-readable
 column labels (e.g., "LL (Imp. Sampling)" instead of "LLis").}
+
+\item{mock}{Logical; if \code{TRUE}, masks the table for documentation / example
+outputs: the LL/BICc/delta columns become placeholders (e.g. \code{"xx.xx"}),
+\code{Comments} is blanked, and \code{Rating} is masked (numeric values become
+\code{"xx.xx"}, non-numeric values are blanked). \code{Run} and \code{Parent} hold real
+project/file names (which may embed study, compound or company
+identifiers) and are relabeled generically (\code{"project01"}, \code{"project02"},
+...) using one consistent mapping, so a \code{Parent} reference always matches
+the generic name assigned to that project's own \code{Run} row; \code{Path} is
+rebuilt from the relabeled name (keeping only the file extension).
+Default \code{FALSE}.}
 }
 \value{
 A data.frame containing:

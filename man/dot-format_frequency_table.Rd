@@ -14,8 +14,10 @@ the output from \code{.calculate_raw_freq()}. Must contain columns \code{Count} 
 \item{digits}{Integer specifying the number of decimal places for rounding
 the percentage values.}
 
-\item{method}{Character string specifying the rounding method. Either
-\code{"monolix"} (adaptive precision) or \code{"signif"} (significant figures).}
+\item{method}{Character string specifying the rounding method: \code{"monolixSuiteRounding"}
+(adaptive precision), \code{"significantFigures"} (standard significant figures, zeroes
+non-significant digits before the decimal), or \code{"significantFiguresPreserved"} (modified
+significant figures that never zeroes digits before the decimal).}
 
 \item{exclude_cols}{Character vector of column names to exclude from rounding.}
 }
@@ -44,7 +46,7 @@ are removed.
 \examples{
 # freq_tbl <- data.frame(variable = "SEX", Modalities = c("M", "F"),
 #                        Count = c(15, 10), Percentage = c(60.0, 40.0), N = c(25, 25))
-# .format_frequency_table(freq_tbl, digits = 1, method = "monolix", exclude_cols = c("variable", "Modalities", "N"))
+# .format_frequency_table(freq_tbl, digits = 1, method = "monolixSuiteRounding", exclude_cols = c("variable", "Modalities", "N"))
 
 }
 \keyword{internal}

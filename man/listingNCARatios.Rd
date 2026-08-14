@@ -11,30 +11,60 @@ listingNCARatios(
   filterCovariates = NULL,
   filterIds = NULL,
   roundDigits = 3,
-  roundMethod = c("monolix", "signif", "none"),
+  roundMethod = c("monolixSuiteRounding", "significantFigures",
+    "significantFiguresPreserved", "none"),
   aliases = TRUE,
-  customAliases = NULL
+  customAliases = NULL,
+  mock = FALSE
 )
 }
 \arguments{
 \item{projectFile}{Character string. Path to the PKanalix project file (.pkx).
 If NULL, uses the currently loaded project.}
 
-\item{splitCovariates}{Character vector. Covariates to include and sort by. If specified,
-the table is sorted by these splitCovariates in the order provided.}
+\item{splitCovariates}{Character vector. Categorical covariates (type "catcov")
+to include and sort by. If specified, the table is sorted by these
+splitCovariates in the order provided. Occasion-varying covariates are
+rejected, since ratios are computed across occasions and cannot be
+stratified by a covariate that changes within subject.}
 
 \item{ratioParams}{Character vector. Ratio parameters to include. If NULL (default),
 all available ratio parameters are included.}
 
+\item{filterCovariates}{Named list where names are categorical covariate names
+and values are vectors of allowed values, e.g.
+\code{list(SEX = "Male", DOSE = c("100", "200"))}. Rows not matching are dropped.
+If \code{NULL} (default), no covariate filtering is applied.}
+
+\item{filterIds}{Character or numeric vector of subject IDs to include. If
+\code{NULL} (default), no ID filtering is applied.}
+
 \item{roundDigits}{Numeric. Number of digits for rounding (default: 3).}
 
-\item{roundMethod}{Character. Rounding method: "monolix" (default), "signif", or "none".}
+\item{roundMethod}{Character. Rounding method: "monolixSuiteRounding" (default),
+"significantFigures", "significantFiguresPreserved", or "none".}
 
 \item{aliases}{Logical. If TRUE (default), parameter names are replaced with their aliases.}
+
+\item{customAliases}{Named vector or 2-column dataframe mapping parameter names
+to custom alias labels. Example: \code{c(Cmax_ratio = "C[[sub:max]] ratio")}.
+If provided, these override aliases from the PKanalix project. Supports special
+formatting syntax: \verb{[[sub:text]]} for subscript, \verb{[[sup:text]]} for superscript,
+and \verb{~text~} for italic.}
+
+\item{mock}{Logical; if \code{TRUE}, masks the listing for documentation / example
+outputs: id -> \code{"id1"}, categorical / stratification covariates ->
+\code{"Category 1"}, and all numeric columns (continuous covariates, ratio
+parameter values) -> \code{"xx.xx"}. Default \code{FALSE}.}
 }
 \value{
-A data frame containing individual NCA ratio values with columns for ID,
-splitCovariates (if specified), and ratio parameters.
+A data frame with one row per subject, containing the \code{id} column,
+\code{splitCovariates} (if specified, placed to the left of \code{id}), any
+occasion-invariant stratification-only / additional-stratification
+categorical covariates (merged in automatically when defined in the
+project), and the selected (or all) ratio parameter columns, with names
+formatted per \code{aliases}. Ratio parameters are dimensionless, so no \code{units}
+argument is offered.
 }
 \description{
 Creates a listing table of individual NCA ratio parameter values from a PKanalix project.
@@ -46,6 +76,12 @@ The function validates that:
 \item NCA ratio module is configured
 \item Specified splitCovariates and parameters exist in the project
 }
+
+Stratification-only and additional-stratification categorical covariates
+(PKanalix) are merged in automatically when available, independent of
+\code{splitCovariates}. Occasion-varying stratification covariates are skipped
+for this merge (with a message) since they are not constant within subject
+and ratios are computed across occasions.
 }
 \examples{
 \dontrun{
@@ -59,5 +95,14 @@ ratios <- listingNCARatios(
   ratioParams = c("AUC_ratio", "Cmax_ratio"),
   roundDigits = 2
 )
+
+# Restrict to specific subjects and covariate values
+ratios <- listingNCARatios(
+  filterCovariates = list(SEX = "Male"),
+  filterIds        = c(1, 2, 17)
+)
+
+# Masked listing for documentation / example outputs
+ratios <- listingNCARatios(mock = TRUE)
 }
 }

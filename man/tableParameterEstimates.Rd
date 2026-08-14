@@ -19,8 +19,10 @@ tableParameterEstimates(
   useWideFormat = FALSE,
   stdErrMethod = "",
   roundDigits = 3,
-  roundMethod = c("monolix", "signif", "none"),
-  prettyLabels = TRUE
+  roundMethod = c("monolixSuiteRounding", "significantFigures",
+    "significantFiguresPreserved", "none"),
+  prettyLabels = TRUE,
+  mock = FALSE
 )
 }
 \arguments{
@@ -83,15 +85,27 @@ Residual error.}
 
 \item{roundMethod}{Character string specifying the rounding method. Options:
 \itemize{
-\item \code{"monolix"} (default): Adaptive rounding where \code{digits} specifies decimal places,
-with extra digits added for values < 1
-\item \code{"signif"}: Standard significant figures rounding where \code{digits} specifies
-the number of significant figures
+\item \code{"monolixSuiteRounding"} (default): Adaptive rounding where \code{digits} specifies the number
+of significant digits of the fractional part; the integer part is left untouched, with
+extra digits shown for values < 1
+\item \code{"significantFigures"}: Standard significant figures rounding where \code{digits} specifies
+the number of significant figures - zeroes non-significant digits before the decimal
+for large numbers
+\item \code{"significantFiguresPreserved"}: Modified significant figures rounding that never zeroes
+digits before the decimal - once the integer part already has as many digits as
+\code{digits} requests, the value is simply rounded to the nearest whole number
 \item \code{"none"}: No rounding applied
 }}
 
 \item{prettyLabels}{Logical; if \code{TRUE} (default), applies pretty formatting to column names with newline characters for better table display (e.g., "Fixed Effect\\nEstimate", "IIV\\nSD").
 If \code{FALSE}, uses simpler column names without newlines (e.g., "FE_Estimate", "IIV_SD").}
+
+\item{mock}{Logical; if \code{TRUE}, masks the table for documentation / example
+outputs: every estimate/uncertainty column (\code{Estimate}/\code{FE_Estimate}, \code{RSE},
+\code{CV}, the \verb{CI_*} / \verb{IIV_*} / \verb{IOV_*} / \verb{Boot_*} columns, in both wide and
+long format) becomes a placeholder (e.g. \code{"xx.xx"}, CI intervals become
+\code{"(xx.xx; xx.xx)"}). \code{Section}, \code{Parameter} and \code{Description} are kept.
+Default \code{FALSE}.}
 }
 \value{
 A data frame containing parameter estimates and uncertainties with the following structure:

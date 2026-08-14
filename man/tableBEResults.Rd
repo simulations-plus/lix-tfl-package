@@ -8,14 +8,16 @@ tableBEResults(
   projectFile = NULL,
   BEParams = NULL,
   roundDigits = 3,
-  roundMethod = c("monolix", "signif", "none"),
+  roundMethod = c("monolixSuiteRounding", "significantFigures",
+    "significantFiguresPreserved", "none"),
   units = TRUE,
   aliases = TRUE,
   customUnits = NULL,
   customAliases = NULL,
   BELimits = FALSE,
   BEConclusion = TRUE,
-  prettyLabels = TRUE
+  prettyLabels = TRUE,
+  mock = FALSE
 )
 }
 \arguments{
@@ -30,8 +32,14 @@ numeric values. Default is \code{3}.}
 
 \item{roundMethod}{Character string specifying the rounding method. Options are:
 \itemize{
-\item \code{"monolix"} (default): Adaptive rounding that adds extra digits for values < 1
-\item \code{"signif"}: Standard significant figures rounding
+\item \code{"monolixSuiteRounding"} (default): Adaptive rounding that keeps all digits before the
+decimal untouched and rounds only the fractional part to the specified number of
+significant digits (adds extra digits for values < 1)
+\item \code{"significantFigures"}: Standard significant figures rounding - zeroes non-significant
+digits before the decimal for large numbers
+\item \code{"significantFiguresPreserved"}: Modified significant figures rounding that never zeroes
+digits before the decimal - once the integer part already has as many digits as requested,
+the value is simply rounded to the nearest whole number
 \item \code{"none"}: No rounding performed
 }}
 
@@ -60,6 +68,15 @@ indicating "Bioequivalent" or "Not bioequivalent" based on the analysis results.
 
 \item{prettyLabels}{Logical; if \code{TRUE} (default), converts column names to
 human-readable labels (e.g., "Ratio (\%)", "Confidence Interval").}
+
+\item{mock}{Logical; if \code{TRUE}, masks the table for documentation / example
+outputs: the ratio, confidence interval and BE-limits columns become
+placeholders (e.g. \code{"xx.xx"}, \code{"(xx.xx;xx.xx)"}); \code{Comparison}, the
+parameter name, and \code{Conclusion} (the BE outcome, which would otherwise
+reveal a real result derived from the masked numbers) are relabeled
+generically per unique value (\code{"Comparison 1"}, \code{"Parameter 1"},
+\code{"Conclusion 1"}, ...). The same parameter keeps the same label across
+all its comparison rows. Default \code{FALSE}.}
 }
 \value{
 A data.frame containing BE results with columns for comparison, parameter,

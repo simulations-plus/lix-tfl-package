@@ -27,8 +27,9 @@ If \code{NULL}, overall (non-stratified) statistics are calculated.}
 \item{roundDigits}{Integer. The rounding precision (number of digits).
 Inherited from the parent table/listing function settings.}
 
-\item{roundMethod}{Character string. The rounding method (e.g., "monolix" or "signif").
-Inherited from the parent table/listing function settings.}
+\item{roundMethod}{Character string. The rounding method (e.g., "monolixSuiteRounding",
+"significantFigures", or "significantFiguresPreserved"). Inherited from the parent
+table/listing function settings.}
 
 \item{units}{Logical. If \code{TRUE}, units are appended to parameter names or values.
 \emph{Applicable only when \code{by_time = FALSE} (NCA Parameter summaries).}}
