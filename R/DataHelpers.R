@@ -1,7 +1,12 @@
 #' Creates a data frame summarizing the continuous covariates in the dataset with descriptive statistics.
 #'
 #' @param projectFile path to project file (Monolix: .mlxtran or PKanalix: .pkx) or NULL to use the currently loaded project
-#' @param covDisplayLabels (optional) data.frame with columns covariate and label for the dataset covariate name
+#' @param customAliases Named vector or 2-column dataframe mapping dataset covariate names to
+#'   custom display labels. Example: `c(WEIGHT = "Weight", AGE = "Age")`.
+#'   Covariates not in the mapping keep their original names.
+#' @param customUnits Named vector or 2-column dataframe mapping dataset covariate names to
+#'   custom unit labels. Example: `c(WEIGHT = "kg", HEIGHT = "cm")`.
+#'   Units are appended in parentheses: "Weight (kg)".
 #' @param splitCovariates vector of categorical covariates to stratify by, or NULL
 #' @param metrics vector of metrics to display, or NULL to display all available metrics
 #' @param useWideFormat Logical. If `TRUE` (default), returns a "wide" table format where
@@ -58,9 +63,16 @@
 #'     filterCovariates = list(AVISIT = c("CYCLE 1 DAY 8", "CYCLE 1 DAY 15")),
 #'     metrics          = c("N", "mean", "SD", "median", "min", "max")
 #' )
+#'
+#' # With custom aliases and units
+#' tableContinuousCovariateSummary(
+#'     customAliases = c(WEIGHT = "Weight", HEIGHT = "Height", AGE = "Age"),
+#'     customUnits   = c(WEIGHT = "kg", HEIGHT = "cm", AGE = "years")
+#' )
 #' }
 tableContinuousCovariateSummary <- function(projectFile      = NULL,
-																						covDisplayLabels = NULL,
+																						customAliases    = NULL,
+																						customUnits      = NULL,
 																						splitCovariates  = NULL,
 																						metrics          = NULL,
 																						useWideFormat  = TRUE,
@@ -79,14 +91,8 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 	.checkProjectFile(projectFile, c("monolix", "pkanalix"))
 	.ensureProjectLoaded(projectFile)
 
-	if (!is.null(covDisplayLabels) && !is.data.frame(covDisplayLabels)) {
-		stop("The argument 'covDisplayLabels' must be a dataframe.", call. = FALSE)
-	}
-	if (!is.null(covDisplayLabels) && !identical(names(covDisplayLabels), c("covariate", "label"))) {
-		stop(paste0("The argument 'covDisplayLabels' must contain the headers 'covariate' and 'label' Found headers are: ",
-								paste(names(covDisplayLabels), collapse = ", ")
-		), call. = FALSE )
-	}
+	aliases_df <- .normalizeAliasMapping(customAliases, "aliases")
+	units_df   <- .normalizeAliasMapping(customUnits, "units")
 
 	# Validate stratifyColumns and covariateLabels (using same logic as PKanalixHelpers).
 	# allowed_types restricts splitCovariates to categorical-like types from
@@ -138,7 +144,6 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 	if (stratifyColumns && !is.null(splitCovariates)) {
 		# ----------------------------------------------------------------------
 		# STRATIFIED CASE: Calculate stats for each covariate combination
-		# ----------------------------------------------------------------------
 		group_by_vars <- c("Covariate", splitCovariates)
 
 		summary_stats <- .calculateDescriptiveStats(
@@ -190,16 +195,17 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 			param_col        = "Covariate",
 			covariateLabels = covariateLabels)
 
-		# Rename covariates using covDisplayLabels if provided
-		if (!is.null(covDisplayLabels)) {
-			labelIdx <- match(cov_summary$Covariate, covDisplayLabels$covariate)
-			cov_summary$Covariate[!is.na(labelIdx)] <- covDisplayLabels$label[stats::na.omit(labelIdx)]
+		# Apply custom aliases and units using covariate names
+		if (!is.null(aliases_df) || !is.null(units_df)) {
+			cov_summary <- .applyCustomAliasesUnits(cov_summary,
+																							 param_col  = "Covariate",
+																							 aliases_df = aliases_df,
+																							 units_df   = units_df)
 		}
 
 	} else {
 		# ----------------------------------------------------------------------
 		# NON-STRATIFIED CASE
-		# ----------------------------------------------------------------------
 		group_by_vars <- c("Covariate", splitCovariates)
 
 		cov_summary <- .calculateDescriptiveStats(
@@ -228,10 +234,12 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 
 		cov_summary <- cov_summary[, c(descriptor_cols, selected_metrics), drop = FALSE]
 
-		# Rename covariates using covDisplayLabels if provided
-		if (!is.null(covDisplayLabels)) {
-			labelIdx <- match(cov_summary$Covariate, covDisplayLabels$covariate)
-			cov_summary$Covariate[!is.na(labelIdx)] <- covDisplayLabels$label[stats::na.omit(labelIdx)]
+		# Apply custom aliases and units using covariate names
+		if (!is.null(aliases_df) || !is.null(units_df)) {
+			cov_summary <- .applyCustomAliasesUnits(cov_summary,
+																							 param_col  = "Covariate",
+																							 aliases_df = aliases_df,
+																							 units_df   = units_df)
 		}
 
 		# ==========================================================================
