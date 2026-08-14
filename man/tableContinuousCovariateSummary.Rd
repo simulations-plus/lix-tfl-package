@@ -6,7 +6,8 @@
 \usage{
 tableContinuousCovariateSummary(
   projectFile = NULL,
-  covDisplayLabels = NULL,
+  customAliases = NULL,
+  customUnits = NULL,
   splitCovariates = NULL,
   metrics = NULL,
   useWideFormat = TRUE,
@@ -24,7 +25,13 @@ tableContinuousCovariateSummary(
 \arguments{
 \item{projectFile}{path to project file (Monolix: .mlxtran or PKanalix: .pkx) or NULL to use the currently loaded project}
 
-\item{covDisplayLabels}{(optional) data.frame with columns covariate and label for the dataset covariate name}
+\item{customAliases}{Named vector or 2-column dataframe mapping dataset covariate names to
+custom display labels. Example: \code{c(WEIGHT = "Weight", AGE = "Age")}.
+Covariates not in the mapping keep their original names.}
+
+\item{customUnits}{Named vector or 2-column dataframe mapping dataset covariate names to
+custom unit labels. Example: \code{c(WEIGHT = "kg", HEIGHT = "cm")}.
+Units are appended in parentheses: "Weight (kg)".}
 
 \item{splitCovariates}{vector of categorical covariates to stratify by, or NULL}
 
@@ -91,6 +98,12 @@ tableContinuousCovariateSummary(
     splitCovariates  = "ATRTNCA",
     filterCovariates = list(AVISIT = c("CYCLE 1 DAY 8", "CYCLE 1 DAY 15")),
     metrics          = c("N", "mean", "SD", "median", "min", "max")
+)
+
+# With custom aliases and units
+tableContinuousCovariateSummary(
+    customAliases = c(WEIGHT = "Weight", HEIGHT = "Height", AGE = "Age"),
+    customUnits   = c(WEIGHT = "kg", HEIGHT = "cm", AGE = "years")
 )
 }
 }
