@@ -673,6 +673,16 @@ test_that("tableModelBuilding stepwise sorting stays within each step round", {
 	expect_true(length(unique(grp)) >= 3)
 })
 
+test_that("tableModelBuilding errors with a clear message when no COSSAC/SCM/SAMBA results exist", {
+	# For a project that never ran a covariate model-building search, the connector
+	# returns a bare FALSE (not NULL/length 0) -> must not surface as the internal
+	# "$ operator is invalid for atomic vectors" error.
+	expect_error(
+		tableModelBuilding("test-projects/monolix/prj08_iov2.mlxtran"),
+		"No model building results found.*COSSAC, SCM, or SAMBA"
+	)
+})
+
 ################################################################################
 # setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
 # testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-MonolixHelpers.R")

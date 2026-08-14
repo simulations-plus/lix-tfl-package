@@ -470,8 +470,9 @@ tableModelBuilding <- function(projectFile        = NULL,
 	.ensureProjectLoaded(projectFile)
 
 	res <- suppressMessages(lixoftConnectors::getModelBuildingResults())
-	if (is.null(res) || length(res) == 0) {
-		stop("No model building results found. Run model building (COSSAC/SCM/SAMBA) before calling tableModelBuilding().",
+	if (is.null(res) || length(res) == 0 || !is.list(res) ||
+			!all(vapply(res, is.list, logical(1)))) {
+		stop("No model building results found. Run a covariate model-building search (COSSAC, SCM, or SAMBA) in Monolix before calling tableModelBuilding().",
 				 call. = FALSE)
 	}
 
