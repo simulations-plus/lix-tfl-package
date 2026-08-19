@@ -183,7 +183,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 
 	# Validate: stratifyColumns only works with long format
 	if (stratifyColumns && useWideFormat) {
-		warning("stratifyColumns = TRUE is only compatible with useWideFormat = FALSE (long format). Setting stratifyColumns = FALSE")
+		message("stratifyColumns = TRUE requires long format, but useWideFormat = TRUE was set; ignoring stratifyColumns. To stratify, set useWideFormat = FALSE.")
 		stratifyColumns <- FALSE
 	}
 	# Validate combination of includeId and useWideFormat setting
@@ -631,7 +631,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 	.validateNCAParametersSelection(ncaParams, ratio = FALSE)
 
 	if (stratifyColumns && useWideFormat) {
-		warning("stratifyColumns = TRUE is only compatible with useWideFormat = FALSE (long format). Setting stratifyColumns = FALSE")
+		message("stratifyColumns = TRUE requires long format, but useWideFormat = TRUE was set; ignoring stratifyColumns. To stratify, set useWideFormat = FALSE.")
 		stratifyColumns <- FALSE
 	}
 	if (includeId && useWideFormat) {
@@ -697,10 +697,6 @@ tableNCAParameters <- function(projectFile      = NULL,
 	# CALCULATE DESCRIPTIVE STATISTICS
 
 	if (stratifyColumns) {
-		if (!useWideFormat) {
-			message("Note: stratifyColumns=TRUE uses a different table format. The 'useWideFormat' argument is ignored.")
-		}
-
 		if (is.null(metrics)) {
 			user_metrics <- "GeomCV"
 			message("No metric specified for stratified table. Defaulting to 'GeomCV'. To show multiple metrics specify metrics explicitly.")
@@ -1030,7 +1026,7 @@ tableNCARatios <- function(projectFile      = NULL,
 
 	# Validate: stratifyColumns only works with long format
 	if (stratifyColumns && useWideFormat) {
-		warning("stratifyColumns = TRUE is only compatible with useWideFormat = FALSE (long format). Setting stratifyColumns = FALSE")
+		message("stratifyColumns = TRUE requires long format, but useWideFormat = TRUE was set; ignoring stratifyColumns. To stratify, set useWideFormat = FALSE.")
 		stratifyColumns <- FALSE
 	}
 	# Validate combination of includeId and useWideFormat setting

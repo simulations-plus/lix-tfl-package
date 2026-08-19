@@ -3630,10 +3630,10 @@ test_that("tableNCAConcentration with includeId validation: stratifyColumns = TR
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Test that conflicting settings (useWideFormat=TRUE + stratifyColumns=TRUE)
-	# generates a warning and falls back to valid settings
+	# emits an informational message and falls back to valid settings
 	# Note: stratifyColumns=TRUE requires useWideFormat=FALSE, so stratifyColumns
 	# gets disabled first, before the includeId+stratifyColumns check can fire
-	expect_warning(
+	expect_message(
 		table <- tableNCAConcentration(
 			projectFile      = pkx_project_1,
 			useWideFormat  = TRUE,
@@ -3641,7 +3641,7 @@ test_that("tableNCAConcentration with includeId validation: stratifyColumns = TR
 			splitCovariates  = "TINFCAT",
 			includeId       = TRUE
 		),
-		"stratifyColumns = TRUE is only compatible with useWideFormat = FALSE"
+		"stratifyColumns = TRUE requires long format"
 	)
 
 	# Table should still be generated with fallback settings

@@ -108,7 +108,7 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 
 	# Validate: stratifyColumns only works with long format
 	if (stratifyColumns && useWideFormat) {
-		warning("stratifyColumns = TRUE is only compatible with useWideFormat = FALSE (long format). Setting stratifyColumns = FALSE")
+		message("stratifyColumns = TRUE requires long format, but useWideFormat = TRUE was set; ignoring stratifyColumns. To stratify, set useWideFormat = FALSE.")
 		stratifyColumns <- FALSE
 	}
 
