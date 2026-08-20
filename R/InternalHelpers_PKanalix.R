@@ -1391,14 +1391,17 @@
 #' Checks if the provided NCA parameters exist in the currently loaded PKanalix project.
 #' For ratio tables, validates against ratio parameters in getNCAIndividualRatios().
 #' For non-ratio tables, validates against computed NCA parameters from getNCASettings().
-#' Stops if none of the requested parameters are found; warns if some are missing.
+#' Stops if none of the requested parameters are found; if some are unknown, emits
+#' a message naming them alongside the remaining available (not-yet-selected)
+#' parameters, then continues with the valid ones.
 #'
 #' @param ncaParams Character vector of NCA parameter names to validate, or NULL
 #' @param ratio Logical; if TRUE, validates for ratio tables (checks ratio parameters).
 #'   If FALSE (default), validates against computed NCA parameters.
 #'
 #' @return Invisible NULL if validation passes. Stops with error if no valid parameters found.
-#'   Issues warning if some parameters are missing but continues.
+#'   Emits a message listing unknown parameters and the remaining available ones, then
+#'   continues if at least one parameter is valid.
 #'
 #' @details
 #' When ratio = FALSE:
@@ -1413,7 +1416,8 @@
 #'
 #' Error handling:
 #'   - Stops if NONE of the requested parameters are available
-#'   - Warns if SOME parameters are missing (continues with valid ones)
+#'   - Messages if SOME parameters are unknown, listing them plus the remaining
+#'     available parameters (continues with valid ones)
 #'
 #' @noRd
 .validateNCAParametersSelection <- function(ncaParams, ratio = FALSE, be = FALSE) {
@@ -1446,7 +1450,11 @@
 
 	# Find intersection of requested and available
 	valid_params   <- intersect(ncaParams, available_params)
-	missing_params <- setdiff(ncaParams, available_params)
+	invalid_params <- setdiff(ncaParams, available_params)
+
+	# Parameters available in the project that have not been (correctly) selected.
+	# Surfaced as suggestions so the user can see what they could have meant.
+	remaining_params <- setdiff(available_params, valid_params)
 
 	# Stop if none of the requested parameters are available
 	if (length(valid_params) == 0) {
@@ -1458,13 +1466,18 @@
 		), call. = FALSE)
 	}
 
-	# Warn if some parameters are missing (but continue with valid ones)
-	if (length(missing_params) > 0) {
-		warning(sprintf(
-			"Ignoring unknown %s: %s",
+	# Notify (immediately, via message) if some parameters are invalid, but
+	# continue with the valid ones. message() is used instead of warning() so the
+	# notice appears in real time rather than being deferred to the end of the
+	# top-level call and buried behind other, unrelated warnings.
+	if (length(invalid_params) > 0) {
+		message(sprintf(
+			"Ignoring unknown %s: %s\nAvailable %s not selected: %s",
 			context_msg,
-			paste(missing_params, collapse = ", ")
-		), call. = FALSE)
+			paste(invalid_params, collapse = ", "),
+			context_msg,
+			if (length(remaining_params) > 0) paste(remaining_params, collapse = ", ") else "none"
+		))
 	}
 
 	return(invisible(NULL))
