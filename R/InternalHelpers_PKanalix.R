@@ -2751,6 +2751,17 @@
 			}) %>%
 			dplyr::ungroup()
 
+		# Order strata numerically-aware so integer modalities (e.g. 4, 5, 10, 20) become columns in ascending numeric order rather than lexicographic
+		# ("10", "14", "20", "4", ...)
+		df_prepared <- df_prepared %>%
+			dplyr::arrange(dplyr::across(
+				dplyr::all_of(splitCovariates),
+				~{
+					num <- suppressWarnings(as.numeric(.x))
+					if (all(is.na(num))) .x else num
+				}
+			))
+
 		# Map headers to N counts
 		n_per_stratum <- df_prepared %>%
 			dplyr::distinct(header, Nobs) %>%
