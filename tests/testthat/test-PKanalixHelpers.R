@@ -94,6 +94,26 @@ test_that("tableNCAConcentration with column stratification (stratifyColumns = T
 	expect_gt(length(stratified_cols), 1)
 })
 
+test_that("tableNCAConcentration stratified columns sort integer modalities numerically", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# TINFCAT has integer modalities (e.g. 4, 5, 7, 8, 10, 14, 20). Columns must
+	# appear in ascending numeric order, not lexicographic ("10", "14", "4", ...).
+	table <- tableNCAConcentration(
+		projectFile     = pkx_project_1,
+		splitCovariates = "TINFCAT",
+		stratifyColumns = TRUE,
+		useWideFormat   = FALSE)
+
+	# Extract the modality value from each stratified header ("TINFCAT=10\n(N=31)")
+	modalities <- as.numeric(sub("^TINFCAT=([0-9.]+).*$", "\\1",
+															 grep("^TINFCAT=", names(table), value = TRUE)))
+
+	expect_gt(length(modalities), 1)
+	expect_false(any(is.na(modalities)))
+	expect_identical(modalities, sort(modalities))
+})
+
 test_that("tableNCAConcentration with specific metrics (single metric)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
