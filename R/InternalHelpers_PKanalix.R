@@ -809,9 +809,9 @@
 			))
 		}
 
-		# Warning if SOME metrics missing
+		# Message if some metrics are missing or wrong
 		if (length(missing_metrics) > 0) {
-			warning(paste0(
+			message(paste0(
 				"Ignoring unknown metrics: ", paste(missing_metrics, collapse = ", "),
 				".\nAvailable metrics: ", paste(available_metrics_list, collapse = ", ")
 			))

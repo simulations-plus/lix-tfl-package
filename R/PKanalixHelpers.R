@@ -148,20 +148,6 @@ tableNCAConcentration <- function(projectFile      = NULL,
 																	mock             = FALSE) {
 
 	roundMethod <- match.arg(roundMethod)
-	# # DEBUG EXAMPLE
-	# projectFile      = NULL
-	# splitCovariates       = "ATRTNCA"
-	# useNominalTime   = TRUE
-	# metrics = c("min", "MeanSD", "max")
-	# stratifyColumns = FALSE
-	# covariateLabels = NULL
-	# useWideFormat  = TRUE
-	# maxTimeDeviation = 20
-	# includeId       = TRUE
-	# roundDigits      = 3
-	# roundMethod      = "monolixSuiteRounding"
-	# prettyLabels     = TRUE
-
 	# ==========================================================================
 	# VALIDATION & SETUP
 
@@ -293,6 +279,16 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			selected_metrics = selected_metrics,
 			param_col        = time_col,
 			covariateLabels = covariateLabels)
+
+		# Apply pretty labels to the Statistic column (metric names)
+		if (isTRUE(prettyLabels) && "Statistic" %in% names(final_df)) {
+			stat_metrics    <- unique(final_df$Statistic)
+			dummy_df        <- as.data.frame(matrix(NA, nrow = 1, ncol = length(stat_metrics)))
+			names(dummy_df) <- stat_metrics
+			dummy_df        <- .prettyLabels(dummy_df)
+			metric_map      <- setNames(names(dummy_df), stat_metrics)
+			final_df$Statistic <- metric_map[final_df$Statistic]
+		}
 
 	} else {
 		# ----------------------------------------------------------------------
