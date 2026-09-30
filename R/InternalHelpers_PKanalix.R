@@ -1399,9 +1399,11 @@
 #' @param ratio Logical; if TRUE, validates for ratio tables (checks ratio parameters).
 #'   If FALSE (default), validates against computed NCA parameters.
 #'
-#' @return Invisible NULL if validation passes. Stops with error if no valid parameters found.
-#'   Emits a message listing unknown parameters and the remaining available ones, then
-#'   continues if at least one parameter is valid.
+#' @return Invisibly returns the character vector of available parameters (always
+#'   computed, even when `ncaParams` is NULL, so callers can reuse it - e.g. to
+#'   validate `roundByParameter`). Stops with an error if none of the requested
+#'   parameters are found; emits a message listing unknown parameters and the
+#'   remaining available ones, then continues if at least one is valid.
 #'
 #' @details
 #' When ratio = FALSE:
@@ -1421,10 +1423,8 @@
 #'
 #' @noRd
 .validateNCAParametersSelection <- function(ncaParams, ratio = FALSE, be = FALSE) {
-	# Skip validation if no parameters specified
-	if (is.null(ncaParams)) {
-		return(invisible(NULL))
-	}
+	# Always compute the available parameters (even when ncaParams is NULL) so the
+	# list can be returned and reused by callers (e.g. to validate roundByParameter).
 	if (be) {
 		# For BE tables: get computed BE parameters
 		be_settings      <- lixoftConnectors::getBioequivalenceSettings()
@@ -1448,39 +1448,158 @@
 		context_msg      <- "NCA parameters"
 	}
 
-	# Find intersection of requested and available
-	valid_params   <- intersect(ncaParams, available_params)
-	invalid_params <- setdiff(ncaParams, available_params)
+	# Only validate a selection when one was provided.
+	if (!is.null(ncaParams)) {
+		# Find intersection of requested and available
+		valid_params   <- intersect(ncaParams, available_params)
+		invalid_params <- setdiff(ncaParams, available_params)
 
-	# Parameters available in the project that have not been (correctly) selected.
-	# Surfaced as suggestions so the user can see what they could have meant.
-	remaining_params <- setdiff(available_params, valid_params)
+		# Parameters available in the project that have not been (correctly) selected -> displayed as suggestions
+		remaining_params <- setdiff(available_params, valid_params)
 
-	# Stop if none of the requested parameters are available
-	if (length(valid_params) == 0) {
-		stop(sprintf(
-			"None of the requested %s were found.\nRequested: %s\nAvailable: %s",
-			context_msg,
-			paste(ncaParams, collapse = ", "),
-			if (length(available_params) > 0) paste(available_params, collapse = ", ") else "none"
-		), call. = FALSE)
+		# Stop if none of the requested parameters are available
+		if (length(valid_params) == 0) {
+			stop(sprintf(
+				"None of the requested %s were found.\nRequested: %s\nAvailable: %s",
+				context_msg,
+				paste(ncaParams, collapse = ", "),
+				if (length(available_params) > 0) paste(available_params, collapse = ", ") else "none"
+			), call. = FALSE)
+		}
+
+		# Notify (immediately, via message) if some parameters are invalid --> continue with valid ones
+		if (length(invalid_params) > 0) {
+			message(sprintf(
+				"Ignoring unknown %s: %s\nAvailable %s not selected: %s",
+				context_msg,
+				paste(invalid_params, collapse = ", "),
+				context_msg,
+				if (length(remaining_params) > 0) paste(remaining_params, collapse = ", ") else "none"
+			))
+		}
 	}
 
-	# Notify (immediately, via message) if some parameters are invalid, but
-	# continue with the valid ones. message() is used instead of warning() so the
-	# notice appears in real time rather than being deferred to the end of the
-	# top-level call and buried behind other, unrelated warnings.
-	if (length(invalid_params) > 0) {
-		message(sprintf(
-			"Ignoring unknown %s: %s\nAvailable %s not selected: %s",
-			context_msg,
-			paste(invalid_params, collapse = ", "),
-			context_msg,
-			if (length(remaining_params) > 0) paste(remaining_params, collapse = ", ") else "none"
-		))
+	# Return the available parameters (invisibly) for reuse by callers.
+	return(invisible(available_params))
+}
+
+################################################################################
+#' Normalize a roundByParameter argument into a canonical data.frame
+#'
+#' Accepts the dual input of the `roundByParameter` argument (mirrors the
+#' named-vector-or-data.frame idiom of [.normalizeAliasMapping()]) and returns a
+#' canonical `data.frame(parameter, digits, method)` in which any unset digits or
+#' method have been filled from the global defaults. Returns NULL when no
+#' override was supplied.
+#'
+#' @param roundByParameter NULL, a named numeric vector of digits
+#'   (`c(Cmax = 2, ...)`), or a data.frame with a `parameter` column plus
+#'   `digits` and/or `method` columns.
+#' @param globalDigits Fallback digits (the caller's `roundDigits`).
+#' @param globalMethod Fallback method (the caller's `roundMethod`).
+#'
+#' @returns Canonical `data.frame(parameter, digits, method)`, or NULL.
+#' @noRd
+.normalizeRoundOverrides <- function(roundByParameter, globalDigits, globalMethod) {
+	if (is.null(roundByParameter)) return(NULL)
+
+	valid_methods <- c("monolixSuiteRounding", "significantFigures",
+										 "significantFiguresPreserved", "none")
+
+	if (is.numeric(roundByParameter) && !is.data.frame(roundByParameter)) {
+		# --- Named numeric vector: digits only ---
+		if (is.null(names(roundByParameter)) || any(names(roundByParameter) == "")) {
+			stop("roundByParameter vector must be fully named, e.g. c(Cmax = 2, AUClast = 4).",
+					 call. = FALSE)
+		}
+		out <- data.frame(
+			parameter = names(roundByParameter),
+			digits    = as.numeric(unname(roundByParameter)),
+			method    = NA_character_,
+			stringsAsFactors = FALSE)
+
+	} else if (is.data.frame(roundByParameter)) {
+		# --- data.frame: parameter + digits and/or method ---
+		nms <- tolower(names(roundByParameter))
+		if (!"parameter" %in% nms) {
+			# be forgiving: treat the first column as the parameter column
+			names(roundByParameter)[1] <- "parameter"
+			nms <- tolower(names(roundByParameter))
+		}
+		get_col <- function(key) {
+			idx <- which(nms == key)
+			if (length(idx)) roundByParameter[[idx[1]]] else NULL
+		}
+		param <- as.character(get_col("parameter"))
+		dig   <- get_col("digits")
+		dig   <- if (is.null(dig)) NA_real_ else suppressWarnings(as.numeric(dig))
+		meth  <- get_col("method")
+		meth  <- if (is.null(meth)) NA_character_ else as.character(meth)
+
+		out <- data.frame(
+			parameter = param,
+			digits    = rep_len(dig, length(param)),
+			method    = rep_len(meth, length(param)),
+			stringsAsFactors = FALSE)
+
+	} else {
+		stop("roundByParameter must be a named numeric vector or a data.frame ",
+				 "with columns parameter/digits[/method].", call. = FALSE)
 	}
 
-	return(invisible(NULL))
+	# Drop rows with empty parameter names
+	out$parameter <- trimws(out$parameter)
+	out <- out[!is.na(out$parameter) & out$parameter != "", , drop = FALSE]
+	if (!nrow(out)) return(NULL)
+
+	# Fill unset digits/method from the global defaults
+	out$digits[is.na(out$digits)] <- globalDigits
+	out$method[is.na(out$method) | out$method == ""] <- globalMethod
+
+	# Validate digits
+	if (any(out$digits < 0 | out$digits != round(out$digits))) {
+		stop("roundByParameter digits must be non-negative integers.", call. = FALSE)
+	}
+	# Validate methods
+	bad_m <- setdiff(unique(out$method), valid_methods)
+	if (length(bad_m)) {
+		stop("Invalid rounding method(s) in roundByParameter: ",
+				 paste(bad_m, collapse = ", "),
+				 "\nAllowed: ", paste(valid_methods, collapse = ", "), call. = FALSE)
+	}
+
+	# De-duplicate by parameter (last specification wins)
+	out <- out[!duplicated(out$parameter, fromLast = TRUE), , drop = FALSE]
+	rownames(out) <- NULL
+	out
+}
+
+################################################################################
+#' Validate roundByParameter keys against the available parameters
+#'
+#' Drops keys that are not available parameters (rather than only flagging them),
+#' notifying via `message()` to match [.validateNCAParametersSelection()]. Never
+#' stops -- a rounding typo must not kill the table.
+#'
+#' @param overrides Canonical overrides from [.normalizeRoundOverrides()], or NULL.
+#' @param available Character vector of available parameter names.
+#' @param context Label used in the message (e.g. the calling function name).
+#'
+#' @returns The filtered overrides, or NULL if nothing valid remains.
+#' @noRd
+.validateRoundOverrides <- function(overrides, available, context = "table") {
+	if (is.null(overrides) || !nrow(overrides)) return(NULL)
+	unknown <- setdiff(overrides$parameter, available)
+	if (length(unknown)) {
+		message("roundByParameter: ignoring unknown parameter(s): ",
+						paste(unknown, collapse = ", "),
+						"\nAvailable parameters for ", context, ": ",
+						paste(sort(available), collapse = ", "))
+		overrides <- overrides[!overrides$parameter %in% unknown, , drop = FALSE]
+	}
+	if (!nrow(overrides)) return(NULL)
+	rownames(overrides) <- NULL
+	overrides
 }
 
 ################################################################################

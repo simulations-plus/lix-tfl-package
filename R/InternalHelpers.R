@@ -208,7 +208,7 @@ utils::globalVariables(c("."))
 	return(ext)
 }
 
-
+#-------------------------------------------------------------------------------
 #' Checks the project file matches the specified software
 #'
 #' Checks that project file is for the specified software application via the file extension.
@@ -271,7 +271,7 @@ utils::globalVariables(c("."))
 	}
 	return(zipLoaded)
 }
-
+#-------------------------------------------------------------------------------
 #' Rounds numbers to specified number of digits
 #'
 #' Three rounding methods are supported: "monolixSuiteRounding" which mirrors the behavior of
@@ -346,20 +346,78 @@ utils::globalVariables(c("."))
 
 	return(rr)
 }
+#-------------------------------------------------------------------------------
+#' Round a data frame with optional per-parameter overrides
+#'
+#' Wraps [.round_num()]. When `overrides` is NULL it is identical to
+#' `.round_num()`, so it is a drop-in replacement at existing call sites.
+#' Otherwise every parameter listed in `overrides` is rounded with its own
+#' digits/method and everything else keeps the global `digits`/`method`.
+#'
+#' @param df data frame to round
+#' @param digits global number of digits
+#' @param method global rounding method (see [.round_num()])
+#' @param exclude descriptor columns never rounded
+#' @param overrides canonical data.frame(parameter, digits, method), or NULL
+#' @param paramCol for `paramAxis = "row"`, the column holding the parameter id
+#' @param paramAxis "row" (parameter is a value in `paramCol`; summary/pop/ratio/
+#'   BE tables) or "column" (parameter is a column name; listings)
+#'
+#' @returns the rounded data frame, row order preserved
+#' @noRd
+.applyRounding <- function(df, digits, method, exclude = character(0),
+													 overrides = NULL, paramCol = NULL,
+													 paramAxis = c("row", "column")) {
 
-#' Combines two metrics into a single column, rounding them first
-#'
-#' @param value1 main metric
-#' @param value2 metric in parentheses
-#' @param digits number of digits to round to
-#' @param rounding_method "monolixSuiteRounding" (default), "significantFigures",
-#'   "significantFiguresPreserved", or "none"
-#'
-#' @returns "value1 (value2)"
-.combineMetrics <- function(value1, value2,
-														digits, rounding_method = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none")) {
-	paste0(.round_num(value1, digits, rounding_method = rounding_method),
-				 " (", .round_num(value2, digits, rounding_method = rounding_method), ")" )
+	# No overrides -> identical to the original behaviour
+	if (is.null(overrides) || !nrow(overrides)) {
+		return(.round_num(df, digits = digits, exclude = exclude,
+											rounding_method = method))
+	}
+	paramAxis <- match.arg(paramAxis)
+
+	if (paramAxis == "column") {
+		# Parameters are columns: round everything globally EXCEPT the overridden
+		# columns, then round each overridden column with its own config.
+		over_cols <- intersect(overrides$parameter, names(df))
+		df <- .round_num(df, digits = digits,
+										 exclude = union(exclude, over_cols),
+										 rounding_method = method)
+		for (col in over_cols) {
+			cfg <- overrides[overrides$parameter == col, , drop = FALSE][1, ]
+			df[[col]] <- .round_num(df[[col]], digits = cfg$digits,
+															rounding_method = cfg$method)
+		}
+		return(df)
+	}
+
+	# paramAxis == "row": parameter identity lives in a key column.
+	if (is.null(paramCol) || !paramCol %in% names(df)) {
+		return(.round_num(df, digits = digits, exclude = exclude,
+											rounding_method = method))
+	}
+	df$.orig_order <- seq_len(nrow(df))
+	is_over  <- df[[paramCol]] %in% overrides$parameter
+
+	glob_rows <- df[!is_over, , drop = FALSE]
+	if (nrow(glob_rows)) {
+		glob_rows <- .round_num(glob_rows, digits = digits, exclude = exclude,
+														rounding_method = method)
+	}
+	over_rows <- df[is_over, , drop = FALSE]
+	if (nrow(over_rows)) {
+		parts <- lapply(split(over_rows, over_rows[[paramCol]]), function(g) {
+			cfg <- overrides[overrides$parameter == g[[paramCol]][1], , drop = FALSE][1, ]
+			.round_num(g, digits = cfg$digits, exclude = exclude,
+								 rounding_method = cfg$method)
+		})
+		over_rows <- do.call(rbind, parts)
+	}
+	out <- rbind(glob_rows, over_rows)
+	out <- out[order(out$.orig_order), , drop = FALSE]
+	out$.orig_order <- NULL
+	rownames(out) <- NULL
+	out
 }
 
 #' PrettyLabels

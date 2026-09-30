@@ -541,6 +541,14 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding performed
 #'
+#' @param roundByParameter Optional per-parameter rounding overrides on top of the
+#'   global `roundDigits`/`roundMethod`. Either a named numeric vector of digits
+#'   (`c(Cmax = 2, AUClast = 4)`; method falls back to `roundMethod`), or a
+#'   data.frame with columns `parameter`, `digits` and/or `method`
+#'   (`NA`/missing entries fall back to the global settings). Parameters not
+#'   listed keep the global settings. Unknown parameter names are ignored with a
+#'   message. Default `NULL` (global rounding everywhere).
+#'
 #' @param units Logical. If `TRUE` (default), units are appended to parameter names.
 #'
 #' @param aliases Logical. If `TRUE` (default), parameter aliases (friendly names) are used
@@ -609,6 +617,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 															 filterIds        = NULL,
 															 roundDigits      = 3,
 															 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+															 roundByParameter = NULL,
 															 units            = TRUE,
 															 aliases          = TRUE,
 															 customUnits     = NULL,
@@ -625,10 +634,15 @@ tableNCAParameters <- function(projectFile      = NULL,
 	.ensureProjectLoaded(projectFile)
 	.validateProjectResultsAvailability(software = "pkanalix", resultType = "nca")
 	.validateCovariateSelection(splitCovariates, ratio = FALSE)
+
 	stratifyColumns <- .validateStratificationArgs(splitCovariates, stratifyColumns)
 	covariateLabels <- .validateCovariateLabels(splitCovariates, covariateLabels)
+
 	.validateFilters(filterCovariates, filterIds, resultType = "nca")
-	.validateNCAParametersSelection(ncaParams, ratio = FALSE)
+	available_params <- .validateNCAParametersSelection(ncaParams, ratio = FALSE)
+
+	round_overrides <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
+	round_overrides <- .validateRoundOverrides(round_overrides, available_params, context = "tableNCAParameters")
 
 	if (stratifyColumns && useWideFormat) {
 		message("stratifyColumns = TRUE requires long format, but useWideFormat = TRUE was set; ignoring stratifyColumns. To stratify, set useWideFormat = FALSE.")
@@ -654,8 +668,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 
 
 	# getNCAIndividualParameters() does not carry stratificationcategorical or additionalstratificationcategorical columns.
-	# Pull them from getCovariateInformation() and merge by id BEFORE filtering, so that filterCovariates / filterIds can act on them too.
-	# Filtering the source to only strat types guarantees no column collision with indiv_params.
+	# Get them from getCovariateInformation() + merge by id before filtering
 	cov_info        <- lixoftConnectors::getCovariateInformation()
 	strat_cov_names <- cov_info$name[cov_info$type %in% c("stratificationcategorical", "additionalstratificationcategorical")]
 
@@ -670,7 +683,6 @@ tableNCAParameters <- function(projectFile      = NULL,
 	project_data        <- lixoftConnectors::getData()
 	all_splitCovariates <- project_data$header[project_data$headerTypes %in% c("catcov", "contcov", "occ")]
 	occ_vars            <- project_data$header[project_data$headerTypes == "occ"]
-	# NEW: also exclude the merged-in strat covariate names from param_cols.
 	param_cols          <- setdiff(names(indiv_params), c("id", all_splitCovariates, strat_cov_names))
 
 	if (!is.null(ncaParams)) {
@@ -712,11 +724,14 @@ tableNCAParameters <- function(projectFile      = NULL,
 			id_col    = "id",
 			group_by  = group_by_vars)
 
-		summary_stats <- .round_num(
-			to_round        = summary_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = c("parameter", splitCovariates))
+		summary_stats <- .applyRounding(
+			df        = summary_stats,
+			digits    = roundDigits,
+			method    = roundMethod,
+			exclude   = c("parameter", splitCovariates),
+			overrides = round_overrides,
+			paramCol  = "parameter",
+			paramAxis = "row")
 
 		summary_stats <- .combinedStats(summary_stats)
 
@@ -743,11 +758,14 @@ tableNCAParameters <- function(projectFile      = NULL,
 				id_col    = "id",
 				group_by  = "parameter")
 
-			overall_stats <- .round_num(
-				to_round        = overall_stats,
-				digits          = roundDigits,
-				rounding_method = roundMethod,
-				exclude         = "parameter")
+			overall_stats <- .applyRounding(
+				df        = overall_stats,
+				digits    = roundDigits,
+				method    = roundMethod,
+				exclude   = "parameter",
+				overrides = round_overrides,
+				paramCol  = "parameter",
+				paramAxis = "row")
 
 			overall_stats <- .combinedStats(overall_stats)
 
@@ -773,7 +791,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 			splitCovariates  = splitCovariates,
 			selected_metrics = selected_metrics,
 			param_col        = param_col,
-			covariateLabels = covariateLabels)
+			covariateLabels  = covariateLabels)
 
 	} else {
 		group_by_vars <- if (!is.null(splitCovariates)) c("parameter", splitCovariates) else "parameter"
@@ -784,11 +802,14 @@ tableNCAParameters <- function(projectFile      = NULL,
 			id_col    = "id",
 			group_by  = group_by_vars)
 
-		summary_stats <- .round_num(
-			to_round        = summary_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = c("parameter", splitCovariates))
+		summary_stats <- .applyRounding(
+			df        = summary_stats,
+			digits    = roundDigits,
+			method    = roundMethod,
+			exclude   = c("parameter", splitCovariates),
+			overrides = round_overrides,
+			paramCol  = "parameter",
+			paramAxis = "row")
 
 		summary_stats <- .combinedStats(summary_stats)
 
