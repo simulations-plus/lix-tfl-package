@@ -1085,10 +1085,10 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
 #' # Plain listing
 #' listingDosingRegimen(projectFile = "path/to/project.pkx")
 #'
-#' # Stratified by SEX and filtered to oral administrations (admid == 2)
+#' # Stratified by SEX and filtered to a categorical covariate value
 #' listingDosingRegimen(
 #'   splitCovariates  = "SEX",
-#'   filterCovariates = list(ADM = "2"))
+#'   filterCovariates = list(TINFCAT = "10"))
 #' }
 #'
 #' @export
