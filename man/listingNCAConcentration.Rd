@@ -44,7 +44,8 @@ numeric values. Default is \code{3}.}
 
 \item{roundMethod}{Character string specifying the rounding method. Options are:
 \itemize{
-\item \code{"monolixSuiteRounding"} (default): Adaptive rounding that keeps all digits before the
+\item \code{"none"} (default): No rounding performed
+\item \code{"monolixSuiteRounding"}: Adaptive rounding that keeps all digits before the
 decimal untouched and rounds only the fractional part to the specified number of
 significant digits (adds extra digits for values < 1)
 \item \code{"significantFigures"}: Standard significant figures rounding - zeroes non-significant
@@ -52,7 +53,6 @@ digits before the decimal for large numbers
 \item \code{"significantFiguresPreserved"}: Modified significant figures rounding that never zeroes
 digits before the decimal - once the integer part already has as many digits as requested,
 the value is simply rounded to the nearest whole number
-\item \code{"none"}: No rounding performed
 }}
 
 \item{mock}{Logical; if \code{TRUE}, masks the listing for documentation / example

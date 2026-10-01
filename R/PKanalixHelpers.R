@@ -1695,7 +1695,8 @@ listingAbbreviation <- function(projectFile   = NULL,
 #'   numeric values. Default is `3`.
 #'
 #' @param roundMethod Character string specifying the rounding method. Options are:
-#'   - `"monolixSuiteRounding"` (default): Adaptive rounding that keeps all digits before the
+#'   - `"none"` (default): No rounding performed
+#'   - `"monolixSuiteRounding"`: Adaptive rounding that keeps all digits before the
 #'     decimal untouched and rounds only the fractional part to the specified number of
 #'     significant digits (adds extra digits for values < 1)
 #'   - `"significantFigures"`: Standard significant figures rounding - zeroes non-significant
@@ -1703,7 +1704,6 @@ listingAbbreviation <- function(projectFile   = NULL,
 #'   - `"significantFiguresPreserved"`: Modified significant figures rounding that never zeroes
 #'     digits before the decimal - once the integer part already has as many digits as requested,
 #'     the value is simply rounded to the nearest whole number
-#'   - `"none"`: No rounding performed
 #'
 #' @param mock Logical; if `TRUE`, masks the listing for documentation / example
 #'   outputs: id -> `"id1"`, categorical covariates / occasions -> `"Category 1"`
