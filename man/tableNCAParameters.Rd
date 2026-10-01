@@ -18,6 +18,7 @@ tableNCAParameters(
   roundDigits = 3,
   roundMethod = c("monolixSuiteRounding", "significantFigures",
     "significantFiguresPreserved", "none"),
+  roundByParameter = NULL,
   units = TRUE,
   aliases = TRUE,
   customUnits = NULL,
@@ -80,6 +81,14 @@ digits before the decimal - once the integer part already has as many digits as 
 the value is simply rounded to the nearest whole number
 \item \code{"none"}: No rounding performed
 }}
+
+\item{roundByParameter}{Optional per-parameter rounding overrides on top of the
+global \code{roundDigits}/\code{roundMethod}. Either a named numeric vector of digits
+(\code{c(Cmax = 2, AUClast = 4)}; method falls back to \code{roundMethod}), or a
+data.frame with columns \code{parameter}, \code{digits} and/or \code{method}
+(\code{NA}/missing entries fall back to the global settings). Parameters not
+listed keep the global settings. Unknown parameter names are ignored with a
+message. Default \code{NULL} (global rounding everywhere).}
 
 \item{units}{Logical. If \code{TRUE} (default), units are appended to parameter names.}
 
