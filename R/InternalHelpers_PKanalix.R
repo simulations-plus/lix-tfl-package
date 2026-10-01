@@ -1532,7 +1532,7 @@
 		}
 		param <- as.character(get_col("parameter"))
 		dig   <- get_col("digits")
-		dig   <- if (is.null(dig)) NA_real_ else suppressWarnings(as.numeric(dig))
+		dig   <- if (is.null(dig)) NA_real_ else suppressWarnings(as.numeric(as.character(dig)))
 		meth  <- get_col("method")
 		meth  <- if (is.null(meth)) NA_character_ else as.character(meth)
 
