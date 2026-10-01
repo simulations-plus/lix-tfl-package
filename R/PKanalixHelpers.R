@@ -1600,6 +1600,7 @@ tableBEResults <- function(projectFile    = NULL,
 #' # listingAbbreviation(aliases = FALSE)
 #' # listingAbbreviation(fullTerms = c(Cmax = "Maximum concentration",
 #' #                                   AUClast = "Area under the curve to last obs"))
+#' @export
 listingAbbreviation <- function(projectFile   = NULL,
 																aliases       = TRUE,
 																customAliases = NULL,
