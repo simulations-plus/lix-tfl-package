@@ -102,7 +102,7 @@ test_that("checkProjectFile NULL projectFile", {
 
 test_that("round_num method monolix", {
 	expect_equal(.round_num(123.456, 2), 123.46)
-	expect_equal(.round_num(123.456, 2, rounding_method = "monolix"), 123.46)
+	expect_equal(.round_num(123.456, 2, rounding_method = "monolixSuiteRounding"), 123.46)
 	expect_equal(.round_num(0.123456, 2), 0.12)
 	expect_equal(.round_num(0.00123456, 2), 0.0012)
 	expect_equal(.round_num(123, 2), 123)
@@ -111,11 +111,11 @@ test_that("round_num method monolix", {
 })
 
 test_that("round_num rounding_method signif", {
-	expect_equal(.round_num(123.456, 2, rounding_method = "signif"), 120)
-	expect_equal(.round_num(0.123456, 2, rounding_method = "signif"), 0.12)
-	expect_equal(.round_num(0.00123456, 2, rounding_method = "signif"), 0.0012)
-	expect_equal(.round_num(123, 2, rounding_method = "signif"), 120)
-	expect_equal(.round_num(123.456789, 4, rounding_method = "signif"), 123.5)
+	expect_equal(.round_num(123.456, 2, rounding_method = "significantFigures"), 120)
+	expect_equal(.round_num(0.123456, 2, rounding_method = "significantFigures"), 0.12)
+	expect_equal(.round_num(0.00123456, 2, rounding_method = "significantFigures"), 0.0012)
+	expect_equal(.round_num(123, 2, rounding_method = "significantFigures"), 120)
+	expect_equal(.round_num(123.456789, 4, rounding_method = "significantFigures"), 123.5)
 })
 
 test_that("round_num rounding_method none", {
@@ -126,9 +126,9 @@ test_that("round_num rounding_method none", {
 })
 
 test_that("round_num vector", {
-	expect_equal(.round_num(c(123.456, 0.00123456), 2, rounding_method = "monolix"),
+	expect_equal(.round_num(c(123.456, 0.00123456), 2, rounding_method = "monolixSuiteRounding"),
 							 c(123.46, 0.0012))
-	expect_equal(.round_num(c(123.456, 0.00123456), 2, rounding_method = "signif"),
+	expect_equal(.round_num(c(123.456, 0.00123456), 2, rounding_method = "significantFigures"),
 							 c(120, 0.0012))
 })
 
@@ -138,22 +138,22 @@ test_that("round_num data.frame", {
 									c = c(TRUE, FALSE),
 									d = c("1.2345", "2.3456"))
 
-	expect_equal(.round_num(df, 3, rounding_method = "monolix"),
+	expect_equal(.round_num(df, 3, rounding_method = "monolixSuiteRounding"),
 							 data.frame(a = c(123.457, 0.00123),
 							 					 b = c(-3.457, -0.000123),
 							 					 c = c(TRUE, FALSE),
 							 					 d = c("1.2345", "2.3456")))
-	expect_equal(.round_num(df, 3, rounding_method = "signif"),
+	expect_equal(.round_num(df, 3, rounding_method = "significantFigures"),
 							 data.frame(a = c(123, 0.00123),
 							 					 b = c(-3.46, -0.000123),
 							 					 c = c(TRUE, FALSE),
 							 					 d = c("1.2345", "2.3456")))
-	expect_equal(.round_num(df, 3, exclude = "b", rounding_method = "signif"),
+	expect_equal(.round_num(df, 3, exclude = "b", rounding_method = "significantFigures"),
 							 data.frame(a = c(123, 0.00123),
 							 					 b = c(-3.4567, -0.0001234),
 							 					 c = c(TRUE, FALSE),
 							 					 d = c("1.2345", "2.3456")))
-	expect_equal(.round_num(df, 3, exclude = c("a", "c", "d"), rounding_method = "signif"),
+	expect_equal(.round_num(df, 3, exclude = c("a", "c", "d"), rounding_method = "significantFigures"),
 							 data.frame(a = c(123.45678, 0.00123456),
 							 					 b = c(-3.46, -0.000123),
 							 					 c = c(TRUE, FALSE),
@@ -176,8 +176,8 @@ test_that("round_num not number", {
 test_that("round_num keep NA/NaN as is", {
 	expect_equal(.round_num(NA, 2), NA)
 	expect_equal(.round_num(NaN, 2), NaN)
-	expect_equal(.round_num(NA, 3, rounding_method = "signif"), NA)
-	expect_equal(.round_num(NaN, 3, rounding_method = "signif"), NaN)
+	expect_equal(.round_num(NA, 3, rounding_method = "significantFigures"), NA)
+	expect_equal(.round_num(NaN, 3, rounding_method = "significantFigures"), NaN)
 	expect_equal(.round_num(c(1.2345, NA, 1.2, NaN, -1.2345), 2), c(1.23, NA, 1.2, NaN, -1.23))
 })
 

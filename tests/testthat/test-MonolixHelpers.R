@@ -440,7 +440,7 @@ test_that("tableParameterEstimates() bootstrap CI values are properly rounded an
 		projectFile = mono_project_4,
 		includeBootstrap = TRUE,
 		roundDigits = 3,
-		roundMethod = "signif",
+		roundMethod = "significantFigures",
 		useWideFormat = FALSE
 	)
 
@@ -458,14 +458,14 @@ test_that("tableParameterEstimates() bootstrap with different rounding methods",
 		projectFile = mono_project_4,
 		includeBootstrap = TRUE,
 		roundDigits = 3,
-		roundMethod = "monolix"
+		roundMethod = "monolixSuiteRounding"
 	)
 
 	result_signif <- tableParameterEstimates(
 		projectFile = mono_project_4,
 		includeBootstrap = TRUE,
 		roundDigits = 3,
-		roundMethod = "signif"
+		roundMethod = "significantFigures"
 	)
 
 	# Both should have bootstrap columns
@@ -487,7 +487,7 @@ test_that("tableParameterEstimates() comprehensive: wide format with all options
 		includeBootstrap = TRUE,
 		useWideFormat = TRUE,
 		roundDigits = 3,
-		roundMethod = "signif",
+		roundMethod = "significantFigures",
 		prettyLabels = FALSE)
 
 	col_names <- names(result)
