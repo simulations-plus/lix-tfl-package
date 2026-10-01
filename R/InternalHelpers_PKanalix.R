@@ -809,9 +809,9 @@
 			))
 		}
 
-		# Warning if SOME metrics missing
+		# Message if some metrics are missing or wrong
 		if (length(missing_metrics) > 0) {
-			warning(paste0(
+			message(paste0(
 				"Ignoring unknown metrics: ", paste(missing_metrics, collapse = ", "),
 				".\nAvailable metrics: ", paste(available_metrics_list, collapse = ", ")
 			))
@@ -1391,14 +1391,19 @@
 #' Checks if the provided NCA parameters exist in the currently loaded PKanalix project.
 #' For ratio tables, validates against ratio parameters in getNCAIndividualRatios().
 #' For non-ratio tables, validates against computed NCA parameters from getNCASettings().
-#' Stops if none of the requested parameters are found; warns if some are missing.
+#' Stops if none of the requested parameters are found; if some are unknown, emits
+#' a message naming them alongside the remaining available (not-yet-selected)
+#' parameters, then continues with the valid ones.
 #'
 #' @param ncaParams Character vector of NCA parameter names to validate, or NULL
 #' @param ratio Logical; if TRUE, validates for ratio tables (checks ratio parameters).
 #'   If FALSE (default), validates against computed NCA parameters.
 #'
-#' @return Invisible NULL if validation passes. Stops with error if no valid parameters found.
-#'   Issues warning if some parameters are missing but continues.
+#' @return Invisibly returns the character vector of available parameters (always
+#'   computed, even when `ncaParams` is NULL, so callers can reuse it - e.g. to
+#'   validate `roundByParameter`). Stops with an error if none of the requested
+#'   parameters are found; emits a message listing unknown parameters and the
+#'   remaining available ones, then continues if at least one is valid.
 #'
 #' @details
 #' When ratio = FALSE:
@@ -1413,14 +1418,13 @@
 #'
 #' Error handling:
 #'   - Stops if NONE of the requested parameters are available
-#'   - Warns if SOME parameters are missing (continues with valid ones)
+#'   - Messages if SOME parameters are unknown, listing them plus the remaining
+#'     available parameters (continues with valid ones)
 #'
 #' @noRd
 .validateNCAParametersSelection <- function(ncaParams, ratio = FALSE, be = FALSE) {
-	# Skip validation if no parameters specified
-	if (is.null(ncaParams)) {
-		return(invisible(NULL))
-	}
+	# Always compute the available parameters (even when ncaParams is NULL) so the
+	# list can be returned and reused by callers (e.g. to validate roundByParameter).
 	if (be) {
 		# For BE tables: get computed BE parameters
 		be_settings      <- lixoftConnectors::getBioequivalenceSettings()
@@ -1444,30 +1448,169 @@
 		context_msg      <- "NCA parameters"
 	}
 
-	# Find intersection of requested and available
-	valid_params   <- intersect(ncaParams, available_params)
-	missing_params <- setdiff(ncaParams, available_params)
+	# Only validate a selection when one was provided.
+	if (!is.null(ncaParams)) {
+		# Find intersection of requested and available
+		valid_params   <- intersect(ncaParams, available_params)
+		invalid_params <- setdiff(ncaParams, available_params)
 
-	# Stop if none of the requested parameters are available
-	if (length(valid_params) == 0) {
-		stop(sprintf(
-			"None of the requested %s were found.\nRequested: %s\nAvailable: %s",
-			context_msg,
-			paste(ncaParams, collapse = ", "),
-			if (length(available_params) > 0) paste(available_params, collapse = ", ") else "none"
-		), call. = FALSE)
+		# Parameters available in the project that have not been (correctly) selected -> displayed as suggestions
+		remaining_params <- setdiff(available_params, valid_params)
+
+		# Stop if none of the requested parameters are available
+		if (length(valid_params) == 0) {
+			stop(sprintf(
+				"None of the requested %s were found.\nRequested: %s\nAvailable: %s",
+				context_msg,
+				paste(ncaParams, collapse = ", "),
+				if (length(available_params) > 0) paste(available_params, collapse = ", ") else "none"
+			), call. = FALSE)
+		}
+
+		# Notify (immediately, via message) if some parameters are invalid --> continue with valid ones
+		if (length(invalid_params) > 0) {
+			message(sprintf(
+				"Ignoring unknown %s: %s\nAvailable %s not selected: %s",
+				context_msg,
+				paste(invalid_params, collapse = ", "),
+				context_msg,
+				if (length(remaining_params) > 0) paste(remaining_params, collapse = ", ") else "none"
+			))
+		}
 	}
 
-	# Warn if some parameters are missing (but continue with valid ones)
-	if (length(missing_params) > 0) {
-		warning(sprintf(
-			"Ignoring unknown %s: %s",
-			context_msg,
-			paste(missing_params, collapse = ", ")
-		), call. = FALSE)
+	# Return the available parameters (invisibly) for reuse by callers.
+	return(invisible(available_params))
+}
+
+################################################################################
+#' Normalize a roundByParameter argument into a canonical data.frame
+#'
+#' Accepts the dual input of the `roundByParameter` argument (mirrors the
+#' named-vector-or-data.frame idiom of [.normalizeAliasMapping()]) and returns a
+#' canonical `data.frame(parameter, digits, method)` in which any unset digits or
+#' method have been filled from the global defaults. Returns NULL when no
+#' override was supplied.
+#'
+#' @param roundByParameter NULL, a named numeric vector of digits
+#'   (`c(Cmax = 2, ...)`), or a data.frame with a `parameter` column plus
+#'   `digits` and/or `method` columns.
+#' @param globalDigits Fallback digits (the caller's `roundDigits`).
+#' @param globalMethod Fallback method (the caller's `roundMethod`).
+#'
+#' @returns Canonical `data.frame(parameter, digits, method)`, or NULL.
+#' @noRd
+.normalizeRoundOverrides <- function(roundByParameter, globalDigits, globalMethod) {
+	if (is.null(roundByParameter)) return(NULL)
+
+	valid_methods <- c("monolixSuiteRounding", "significantFigures",
+										 "significantFiguresPreserved", "none")
+
+	if (is.numeric(roundByParameter) && !is.data.frame(roundByParameter)) {
+		# --- Named numeric vector: digits only ---
+		if (is.null(names(roundByParameter)) || any(names(roundByParameter) == "")) {
+			stop("roundByParameter vector must be fully named, e.g. c(Cmax = 2, AUClast = 4).",
+					 call. = FALSE)
+		}
+		out <- data.frame(
+			parameter = names(roundByParameter),
+			digits    = as.numeric(unname(roundByParameter)),
+			method    = NA_character_,
+			stringsAsFactors = FALSE)
+
+	} else if (is.data.frame(roundByParameter)) {
+		# --- data.frame: parameter + digits and/or method ---
+		nms <- tolower(names(roundByParameter))
+		if (!"parameter" %in% nms) {
+			# be forgiving: treat the first column as the parameter column
+			names(roundByParameter)[1] <- "parameter"
+			nms <- tolower(names(roundByParameter))
+		}
+		get_col <- function(key) {
+			idx <- which(nms == key)
+			if (length(idx)) roundByParameter[[idx[1]]] else NULL
+		}
+		param <- as.character(get_col("parameter"))
+		dig   <- get_col("digits")
+		if (is.null(dig)) {
+			dig <- NA_real_
+		} else {
+			dig_chr <- as.character(dig)
+			dig     <- suppressWarnings(as.numeric(dig_chr))
+			# Reject values that were supplied but failed to parse (vs. genuinely missing NA)
+			bad_dig <- !is.na(dig_chr) & trimws(dig_chr) != "" & is.na(dig)
+			if (any(bad_dig)) {
+				stop("roundByParameter digits must be numeric; invalid value(s): ",
+						 paste(unique(dig_chr[bad_dig]), collapse = ", "), call. = FALSE)
+			}
+		}
+		meth  <- get_col("method")
+		meth  <- if (is.null(meth)) NA_character_ else as.character(meth)
+
+		out <- data.frame(
+			parameter = param,
+			digits    = rep_len(dig, length(param)),
+			method    = rep_len(meth, length(param)),
+			stringsAsFactors = FALSE)
+
+	} else {
+		stop("roundByParameter must be a named numeric vector or a data.frame ",
+				 "with columns parameter/digits[/method].", call. = FALSE)
 	}
 
-	return(invisible(NULL))
+	# Drop rows with empty parameter names
+	out$parameter <- trimws(out$parameter)
+	out <- out[!is.na(out$parameter) & out$parameter != "", , drop = FALSE]
+	if (!nrow(out)) return(NULL)
+
+	# Fill unset digits/method from the global defaults
+	out$digits[is.na(out$digits)] <- globalDigits
+	out$method[is.na(out$method) | out$method == ""] <- globalMethod
+
+	# Validate digits
+	if (any(out$digits < 0 | out$digits != round(out$digits))) {
+		stop("roundByParameter digits must be non-negative integers.", call. = FALSE)
+	}
+	# Validate methods
+	bad_m <- setdiff(unique(out$method), valid_methods)
+	if (length(bad_m)) {
+		stop("Invalid rounding method(s) in roundByParameter: ",
+				 paste(bad_m, collapse = ", "),
+				 "\nAllowed: ", paste(valid_methods, collapse = ", "), call. = FALSE)
+	}
+
+	# De-duplicate by parameter (last specification wins)
+	out <- out[!duplicated(out$parameter, fromLast = TRUE), , drop = FALSE]
+	rownames(out) <- NULL
+	out
+}
+
+################################################################################
+#' Validate roundByParameter keys against the available parameters
+#'
+#' Drops keys that are not available parameters (rather than only flagging them),
+#' notifying via `message()` to match [.validateNCAParametersSelection()]. Never
+#' stops -- a rounding typo must not kill the table.
+#'
+#' @param overrides Canonical overrides from [.normalizeRoundOverrides()], or NULL.
+#' @param available Character vector of available parameter names.
+#' @param context Label used in the message (e.g. the calling function name).
+#'
+#' @returns The filtered overrides, or NULL if nothing valid remains.
+#' @noRd
+.validateRoundOverrides <- function(overrides, available, context = "table") {
+	if (is.null(overrides) || !nrow(overrides)) return(NULL)
+	unknown <- setdiff(overrides$parameter, available)
+	if (length(unknown)) {
+		message("roundByParameter: ignoring unknown parameter(s): ",
+						paste(unknown, collapse = ", "),
+						"\nAvailable parameters for ", context, ": ",
+						paste(sort(available), collapse = ", "))
+		overrides <- overrides[!overrides$parameter %in% unknown, , drop = FALSE]
+	}
+	if (!nrow(overrides)) return(NULL)
+	rownames(overrides) <- NULL
+	overrides
 }
 
 ################################################################################
@@ -1564,7 +1707,8 @@
 #' @param resultType Type of result: "ncaParameters", "ncaRatio", or "ncaConcentration"
 #' @param params Parameter names to include (ncaParams for parameters, ratioParams for ratios, NULL for all)
 #' @param roundDigits Number of decimal places for rounding
-#' @param roundMethod Rounding method ("monolix", "signif", or "none")
+#' @param roundMethod Rounding method ("monolixSuiteRounding", "significantFigures",
+#'   "significantFiguresPreserved", or "none")
 #' @param units Logical; include units for parameter names (only for ncaParameters)
 #' @param aliases Logical; use parameter aliases (only for ncaParameters)
 #' @param useNominalTime Logical; use nominal time (only for ncaConcentration)
@@ -1591,7 +1735,7 @@
 														resultType     = c("ncaParameters", "ncaRatio", "ncaConcentration"),
 														params         = NULL,
 														roundDigits    = 3,
-														roundMethod    = "monolix",
+														roundMethod    = "monolixSuiteRounding",
 														units          = TRUE,
 														units_df       = NULL,
 														aliases        = TRUE,
@@ -2057,8 +2201,9 @@
 #'   If `NULL`, overall (non-stratified) statistics are calculated.
 #' @param roundDigits Integer. The rounding precision (number of digits).
 #'   Inherited from the parent table/listing function settings.
-#' @param roundMethod Character string. The rounding method (e.g., "monolix" or "signif").
-#'   Inherited from the parent table/listing function settings.
+#' @param roundMethod Character string. The rounding method (e.g., "monolixSuiteRounding",
+#'   "significantFigures", or "significantFiguresPreserved"). Inherited from the parent
+#'   table/listing function settings.
 #' @param units Logical. If `TRUE`, units are appended to parameter names or values.
 #'   \emph{Applicable only when `by_time = FALSE` (NCA Parameter summaries).}
 #' @param aliases Logical. If `TRUE`, parameter aliases (friendly names) are used.
@@ -2297,8 +2442,10 @@
 #'   `Percentage`.
 #' @param digits Integer specifying the number of decimal places for rounding
 #'   the percentage values.
-#' @param method Character string specifying the rounding method. Either
-#'   `"monolix"` (adaptive precision) or `"signif"` (significant figures).
+#' @param method Character string specifying the rounding method: `"monolixSuiteRounding"`
+#'   (adaptive precision), `"significantFigures"` (standard significant figures, zeroes
+#'   non-significant digits before the decimal), or `"significantFiguresPreserved"` (modified
+#'   significant figures that never zeroes digits before the decimal).
 #' @param exclude_cols Character vector of column names to exclude from rounding.
 #'
 #' @details
@@ -2323,7 +2470,7 @@
 #' @examples
 #' # freq_tbl <- data.frame(variable = "SEX", Modalities = c("M", "F"),
 #' #                        Count = c(15, 10), Percentage = c(60.0, 40.0), N = c(25, 25))
-#' # .format_frequency_table(freq_tbl, digits = 1, method = "monolix", exclude_cols = c("variable", "Modalities", "N"))
+#' # .format_frequency_table(freq_tbl, digits = 1, method = "monolixSuiteRounding", exclude_cols = c("variable", "Modalities", "N"))
 #'
 .format_frequency_table <- function(summary_tbl, digits, method, exclude_cols) {
 	# 1. Apply rounding (respects roundMethod)
@@ -2352,7 +2499,8 @@
 #' @param df_input A data frame in long format with columns `id`, `variable`, and `value`.
 #'   See `.calculate_raw_freq()` for details.
 #' @param digits Integer specifying the number of decimal places for rounding percentages.
-#' @param method Character string specifying the rounding method ("monolix" or "signif").
+#' @param method Character string specifying the rounding method ("monolixSuiteRounding",
+#'   "significantFigures", or "significantFiguresPreserved").
 #' @param exclude_cols Character vector of column names to exclude from rounding.
 #'
 #' @details
@@ -2374,7 +2522,7 @@
 #' # df <- data.frame(id = c(1,2,3,1,2,3),
 #' #                  variable = rep(c("SEX", "RACE"), each = 3),
 #' #                  value = c("M", "F", "M", "White", "White", "Asian"))
-#' # .calc_format_stratum(df, digits = 1, method = "monolix", exclude_cols = c("variable", "Modalities", "N"))
+#' # .calc_format_stratum(df, digits = 1, method = "monolixSuiteRounding", exclude_cols = c("variable", "Modalities", "N"))
 #'
 .calc_format_stratum <- function(df_input, digits, method, exclude_cols) {
 	raw_stats <- .calculateCategoricalFrequencies(df_input)
@@ -2732,6 +2880,17 @@
 				paste(pieces, collapse = "\n")
 			}) %>%
 			dplyr::ungroup()
+
+		# Order strata numerically-aware so integer modalities (e.g. 4, 5, 10, 20) become columns in ascending numeric order rather than lexicographic
+		# ("10", "14", "20", "4", ...)
+		df_prepared <- df_prepared %>%
+			dplyr::arrange(dplyr::across(
+				dplyr::all_of(splitCovariates),
+				~{
+					num <- suppressWarnings(as.numeric(as.character(.x)))
+					if (all(is.na(num))) .x else num
+				}
+			))
 
 		# Map headers to N counts
 		n_per_stratum <- df_prepared %>%

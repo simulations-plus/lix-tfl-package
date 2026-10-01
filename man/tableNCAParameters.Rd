@@ -16,12 +16,15 @@ tableNCAParameters(
   filterCovariates = NULL,
   filterIds = NULL,
   roundDigits = 3,
-  roundMethod = c("monolix", "signif", "none"),
+  roundMethod = c("monolixSuiteRounding", "significantFigures",
+    "significantFiguresPreserved", "none"),
+  roundByParameter = NULL,
   units = TRUE,
   aliases = TRUE,
   customUnits = NULL,
   customAliases = NULL,
-  prettyLabels = TRUE
+  prettyLabels = TRUE,
+  mock = FALSE
 )
 }
 \arguments{
@@ -68,10 +71,24 @@ numeric values. Default is \code{3}.}
 
 \item{roundMethod}{Character string specifying the rounding method. Options are:
 \itemize{
-\item \code{"monolix"} (default): Adaptive rounding that adds extra digits for values < 1
-\item \code{"signif"}: Standard significant figures rounding
+\item \code{"monolixSuiteRounding"} (default): Adaptive rounding that keeps all digits before the
+decimal untouched and rounds only the fractional part to the specified number of
+significant digits (adds extra digits for values < 1)
+\item \code{"significantFigures"}: Standard significant figures rounding - zeroes non-significant
+digits before the decimal for large numbers
+\item \code{"significantFiguresPreserved"}: Modified significant figures rounding that never zeroes
+digits before the decimal - once the integer part already has as many digits as requested,
+the value is simply rounded to the nearest whole number
 \item \code{"none"}: No rounding performed
 }}
+
+\item{roundByParameter}{Optional per-parameter rounding overrides on top of the
+global \code{roundDigits}/\code{roundMethod}. Either a named numeric vector of digits
+(\code{c(Cmax = 2, AUClast = 4)}; method falls back to \code{roundMethod}), or a
+data.frame with columns \code{parameter}, \code{digits} and/or \code{method}
+(\code{NA}/missing entries fall back to the global settings). Parameters not
+listed keep the global settings. Unknown parameter names are ignored with a
+message. Default \code{NULL} (global rounding everywhere).}
 
 \item{units}{Logical. If \code{TRUE} (default), units are appended to parameter names.}
 
@@ -89,6 +106,14 @@ superscript, and \verb{~text~} for italic.}
 \item{prettyLabels}{Logical; if \code{TRUE} (default), converts column names to
 human-readable labels (e.g., "CV" becomes "CV (\%)", "geoMean" becomes "Geometric Mean").
 If \code{FALSE}, uses raw column names.}
+
+\item{mock}{Logical; if \code{TRUE}, masks the table for documentation / example
+outputs: metric values become placeholders (e.g. \code{"xx.xx"}), and
+\code{splitCovariates} values become generic labels (\code{"Category 1"}, ...). The
+parameter name and \code{Statistic}/\code{Section} labels are kept, except that with
+\code{includeId = TRUE} the individual subject IDs listed under \code{Statistic}
+are relabeled (\code{"id1"}, \code{"id2"}, ...), since those are real identifiers.
+Default \code{FALSE}.}
 }
 \value{
 A data frame combining standard NCA statistics with additional descriptive statistics

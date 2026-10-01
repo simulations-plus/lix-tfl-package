@@ -2,41 +2,61 @@
 % Please edit documentation in R/DataHelpers.R
 \name{listingDosingRegimen}
 \alias{listingDosingRegimen}
-\title{listingDosingRegimen()
-Builds a dosing regimen listing per subject/occasion with dose amount and time,
-optionally adding a covariate column (from the dataset) or a constant entry
-(e.g., ROUTE) when the covariate is not present. If the custom NCA parameter
-\code{InfDur} was computed, it is merged on the subject identifier.}
+\title{listingDosingRegimen()}
 \usage{
 listingDosingRegimen(
   projectFile = NULL,
-  covariate = NULL,
-  covariateEntry = NULL
+  splitCovariates = NULL,
+  filterCovariates = NULL,
+  filterIds = NULL,
+  mock = FALSE
 )
 }
 \arguments{
-\item{covariate}{Character scalar; name of a covariate column present in the
-interpreted dataset. Mutually exclusive with covariateEntry.}
+\item{projectFile}{Character scalar. Path to a PKanalix (.pkx) or Monolix
+(.mlxtran) project file. If NULL, the currently loaded project is used.}
 
-\item{covariateEntry}{Character scalar; constant value to inject as a column
-(named ROUTE) when the covariate is not available in the dataset.
-Mutually exclusive with covariate.}
+\item{splitCovariates}{Character vector of categorical covariate / occasion
+names to include as columns and sort by. Validated against the project.}
+
+\item{filterCovariates}{Named list of categorical covariate filters, e.g.
+\code{list(SEX = "M", DOSE = c("100", "200"))}. Rows not matching are dropped.}
+
+\item{filterIds}{Vector of subject ids to keep. If NULL, no id filtering.}
+
+\item{mock}{Logical; if \code{TRUE}, masks the listing for documentation / example
+outputs: id -> \code{"id1"}, administration id -> \code{"adm1"}, occasions -> \code{"occ1"},
+categorical / stratification covariates -> \code{"Category 1"}, and all numeric
+columns (time, amount, ss, ii, addl, rate, tinf) -> \code{"xx.xx"}. Default \code{FALSE}.}
 }
 \value{
-A data frame with columns: id, occasion columns (if any), time,
-amount, optional covariate or ROUTE, and optional InfDur.
+A data frame with columns: id, split covariates / occasion(s),
+administration id (if present), time, amount, and any present regimen
+descriptors (ss, ii, addl, rate, tinf), plus merged stratification
+categorical covariates (if any).
 }
 \description{
-listingDosingRegimen()
-Builds a dosing regimen listing per subject/occasion with dose amount and time,
-optionally adding a covariate column (from the dataset) or a constant entry
-(e.g., ROUTE) when the covariate is not present. If the custom NCA parameter
-\code{InfDur} was computed, it is merged on the subject identifier.
+Builds a dosing-regimen listing with one row per administration record in the
+dataset. For each dose record the admin. amount & admin. time are listed,
+together with any regimen-describing columns that are present in the dataset
+(occs, adm id, ss flag, ii, nb of addl doses, infusion rate/duration).
+}
+\details{
+Categorical covariates can be shown and the table stratified/sorted via
+\code{splitCovariates}, and rows can be restricted via \code{filterCovariates} /
+\code{filterIds}, mirroring the other PKanalix listing functions. Stratification-only
+and additional-stratification categorical covariates (PKanalix) are merged in
+automatically when available.
 }
 \examples{
-# From dataset covariate:
-# DosingRegimen_Listing(covariate = "ROUTE")
-#
-# Inject constant when covariate absent:
-# listingDosingRegimen(covariateEntry = "oral")
+\dontrun{
+# Plain listing
+listingDosingRegimen(projectFile = "path/to/project.pkx")
+
+# Stratified by SEX and filtered to a categorical covariate value
+listingDosingRegimen(
+  splitCovariates  = "SEX",
+  filterCovariates = list(TINFCAT = "10"))
+}
+
 }

@@ -18,24 +18,37 @@ test_that("tableCategoricalCovariateSummary default arguments", {
 	expect_equal(table$Frequency, c(6, 6, 6, 9, 9))
 })
 
-test_that("tableContinuousCovariateSummary extra labels in df", {
+test_that("tableContinuousCovariateSummary extra aliases in df", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	cov = c("AGE", "HEIGHT", "WEIGHT")
-	lab = c("Age (yrs)", "Height (cm)", "Weight (kg)")
+	lab = c("Age", "Height", "Weight")
 	table = tableContinuousCovariateSummary(mono_project_1,
-																					data.frame(covariate = c(cov, "EXTRA"), label = c(lab, "Extra")))
-	expect_equal(dim(table), c(3,9))
+																					customAliases = data.frame(covariate = c(cov, "EXTRA"), label = c(lab, "Extra")))
 	expect_equal(table$Covariate, lab)
 })
 
-test_that("tableContinuousCovariateSummary on some with new labels", {
+test_that("tableContinuousCovariateSummary on some with new aliases", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	cov = c("HEIGHT", "WEIGHT")
-	lab = c("Height (cm)", "Weight (kg)")
+	lab = c("Height", "Weight")
 	table = tableContinuousCovariateSummary(mono_project_1,
-																					data.frame(covariate = cov, label = lab))
-	expect_equal(dim(table), c(3,9))
+																					customAliases = data.frame(covariate = cov, label = lab))
 	expect_equal(table$Covariate, c("AGE", lab))
+})
+
+test_that("tableContinuousCovariateSummary customAliases and customUnits combine as 'alias (unit)'", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	table = tableContinuousCovariateSummary(mono_project_1,
+																					customAliases = c(HEIGHT = "Height", WEIGHT = "Weight"),
+																					customUnits   = c(HEIGHT = "cm", WEIGHT = "kg"))
+	expect_equal(table$Covariate, c("AGE", "Height (cm)", "Weight (kg)"))
+})
+
+test_that("tableContinuousCovariateSummary customUnits alone appends unit without alias", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	table = tableContinuousCovariateSummary(mono_project_1,
+																					customUnits = c(HEIGHT = "cm", WEIGHT = "kg"))
+	expect_equal(table$Covariate, c("AGE", "HEIGHT (cm)", "WEIGHT (kg)"))
 })
 
 test_that("tableCategoricalCovariateSummary label df", {
@@ -55,11 +68,11 @@ test_that("tableCategoricalCovariateSummary label df", {
 
 test_that("tableContinuousCovariateSummary digits and rounding arguments", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
-	table = tableContinuousCovariateSummary(mono_project_1, digits = 3, roundMethod = "signif")
+	table = tableContinuousCovariateSummary(mono_project_1, digits = 3, roundMethod = "significantFigures")
 	expect_equal(dim(table), c(3,9))
 	expect_equal(table$Mean, c(50.3, 180, 93.6))
 
-	table = tableContinuousCovariateSummary(mono_project_1, digits = 1, roundMethod = "monolix")
+	table = tableContinuousCovariateSummary(mono_project_1, digits = 1, roundMethod = "monolixSuiteRounding")
 	expect_equal(dim(table), c(3,9))
 	expect_equal(table$Mean, c(50.3, 180.2, 93.6))
 })

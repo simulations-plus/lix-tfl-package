@@ -102,7 +102,7 @@ test_that("checkProjectFile NULL projectFile", {
 
 test_that("round_num method monolix", {
 	expect_equal(.round_num(123.456, 2), 123.46)
-	expect_equal(.round_num(123.456, 2, rounding_method = "monolix"), 123.46)
+	expect_equal(.round_num(123.456, 2, rounding_method = "monolixSuiteRounding"), 123.46)
 	expect_equal(.round_num(0.123456, 2), 0.12)
 	expect_equal(.round_num(0.00123456, 2), 0.0012)
 	expect_equal(.round_num(123, 2), 123)
@@ -111,11 +111,11 @@ test_that("round_num method monolix", {
 })
 
 test_that("round_num rounding_method signif", {
-	expect_equal(.round_num(123.456, 2, rounding_method = "signif"), 120)
-	expect_equal(.round_num(0.123456, 2, rounding_method = "signif"), 0.12)
-	expect_equal(.round_num(0.00123456, 2, rounding_method = "signif"), 0.0012)
-	expect_equal(.round_num(123, 2, rounding_method = "signif"), 120)
-	expect_equal(.round_num(123.456789, 4, rounding_method = "signif"), 123.5)
+	expect_equal(.round_num(123.456, 2, rounding_method = "significantFigures"), 120)
+	expect_equal(.round_num(0.123456, 2, rounding_method = "significantFigures"), 0.12)
+	expect_equal(.round_num(0.00123456, 2, rounding_method = "significantFigures"), 0.0012)
+	expect_equal(.round_num(123, 2, rounding_method = "significantFigures"), 120)
+	expect_equal(.round_num(123.456789, 4, rounding_method = "significantFigures"), 123.5)
 })
 
 test_that("round_num rounding_method none", {
@@ -126,9 +126,9 @@ test_that("round_num rounding_method none", {
 })
 
 test_that("round_num vector", {
-	expect_equal(.round_num(c(123.456, 0.00123456), 2, rounding_method = "monolix"),
+	expect_equal(.round_num(c(123.456, 0.00123456), 2, rounding_method = "monolixSuiteRounding"),
 							 c(123.46, 0.0012))
-	expect_equal(.round_num(c(123.456, 0.00123456), 2, rounding_method = "signif"),
+	expect_equal(.round_num(c(123.456, 0.00123456), 2, rounding_method = "significantFigures"),
 							 c(120, 0.0012))
 })
 
@@ -138,22 +138,22 @@ test_that("round_num data.frame", {
 									c = c(TRUE, FALSE),
 									d = c("1.2345", "2.3456"))
 
-	expect_equal(.round_num(df, 3, rounding_method = "monolix"),
+	expect_equal(.round_num(df, 3, rounding_method = "monolixSuiteRounding"),
 							 data.frame(a = c(123.457, 0.00123),
 							 					 b = c(-3.457, -0.000123),
 							 					 c = c(TRUE, FALSE),
 							 					 d = c("1.2345", "2.3456")))
-	expect_equal(.round_num(df, 3, rounding_method = "signif"),
+	expect_equal(.round_num(df, 3, rounding_method = "significantFigures"),
 							 data.frame(a = c(123, 0.00123),
 							 					 b = c(-3.46, -0.000123),
 							 					 c = c(TRUE, FALSE),
 							 					 d = c("1.2345", "2.3456")))
-	expect_equal(.round_num(df, 3, exclude = "b", rounding_method = "signif"),
+	expect_equal(.round_num(df, 3, exclude = "b", rounding_method = "significantFigures"),
 							 data.frame(a = c(123, 0.00123),
 							 					 b = c(-3.4567, -0.0001234),
 							 					 c = c(TRUE, FALSE),
 							 					 d = c("1.2345", "2.3456")))
-	expect_equal(.round_num(df, 3, exclude = c("a", "c", "d"), rounding_method = "signif"),
+	expect_equal(.round_num(df, 3, exclude = c("a", "c", "d"), rounding_method = "significantFigures"),
 							 data.frame(a = c(123.45678, 0.00123456),
 							 					 b = c(-3.46, -0.000123),
 							 					 c = c(TRUE, FALSE),
@@ -176,9 +176,59 @@ test_that("round_num not number", {
 test_that("round_num keep NA/NaN as is", {
 	expect_equal(.round_num(NA, 2), NA)
 	expect_equal(.round_num(NaN, 2), NaN)
-	expect_equal(.round_num(NA, 3, rounding_method = "signif"), NA)
-	expect_equal(.round_num(NaN, 3, rounding_method = "signif"), NaN)
+	expect_equal(.round_num(NA, 3, rounding_method = "significantFigures"), NA)
+	expect_equal(.round_num(NaN, 3, rounding_method = "significantFigures"), NaN)
 	expect_equal(.round_num(c(1.2345, NA, 1.2, NaN, -1.2345), 2), c(1.23, NA, 1.2, NaN, -1.23))
+})
+
+test_that("applyRounding with NULL overrides equals round_num", {
+	df <- data.frame(a = c(1.23456, 2.34567), b = c(0.111111, 0.222222))
+	expect_equal(
+		.applyRounding(df, 2, "significantFigures"),
+		.round_num(df, 2, rounding_method = "significantFigures"))
+})
+
+test_that("applyRounding column axis rounds overridden column with its own config", {
+	df <- data.frame(Time = c(0, 1), mean = c(1.23456, 2.34567), SD = c(0.111111, 0.222222))
+	ov <- data.frame(parameter = "mean", digits = 4, method = "significantFigures",
+									 stringsAsFactors = FALSE)
+
+	res <- .applyRounding(df, 2, "significantFigures", exclude = "Time",
+												overrides = ov, paramAxis = "column")
+
+	expect_equal(res$mean, c(1.235, 2.346))   # overridden: 4 sig figs
+	expect_equal(res$SD,   c(0.11, 0.22))     # global: 2 sig figs
+	expect_equal(res$Time, c(0, 1))           # excluded: untouched
+})
+
+test_that("applyRounding row axis rounds per parameter and preserves row order", {
+	df <- data.frame(parameter = c("Cmax", "AUC", "Tmax"),
+									 Value     = c(1.23456, 2.34567, 3.45678),
+									 stringsAsFactors = FALSE)
+	# override a non-first parameter to exercise the split/re-order path
+	ov <- data.frame(parameter = "AUC", digits = 4, method = "significantFigures",
+									 stringsAsFactors = FALSE)
+
+	res <- .applyRounding(df, 1, "significantFigures", exclude = "parameter",
+												overrides = ov, paramCol = "parameter", paramAxis = "row")
+
+	expect_equal(res$parameter, c("Cmax", "AUC", "Tmax"))  # original order preserved
+	expect_equal(res$Value, c(1, 2.346, 3))                # AUC: 4 sig figs, others: 1
+})
+
+test_that("applyRounding row axis supports multiple per-parameter overrides", {
+	df <- data.frame(parameter = c("Cmax", "AUC", "Tmax"),
+									 Value     = c(1.23456, 2.34567, 3.45678),
+									 stringsAsFactors = FALSE)
+	ov <- data.frame(parameter = c("Cmax", "Tmax"),
+									 digits    = c(4, 2),
+									 method    = c("significantFigures", "significantFigures"),
+									 stringsAsFactors = FALSE)
+
+	res <- .applyRounding(df, 1, "significantFigures", exclude = "parameter",
+												overrides = ov, paramCol = "parameter", paramAxis = "row")
+
+	expect_equal(res$Value, c(1.235, 2, 3.5))  # Cmax 4 sig, AUC global 1 sig, Tmax 2 sig
 })
 
 test_that("modelBuildingStepGroups separates rounds by (step, reference)", {
@@ -200,3 +250,7 @@ test_that("modelBuildingStepGroups separates rounds by (step, reference)", {
 	expect_equal(.modelBuildingStepGroups(rep("Forward", 3), rep("Model 1", 3)),
 							 c(1, 1, 1))
 })
+
+################################################################################
+# setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
+# testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-InternalHelpers.R")

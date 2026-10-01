@@ -18,7 +18,8 @@ style_tfl(
   align_grouping = NULL,
   align_cols = NULL,
   footnote = NULL,
-  autoFootnote = TRUE
+  autoFootnote = TRUE,
+  autoHighlight = FALSE
 )
 }
 \arguments{
@@ -64,6 +65,15 @@ If \code{NULL} (default), no conditional coloring is applied.}
 \item{align_grouping}{Character string for grouping column alignment. If \code{NULL} (default), uses \code{align_default}.}
 
 \item{align_cols}{Named character vector for column-specific alignment (e.g., \code{c("Parameter" = "left", "Estimate" = "right")}). Overrides other alignment settings. If \code{NULL} (default), no column-specific alignment.}
+
+\item{autoHighlight}{Logical; if \code{TRUE}, shades the best-model-per-step rows of
+a covariate model-building table light gray. Default is \code{FALSE}. The rows are
+read from the \code{best_per_step} attribute set by \code{\link[=tableModelBuilding]{tableModelBuilding()}} (the
+accepted winner of each forward/backward step) and matched by their \code{Run}
+label, so the shading survives the section-header rows that are inserted for
+model-building tables. When shading is applied, an explanatory footnote is
+added automatically. Has no effect on tables without a \code{best_per_step}
+attribute (e.g. non-model-building tables or SAMBA runs).}
 }
 \value{
 A flextable object with applied styling and formatting.

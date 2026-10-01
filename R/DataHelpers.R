@@ -1,7 +1,12 @@
 #' Creates a data frame summarizing the continuous covariates in the dataset with descriptive statistics.
 #'
 #' @param projectFile path to project file (Monolix: .mlxtran or PKanalix: .pkx) or NULL to use the currently loaded project
-#' @param covDisplayLabels (optional) data.frame with columns covariate and label for the dataset covariate name
+#' @param customAliases Named vector or 2-column dataframe mapping dataset covariate names to
+#'   custom display labels. Example: `c(WEIGHT = "Weight", AGE = "Age")`.
+#'   Covariates not in the mapping keep their original names.
+#' @param customUnits Named vector or 2-column dataframe mapping dataset covariate names to
+#'   custom unit labels. Example: `c(WEIGHT = "kg", HEIGHT = "cm")`.
+#'   Units are appended in parentheses: "Weight (kg)".
 #' @param splitCovariates vector of categorical covariates to stratify by, or NULL
 #' @param metrics vector of metrics to display, or NULL to display all available metrics
 #' @param useWideFormat Logical. If `TRUE` (default), returns a "wide" table format where
@@ -24,8 +29,13 @@
 #' @param filterIds Character or numeric vector of subject IDs to include. If `NULL`,
 #'   no ID filtering is applied.
 #' @param roundDigits number of digits to display
-#' @param roundMethod "monolix" to use MonolixSuite rounding where digits specifies the number of places after the decimal, or "signif"
-#' for digits to specify the number of significant figures
+#' @param roundMethod "monolixSuiteRounding" to use MonolixSuite rounding where digits specifies
+#'   the number of significant digits of the fractional part (integer part untouched),
+#'   "significantFigures" for digits to specify the number of significant figures using the
+#'   standard/textbook definition (zeroes non-significant digits before the decimal for large
+#'   numbers), or "significantFiguresPreserved" for the same but never zeroing digits before the
+#'   decimal - once the integer part already has as many digits as requested, the value is simply
+#'   rounded to the nearest whole number
 #' @param prettyLabels Logical; if `TRUE` (default), converts column names to
 #'   human-readable labels (e.g., "CV" becomes "CV (%)", "geoMean" becomes "Geometric Mean").
 #' @param mock Logical; if `TRUE`, masks the table for documentation / example
@@ -53,9 +63,16 @@
 #'     filterCovariates = list(AVISIT = c("CYCLE 1 DAY 8", "CYCLE 1 DAY 15")),
 #'     metrics          = c("N", "mean", "SD", "median", "min", "max")
 #' )
+#'
+#' # With custom aliases and units
+#' tableContinuousCovariateSummary(
+#'     customAliases = c(WEIGHT = "Weight", HEIGHT = "Height", AGE = "Age"),
+#'     customUnits   = c(WEIGHT = "kg", HEIGHT = "cm", AGE = "years")
+#' )
 #' }
 tableContinuousCovariateSummary <- function(projectFile      = NULL,
-																						covDisplayLabels = NULL,
+																						customAliases    = NULL,
+																						customUnits      = NULL,
 																						splitCovariates  = NULL,
 																						metrics          = NULL,
 																						useWideFormat  = TRUE,
@@ -64,22 +81,18 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 																						filterCovariates = NULL,
 																						filterIds        = NULL,
 																						roundDigits      = 2,
-																						roundMethod      = c("monolix", "signif", "none"),
+																						roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 																						prettyLabels     = TRUE,
 																						mock             = FALSE)
 {
 
+	roundMethod <- match.arg(roundMethod)
+
 	.checkProjectFile(projectFile, c("monolix", "pkanalix"))
 	.ensureProjectLoaded(projectFile)
 
-	if (!is.null(covDisplayLabels) && !is.data.frame(covDisplayLabels)) {
-		stop("The argument 'covDisplayLabels' must be a dataframe.", call. = FALSE)
-	}
-	if (!is.null(covDisplayLabels) && !identical(names(covDisplayLabels), c("covariate", "label"))) {
-		stop(paste0("The argument 'covDisplayLabels' must contain the headers 'covariate' and 'label' Found headers are: ",
-								paste(names(covDisplayLabels), collapse = ", ")
-		), call. = FALSE )
-	}
+	aliases_df <- .normalizeAliasMapping(customAliases, "aliases")
+	units_df   <- .normalizeAliasMapping(customUnits, "units")
 
 	# Validate stratifyColumns and covariateLabels (using same logic as PKanalixHelpers).
 	# allowed_types restricts splitCovariates to categorical-like types from
@@ -95,7 +108,7 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 
 	# Validate: stratifyColumns only works with long format
 	if (stratifyColumns && useWideFormat) {
-		warning("stratifyColumns = TRUE is only compatible with useWideFormat = FALSE (long format). Setting stratifyColumns = FALSE")
+		message("stratifyColumns = TRUE requires long format, but useWideFormat = TRUE was set; ignoring stratifyColumns. To stratify, set useWideFormat = FALSE.")
 		stratifyColumns <- FALSE
 	}
 
@@ -131,7 +144,6 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 	if (stratifyColumns && !is.null(splitCovariates)) {
 		# ----------------------------------------------------------------------
 		# STRATIFIED CASE: Calculate stats for each covariate combination
-		# ----------------------------------------------------------------------
 		group_by_vars <- c("Covariate", splitCovariates)
 
 		summary_stats <- .calculateDescriptiveStats(
@@ -183,16 +195,17 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 			param_col        = "Covariate",
 			covariateLabels = covariateLabels)
 
-		# Rename covariates using covDisplayLabels if provided
-		if (!is.null(covDisplayLabels)) {
-			labelIdx <- match(cov_summary$Covariate, covDisplayLabels$covariate)
-			cov_summary$Covariate[!is.na(labelIdx)] <- covDisplayLabels$label[stats::na.omit(labelIdx)]
+		# Apply custom aliases and units using covariate names
+		if (!is.null(aliases_df) || !is.null(units_df)) {
+			cov_summary <- .applyCustomAliasesUnits(cov_summary,
+																							 param_col  = "Covariate",
+																							 aliases_df = aliases_df,
+																							 units_df   = units_df)
 		}
 
 	} else {
 		# ----------------------------------------------------------------------
 		# NON-STRATIFIED CASE
-		# ----------------------------------------------------------------------
 		group_by_vars <- c("Covariate", splitCovariates)
 
 		cov_summary <- .calculateDescriptiveStats(
@@ -221,10 +234,12 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 
 		cov_summary <- cov_summary[, c(descriptor_cols, selected_metrics), drop = FALSE]
 
-		# Rename covariates using covDisplayLabels if provided
-		if (!is.null(covDisplayLabels)) {
-			labelIdx <- match(cov_summary$Covariate, covDisplayLabels$covariate)
-			cov_summary$Covariate[!is.na(labelIdx)] <- covDisplayLabels$label[stats::na.omit(labelIdx)]
+		# Apply custom aliases and units using covariate names
+		if (!is.null(aliases_df) || !is.null(units_df)) {
+			cov_summary <- .applyCustomAliasesUnits(cov_summary,
+																							 param_col  = "Covariate",
+																							 aliases_df = aliases_df,
+																							 units_df   = units_df)
 		}
 
 		# ==========================================================================
@@ -338,9 +353,13 @@ getDescriptiveStatsMetrics <- function() {
 #' @param filterIds Character or numeric vector of subject IDs to include. If `NULL`,
 #'   no ID filtering is applied.
 #' @param roundDigits number of digits to display.
-#' @param roundMethod "monolix" to use MonolixSuite rounding where digits specifies
-#'   the number of places after the decimal, or "signif" for digits to specify the
-#'   number of significant figures.
+#' @param roundMethod "monolixSuiteRounding" to use MonolixSuite rounding where digits specifies
+#'   the number of significant digits of the fractional part (integer part untouched),
+#'   "significantFigures" for digits to specify the number of significant figures using the
+#'   standard/textbook definition (zeroes non-significant digits before the decimal for large
+#'   numbers), or "significantFiguresPreserved" for the same but never zeroing digits before the
+#'   decimal - once the integer part already has as many digits as requested, the value is simply
+#'   rounded to the nearest whole number.
 #' @param mock Logical; if `TRUE`, masks the table for documentation / example
 #'   outputs: data values become placeholders (e.g. `"xx.xx"`) and real category
 #'   codes become generic labels (`"Category 1"`, ...). Covariate names are kept.
@@ -375,7 +394,7 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 																						 filterCovariates      = NULL,
 																						 filterIds             = NULL,
 																						 roundDigits           = 2,
-																						 roundMethod           = c("monolix", "signif", "none"),
+																						 roundMethod           = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 																						 mock                  = FALSE) {
 
 
@@ -1066,10 +1085,10 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
 #' # Plain listing
 #' listingDosingRegimen(projectFile = "path/to/project.pkx")
 #'
-#' # Stratified by SEX and filtered to oral administrations (admid == 2)
+#' # Stratified by SEX and filtered to a categorical covariate value
 #' listingDosingRegimen(
 #'   splitCovariates  = "SEX",
-#'   filterCovariates = list(ADM = "2"))
+#'   filterCovariates = list(TINFCAT = "10"))
 #' }
 #'
 #' @export
@@ -1119,9 +1138,10 @@ listingDosingRegimen <- function(projectFile      = NULL,
 	df <- lixoftConnectors::getInterpretedData()
 
 	# Split covariates that live directly in the dataset (e.g. catcov columns).
-	split_in_df <- intersect(splitCovariates, colnames(df))
+	split_in_df  <- intersect(splitCovariates, colnames(df))
+	filter_in_df <- intersect(names(filterCovariates), colnames(df))
 
-	keep_cols <- c(id_col, occ_cols, admid_col, split_in_df, time_col, amount_col,
+	keep_cols <- c(id_col, occ_cols, admid_col, split_in_df, filter_in_df, time_col, amount_col,
 								 descriptor_cols, evid_col)
 	keep_cols <- intersect(keep_cols, colnames(df))
 
@@ -1165,6 +1185,11 @@ listingDosingRegimen <- function(projectFile      = NULL,
 	# ---------------------------------------------------------------------------
 	# Filters
 	listing <- .applyFilters(listing, filterCovariates, filterIds, id_col = "id")
+
+	filter_only <- setdiff(filter_in_df, unique(c(splitCovariates, strat_cov_names)))
+	if (length(filter_only) > 0) {
+		listing <- listing %>% dplyr::select(-dplyr::any_of(filter_only))
+	}
 
 	# ---------------------------------------------------------------------------
 	# Sort & finalize column order.

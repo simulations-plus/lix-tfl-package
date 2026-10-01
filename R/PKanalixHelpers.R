@@ -67,8 +67,14 @@
 #'   numeric values. Default is `3`.
 #'
 #' @param roundMethod Character string specifying the rounding method. Options are:
-#'   - `"monolix"` (default): Adaptive rounding that adds extra digits for values < 1
-#'   - `"signif"`: Standard significant figures rounding
+#'   - `"monolixSuiteRounding"` (default): Adaptive rounding that keeps all digits before the
+#'     decimal untouched and rounds only the fractional part to the specified number of
+#'     significant digits (adds extra digits for values < 1)
+#'   - `"significantFigures"`: Standard significant figures rounding - zeroes non-significant
+#'     digits before the decimal for large numbers
+#'   - `"significantFiguresPreserved"`: Modified significant figures rounding that never zeroes
+#'     digits before the decimal - once the integer part already has as many digits as requested,
+#'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding performed
 #'
 #' @param prettyLabels Logical; if `TRUE` (default), converts column names to
@@ -137,25 +143,11 @@ tableNCAConcentration <- function(projectFile      = NULL,
 																	filterCovariates = NULL,
 																	filterIds        = NULL,
 																	roundDigits      = 3,
-																	roundMethod      = c("monolix", "signif", "none"),
+																	roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 																	prettyLabels     = TRUE,
 																	mock             = FALSE) {
 
 	roundMethod <- match.arg(roundMethod)
-	# # DEBUG EXAMPLE
-	# projectFile      = NULL
-	# splitCovariates       = "ATRTNCA"
-	# useNominalTime   = TRUE
-	# metrics = c("min", "MeanSD", "max")
-	# stratifyColumns = FALSE
-	# covariateLabels = NULL
-	# useWideFormat  = TRUE
-	# maxTimeDeviation = 20
-	# includeId       = TRUE
-	# roundDigits      = 3
-	# roundMethod      = "monolix"
-	# prettyLabels     = TRUE
-
 	# ==========================================================================
 	# VALIDATION & SETUP
 
@@ -177,7 +169,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 
 	# Validate: stratifyColumns only works with long format
 	if (stratifyColumns && useWideFormat) {
-		warning("stratifyColumns = TRUE is only compatible with useWideFormat = FALSE (long format). Setting stratifyColumns = FALSE")
+		message("stratifyColumns = TRUE requires long format, but useWideFormat = TRUE was set; ignoring stratifyColumns. To stratify, set useWideFormat = FALSE.")
 		stratifyColumns <- FALSE
 	}
 	# Validate combination of includeId and useWideFormat setting
@@ -287,6 +279,16 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			selected_metrics = selected_metrics,
 			param_col        = time_col,
 			covariateLabels = covariateLabels)
+
+		# Apply pretty labels to the Statistic column (metric names)
+		if (isTRUE(prettyLabels) && "Statistic" %in% names(final_df)) {
+			stat_metrics    <- unique(final_df$Statistic)
+			dummy_df        <- as.data.frame(matrix(NA, nrow = 1, ncol = length(stat_metrics)))
+			names(dummy_df) <- stat_metrics
+			dummy_df        <- .prettyLabels(dummy_df)
+			metric_map      <- setNames(names(dummy_df), stat_metrics)
+			final_df$Statistic <- metric_map[final_df$Statistic]
+		}
 
 	} else {
 		# ----------------------------------------------------------------------
@@ -525,9 +527,23 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   numeric values. Default is `3`.
 #'
 #' @param roundMethod Character string specifying the rounding method. Options are:
-#'   - `"monolix"` (default): Adaptive rounding that adds extra digits for values < 1
-#'   - `"signif"`: Standard significant figures rounding
+#'   - `"monolixSuiteRounding"` (default): Adaptive rounding that keeps all digits before the
+#'     decimal untouched and rounds only the fractional part to the specified number of
+#'     significant digits (adds extra digits for values < 1)
+#'   - `"significantFigures"`: Standard significant figures rounding - zeroes non-significant
+#'     digits before the decimal for large numbers
+#'   - `"significantFiguresPreserved"`: Modified significant figures rounding that never zeroes
+#'     digits before the decimal - once the integer part already has as many digits as requested,
+#'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding performed
+#'
+#' @param roundByParameter Optional per-parameter rounding overrides on top of the
+#'   global `roundDigits`/`roundMethod`. Either a named numeric vector of digits
+#'   (`c(Cmax = 2, AUClast = 4)`; method falls back to `roundMethod`), or a
+#'   data.frame with columns `parameter`, `digits` and/or `method`
+#'   (`NA`/missing entries fall back to the global settings). Parameters not
+#'   listed keep the global settings. Unknown parameter names are ignored with a
+#'   message. Default `NULL` (global rounding everywhere).
 #'
 #' @param units Logical. If `TRUE` (default), units are appended to parameter names.
 #'
@@ -596,7 +612,8 @@ tableNCAParameters <- function(projectFile      = NULL,
 															 filterCovariates = NULL,
 															 filterIds        = NULL,
 															 roundDigits      = 3,
-															 roundMethod      = c("monolix", "signif", "none"),
+															 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+															 roundByParameter = NULL,
 															 units            = TRUE,
 															 aliases          = TRUE,
 															 customUnits     = NULL,
@@ -613,13 +630,18 @@ tableNCAParameters <- function(projectFile      = NULL,
 	.ensureProjectLoaded(projectFile)
 	.validateProjectResultsAvailability(software = "pkanalix", resultType = "nca")
 	.validateCovariateSelection(splitCovariates, ratio = FALSE)
+
 	stratifyColumns <- .validateStratificationArgs(splitCovariates, stratifyColumns)
 	covariateLabels <- .validateCovariateLabels(splitCovariates, covariateLabels)
+
 	.validateFilters(filterCovariates, filterIds, resultType = "nca")
-	.validateNCAParametersSelection(ncaParams, ratio = FALSE)
+	available_params <- .validateNCAParametersSelection(ncaParams, ratio = FALSE)
+
+	round_overrides <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
+	round_overrides <- .validateRoundOverrides(round_overrides, available_params, context = "tableNCAParameters")
 
 	if (stratifyColumns && useWideFormat) {
-		warning("stratifyColumns = TRUE is only compatible with useWideFormat = FALSE (long format). Setting stratifyColumns = FALSE")
+		message("stratifyColumns = TRUE requires long format, but useWideFormat = TRUE was set; ignoring stratifyColumns. To stratify, set useWideFormat = FALSE.")
 		stratifyColumns <- FALSE
 	}
 	if (includeId && useWideFormat) {
@@ -642,8 +664,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 
 
 	# getNCAIndividualParameters() does not carry stratificationcategorical or additionalstratificationcategorical columns.
-	# Pull them from getCovariateInformation() and merge by id BEFORE filtering, so that filterCovariates / filterIds can act on them too.
-	# Filtering the source to only strat types guarantees no column collision with indiv_params.
+	# Get them from getCovariateInformation() + merge by id before filtering
 	cov_info        <- lixoftConnectors::getCovariateInformation()
 	strat_cov_names <- cov_info$name[cov_info$type %in% c("stratificationcategorical", "additionalstratificationcategorical")]
 
@@ -658,7 +679,6 @@ tableNCAParameters <- function(projectFile      = NULL,
 	project_data        <- lixoftConnectors::getData()
 	all_splitCovariates <- project_data$header[project_data$headerTypes %in% c("catcov", "contcov", "occ")]
 	occ_vars            <- project_data$header[project_data$headerTypes == "occ"]
-	# NEW: also exclude the merged-in strat covariate names from param_cols.
 	param_cols          <- setdiff(names(indiv_params), c("id", all_splitCovariates, strat_cov_names))
 
 	if (!is.null(ncaParams)) {
@@ -685,10 +705,6 @@ tableNCAParameters <- function(projectFile      = NULL,
 	# CALCULATE DESCRIPTIVE STATISTICS
 
 	if (stratifyColumns) {
-		if (!useWideFormat) {
-			message("Note: stratifyColumns=TRUE uses a different table format. The 'useWideFormat' argument is ignored.")
-		}
-
 		if (is.null(metrics)) {
 			user_metrics <- "GeomCV"
 			message("No metric specified for stratified table. Defaulting to 'GeomCV'. To show multiple metrics specify metrics explicitly.")
@@ -704,11 +720,14 @@ tableNCAParameters <- function(projectFile      = NULL,
 			id_col    = "id",
 			group_by  = group_by_vars)
 
-		summary_stats <- .round_num(
-			to_round        = summary_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = c("parameter", splitCovariates))
+		summary_stats <- .applyRounding(
+			df        = summary_stats,
+			digits    = roundDigits,
+			method    = roundMethod,
+			exclude   = c("parameter", splitCovariates),
+			overrides = round_overrides,
+			paramCol  = "parameter",
+			paramAxis = "row")
 
 		summary_stats <- .combinedStats(summary_stats)
 
@@ -735,11 +754,14 @@ tableNCAParameters <- function(projectFile      = NULL,
 				id_col    = "id",
 				group_by  = "parameter")
 
-			overall_stats <- .round_num(
-				to_round        = overall_stats,
-				digits          = roundDigits,
-				rounding_method = roundMethod,
-				exclude         = "parameter")
+			overall_stats <- .applyRounding(
+				df        = overall_stats,
+				digits    = roundDigits,
+				method    = roundMethod,
+				exclude   = "parameter",
+				overrides = round_overrides,
+				paramCol  = "parameter",
+				paramAxis = "row")
 
 			overall_stats <- .combinedStats(overall_stats)
 
@@ -765,7 +787,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 			splitCovariates  = splitCovariates,
 			selected_metrics = selected_metrics,
 			param_col        = param_col,
-			covariateLabels = covariateLabels)
+			covariateLabels  = covariateLabels)
 
 	} else {
 		group_by_vars <- if (!is.null(splitCovariates)) c("parameter", splitCovariates) else "parameter"
@@ -776,11 +798,14 @@ tableNCAParameters <- function(projectFile      = NULL,
 			id_col    = "id",
 			group_by  = group_by_vars)
 
-		summary_stats <- .round_num(
-			to_round        = summary_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = c("parameter", splitCovariates))
+		summary_stats <- .applyRounding(
+			df        = summary_stats,
+			digits    = roundDigits,
+			method    = roundMethod,
+			exclude   = c("parameter", splitCovariates),
+			overrides = round_overrides,
+			paramCol  = "parameter",
+			paramAxis = "row")
 
 		summary_stats <- .combinedStats(summary_stats)
 
@@ -842,7 +867,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 				dplyr::arrange(dplyr::across(
 					dplyr::all_of(splitCovariates),
 					~{
-						num <- suppressWarnings(as.numeric(.x))
+						num <- suppressWarnings(as.numeric(as.character(.x)))
 						if(all(is.na(num))) .x else num
 					}
 				))
@@ -934,8 +959,14 @@ tableNCAParameters <- function(projectFile      = NULL,
 #'   (default), no ID filtering is applied.
 #' @param roundDigits number of digits to round numeric statistics (default = 3).
 #' @param roundMethod Character string specifying the rounding method. Options are:
-#'   - `"monolix"` (default): Adaptive rounding that adds extra digits for values < 1
-#'   - `"signif"`: Standard significant figures rounding
+#'   - `"monolixSuiteRounding"` (default): Adaptive rounding that keeps all digits before the
+#'     decimal untouched and rounds only the fractional part to the specified number of
+#'     significant digits (adds extra digits for values < 1)
+#'   - `"significantFigures"`: Standard significant figures rounding - zeroes non-significant
+#'     digits before the decimal for large numbers
+#'   - `"significantFiguresPreserved"`: Modified significant figures rounding that never zeroes
+#'     digits before the decimal - once the integer part already has as many digits as requested,
+#'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding performed
 #' @param prettyLabels Logical; if `TRUE` (default), converts column names to
 #'   human-readable labels.
@@ -981,7 +1012,7 @@ tableNCARatios <- function(projectFile      = NULL,
 													 filterCovariates = NULL,
 													 filterIds        = NULL,
 													 roundDigits      = 3,
-													 roundMethod      = c("monolix", "signif", "none"),
+													 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 													 prettyLabels     = TRUE,
 													 customAliases    = NULL,
 													 mock             = FALSE) {
@@ -1012,7 +1043,7 @@ tableNCARatios <- function(projectFile      = NULL,
 
 	# Validate: stratifyColumns only works with long format
 	if (stratifyColumns && useWideFormat) {
-		warning("stratifyColumns = TRUE is only compatible with useWideFormat = FALSE (long format). Setting stratifyColumns = FALSE")
+		message("stratifyColumns = TRUE requires long format, but useWideFormat = TRUE was set; ignoring stratifyColumns. To stratify, set useWideFormat = FALSE.")
 		stratifyColumns <- FALSE
 	}
 	# Validate combination of includeId and useWideFormat setting
@@ -1283,7 +1314,7 @@ tableNCARatios <- function(projectFile      = NULL,
 				dplyr::arrange(dplyr::across(
 					dplyr::all_of(splitCovariates),
 					~{
-						num <- suppressWarnings(as.numeric(.x))
+						num <- suppressWarnings(as.numeric(as.character(.x)))
 						if(all(is.na(num))) .x else num
 					}
 				))
@@ -1338,8 +1369,14 @@ tableNCARatios <- function(projectFile      = NULL,
 #'   numeric values. Default is `3`.
 #'
 #' @param roundMethod Character string specifying the rounding method. Options are:
-#'   - `"monolix"` (default): Adaptive rounding that adds extra digits for values < 1
-#'   - `"signif"`: Standard significant figures rounding
+#'   - `"monolixSuiteRounding"` (default): Adaptive rounding that keeps all digits before the
+#'     decimal untouched and rounds only the fractional part to the specified number of
+#'     significant digits (adds extra digits for values < 1)
+#'   - `"significantFigures"`: Standard significant figures rounding - zeroes non-significant
+#'     digits before the decimal for large numbers
+#'   - `"significantFiguresPreserved"`: Modified significant figures rounding that never zeroes
+#'     digits before the decimal - once the integer part already has as many digits as requested,
+#'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding performed
 #'
 #' @param units Logical; if `TRUE` (default), appends units to parameter names
@@ -1390,7 +1427,7 @@ tableNCARatios <- function(projectFile      = NULL,
 tableBEResults <- function(projectFile    = NULL,
 													 BEParams       = NULL,
 													 roundDigits    = 3,
-													 roundMethod    = c("monolix", "signif", "none"),
+													 roundMethod    = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 													 units          = TRUE,
 													 aliases        = TRUE,
 													 customUnits   = NULL,
@@ -1563,6 +1600,7 @@ tableBEResults <- function(projectFile    = NULL,
 #' # listingAbbreviation(aliases = FALSE)
 #' # listingAbbreviation(fullTerms = c(Cmax = "Maximum concentration",
 #' #                                   AUClast = "Area under the curve to last obs"))
+#' @export
 listingAbbreviation <- function(projectFile   = NULL,
 																aliases       = TRUE,
 																customAliases = NULL,
@@ -1658,9 +1696,15 @@ listingAbbreviation <- function(projectFile   = NULL,
 #'   numeric values. Default is `3`.
 #'
 #' @param roundMethod Character string specifying the rounding method. Options are:
-#'   - `"monolix"` (default): Adaptive rounding that adds extra digits for values < 1
-#'   - `"signif"`: Standard significant figures rounding
-#'   - `"none"`: No rounding performed
+#'   - `"none"` (default): No rounding performed
+#'   - `"monolixSuiteRounding"`: Adaptive rounding that keeps all digits before the
+#'     decimal untouched and rounds only the fractional part to the specified number of
+#'     significant digits (adds extra digits for values < 1)
+#'   - `"significantFigures"`: Standard significant figures rounding - zeroes non-significant
+#'     digits before the decimal for large numbers
+#'   - `"significantFiguresPreserved"`: Modified significant figures rounding that never zeroes
+#'     digits before the decimal - once the integer part already has as many digits as requested,
+#'     the value is simply rounded to the nearest whole number
 #'
 #' @param mock Logical; if `TRUE`, masks the listing for documentation / example
 #'   outputs: id -> `"id1"`, categorical covariates / occasions -> `"Category 1"`
@@ -1724,8 +1768,10 @@ listingNCAConcentration <- function(projectFile      = NULL,
 																		filterCovariates = NULL,
 																		filterIds        = NULL,
 																		roundDigits      = 3,
-																		roundMethod      = "none",
+																		roundMethod      = c("none", "monolixSuiteRounding", "significantFigures", "significantFiguresPreserved"),
 																		mock             = FALSE) {
+
+	roundMethod <- match.arg(roundMethod)
 
 	# Ensure the correct project is loaded
 	.checkProjectFile(projectFile, "pkanalix")
@@ -1954,7 +2000,8 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #' @param filterIds Character or numeric vector of subject IDs to include. If
 #'   `NULL` (default), no ID filtering is applied.
 #' @param roundDigits Numeric. Number of digits for rounding (default: 3).
-#' @param roundMethod Character. Rounding method: "monolix" (default), "signif", or "none".
+#' @param roundMethod Character. Rounding method: "monolixSuiteRounding" (default),
+#'   "significantFigures", "significantFiguresPreserved", or "none".
 #' @param units Logical. If TRUE (default), parameter units are added to column names.
 #' @param aliases Logical. If TRUE (default), parameter names are replaced with their aliases.
 #' @param customUnits Named vector or 2-column dataframe mapping parameter names
@@ -2015,7 +2062,7 @@ listingNCAParameters <- function(projectFile      = NULL,
 																 filterCovariates = NULL,
 																 filterIds        = NULL,
 																 roundDigits      = 3,
-																 roundMethod      = c("monolix", "signif", "none"),
+																 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 																 units            = TRUE,
 																 aliases          = TRUE,
 																 customUnits      = NULL,
@@ -2146,7 +2193,8 @@ listingNCAParameters <- function(projectFile      = NULL,
 #' @param filterIds Character or numeric vector of subject IDs to include. If
 #'   `NULL` (default), no ID filtering is applied.
 #' @param roundDigits Numeric. Number of digits for rounding (default: 3).
-#' @param roundMethod Character. Rounding method: "monolix" (default), "signif", or "none".
+#' @param roundMethod Character. Rounding method: "monolixSuiteRounding" (default),
+#'   "significantFigures", "significantFiguresPreserved", or "none".
 #' @param aliases Logical. If TRUE (default), parameter names are replaced with their aliases.
 #' @param customAliases Named vector or 2-column dataframe mapping parameter names
 #'   to custom alias labels. Example: `c(Cmax_ratio = "C[[sub:max]] ratio")`.
@@ -2208,7 +2256,7 @@ listingNCARatios <- function(projectFile      = NULL,
 														 filterCovariates = NULL,
 														 filterIds        = NULL,
 														 roundDigits      = 3,
-														 roundMethod      = c("monolix", "signif", "none"),
+														 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 														 aliases          = TRUE,
 														 customAliases   = NULL,
 														 mock             = FALSE){

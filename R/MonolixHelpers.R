@@ -12,8 +12,14 @@
 #'   numeric values. Default is `2`.
 #'
 #' @param roundMethod Character string specifying the rounding method:
-#'   - `"monolix"` (default): Adaptive rounding where digits specifies decimal places
-#'   - `"signif"`: Standard significant figures rounding
+#'   - `"monolixSuiteRounding"` (default): Adaptive rounding that keeps all digits before the
+#'     decimal untouched and rounds only the fractional part to the specified number of
+#'     significant digits
+#'   - `"significantFigures"`: Standard significant figures rounding - zeroes non-significant
+#'     digits before the decimal for large numbers
+#'   - `"significantFiguresPreserved"`: Modified significant figures rounding that never zeroes
+#'     digits before the decimal - once the integer part already has as many digits as requested,
+#'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding applied
 #'
 #' @param sortByCriteria Character string specifying which criteria to sort by:
@@ -84,7 +90,7 @@
 #' }
 tableRunHistory <- function(sycomoreProjectFile,
 														roundDigits      = 2,
-														roundMethod   = c("monolix", "signif", "none"),
+														roundMethod   = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 														sortByCriteria   = c("LL", "BICc", "none"),
 														filterCriteria   = c("none", "LL", "BICc"),
 														prettyLabels     = TRUE,
@@ -101,6 +107,7 @@ tableRunHistory <- function(sycomoreProjectFile,
 	}
 
 	# Validate argument combinations
+	roundMethod <- match.arg(roundMethod)
 	sortByCriteria <- match.arg(sortByCriteria)
 	filterCriteria <- match.arg(filterCriteria)
 	.validateCriteriaArgs(sortByCriteria, filterCriteria)
@@ -392,7 +399,8 @@ tableRunHistory <- function(sycomoreProjectFile,
 #' @param roundDigits Integer specifying the number of digits for rounding
 #'   numeric values. Default is `2`.
 #' @param roundMethod Character string specifying the rounding method:
-#'   `"monolix"` (default), `"signif"`, or `"none"`.
+#'   `"monolixSuiteRounding"` (default), `"significantFigures"`,
+#'   `"significantFiguresPreserved"`, or `"none"`.
 #' @param prettyLabels Logical; if `TRUE` (default), applies human-readable
 #'   column labels.
 #' @param mock Logical; if `TRUE`, masks the table for documentation / example
@@ -448,7 +456,7 @@ tableModelBuilding <- function(projectFile        = NULL,
 															 sortBy             = c("index", "BICc", "LL", "pValue"),
 															 displayBestModelPerStep = FALSE,
 															 roundDigits        = 2,
-															 roundMethod        = c("monolix", "none", "signif"),
+															 roundMethod        = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 															 prettyLabels       = TRUE,
 															 mock               = FALSE) {
 
@@ -462,8 +470,9 @@ tableModelBuilding <- function(projectFile        = NULL,
 	.ensureProjectLoaded(projectFile)
 
 	res <- suppressMessages(lixoftConnectors::getModelBuildingResults())
-	if (is.null(res) || length(res) == 0) {
-		stop("No model building results found. Run model building (COSSAC/SCM/SAMBA) before calling tableModelBuilding().",
+	if (is.null(res) || length(res) == 0 || !is.list(res) ||
+			!all(vapply(res, is.list, logical(1)))) {
+		stop("No model building results found. Run a covariate model-building search (COSSAC, SCM, or SAMBA) in Monolix before calling tableModelBuilding().",
 				 call. = FALSE)
 	}
 
@@ -775,10 +784,15 @@ tableModelBuilding <- function(projectFile        = NULL,
 #' @param stdErrMethod Character string specifying the standard error method to use. Options: `""` (default, uses whichever method the project has, preferring linear if both), `"linear"`, or `"stochasticApproximation"`.
 #' @param roundDigits Integer specifying the number of digits to display. Default is 3. Interpretation depends on `roundMethod`.
 #' @param roundMethod Character string specifying the rounding method. Options:
-#'   - `"monolix"` (default): Adaptive rounding where `digits` specifies decimal places,
-#'     with extra digits added for values < 1
-#'   - `"signif"`: Standard significant figures rounding where `digits` specifies
-#'     the number of significant figures
+#'   - `"monolixSuiteRounding"` (default): Adaptive rounding where `digits` specifies the number
+#'     of significant digits of the fractional part; the integer part is left untouched, with
+#'     extra digits shown for values < 1
+#'   - `"significantFigures"`: Standard significant figures rounding where `digits` specifies
+#'     the number of significant figures - zeroes non-significant digits before the decimal
+#'     for large numbers
+#'   - `"significantFiguresPreserved"`: Modified significant figures rounding that never zeroes
+#'     digits before the decimal - once the integer part already has as many digits as
+#'     `digits` requests, the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding applied
 #' @param prettyLabels Logical; if `TRUE` (default), applies pretty formatting to column names with newline characters for better table display (e.g., "Fixed Effect\\nEstimate", "IIV\\nSD").
 #'   If `FALSE`, uses simpler column names without newlines (e.g., "FE_Estimate", "IIV_SD").
@@ -846,7 +860,7 @@ tableModelBuilding <- function(projectFile        = NULL,
 #' # Simple column names (no pretty formatting)
 #' pop_table_simple <- tableParameterEstimates(prettyLabels = FALSE)
 #' }
-tableParameterEstimates <- function(projectFile         = NULL,
+tableParameterEstimates <- function(projectFile        = NULL,
 																		customAliases      = NULL,
 																		customUnits        = NULL,
 																		customDescriptions = NULL,
@@ -857,12 +871,12 @@ tableParameterEstimates <- function(projectFile         = NULL,
 																		includeCV          = FALSE,
 																		includeFEcategory  = FALSE,
 																		includeBootstrap   = FALSE,
-																		useWideFormat     = FALSE,
-																		stdErrMethod      = "",
-																		roundDigits         = 3,
-																		roundMethod      = c("monolix", "signif", "none"),
-																		prettyLabels        = TRUE,
-																		mock                = FALSE) {
+																		useWideFormat      = FALSE,
+																		stdErrMethod       = "",
+																		roundDigits        = 3,
+																		roundMethod        = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+																		prettyLabels       = TRUE,
+																		mock               = FALSE) {
 
 	roundMethod <- match.arg(roundMethod)
 

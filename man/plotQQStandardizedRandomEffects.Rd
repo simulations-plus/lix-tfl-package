@@ -7,7 +7,8 @@
 plotQQStandardizedRandomEffects(
   parameters = NULL,
   settings = list(indivEstimate = "mean", identityLine = TRUE, confidenceInterval = TRUE,
-    legend = TRUE, grid = TRUE, level = 0.9, variabilityLevel = NULL, ncol = 2),
+    legend = TRUE, grid = TRUE, level = 0.9, variabilityLevel = NULL, footnote = FALSE,
+    ncol = 2),
   stratify = list(),
   preferences = list(point = list(color = "#4682B4", size = 1.5), identityLine =
     list(color = "#000000", linewidth = 0.7, label = "y = x line"), confidenceInterval =
@@ -26,6 +27,9 @@ If NULL, all available parameters are used.}
 \item level: CI level, e.g. 0.90 (default)
 \item variabilityLevel: In case of IOV, specifies which level to plot
 (default NULL = ID + Occasions)
+\item footnote: logical, add a footnote below the plot (and legend) with the
+Monolix project directory and R script path, styled like the table
+footers (small, italic, left-aligned) (default FALSE)
 \item ncol: number of columns in facet layout (default 2)
 }}
 

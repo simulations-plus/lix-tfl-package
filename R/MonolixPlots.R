@@ -320,6 +320,7 @@
 #'   - identityLine: list(color = "#000000", linewidth = 0.8)
 #'   - confidenceInterval: list(color = "#000000", linewidth = 0.825, linetype = "dashed")
 #' @return A ggplot object
+#' @export
 plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 																						settings    = list(indivEstimate      = "mean",
 																															 identityLine       = TRUE,

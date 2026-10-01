@@ -440,7 +440,7 @@ test_that("tableParameterEstimates() bootstrap CI values are properly rounded an
 		projectFile = mono_project_4,
 		includeBootstrap = TRUE,
 		roundDigits = 3,
-		roundMethod = "signif",
+		roundMethod = "significantFigures",
 		useWideFormat = FALSE
 	)
 
@@ -458,14 +458,14 @@ test_that("tableParameterEstimates() bootstrap with different rounding methods",
 		projectFile = mono_project_4,
 		includeBootstrap = TRUE,
 		roundDigits = 3,
-		roundMethod = "monolix"
+		roundMethod = "monolixSuiteRounding"
 	)
 
 	result_signif <- tableParameterEstimates(
 		projectFile = mono_project_4,
 		includeBootstrap = TRUE,
 		roundDigits = 3,
-		roundMethod = "signif"
+		roundMethod = "significantFigures"
 	)
 
 	# Both should have bootstrap columns
@@ -487,7 +487,7 @@ test_that("tableParameterEstimates() comprehensive: wide format with all options
 		includeBootstrap = TRUE,
 		useWideFormat = TRUE,
 		roundDigits = 3,
-		roundMethod = "signif",
+		roundMethod = "significantFigures",
 		prettyLabels = FALSE)
 
 	col_names <- names(result)
@@ -671,6 +671,16 @@ test_that("tableModelBuilding stepwise sorting stays within each step round", {
 	# the reference of the 2nd forward round is a model from the 1st round, i.e.
 	# rounds are genuinely distinct and ordered
 	expect_true(length(unique(grp)) >= 3)
+})
+
+test_that("tableModelBuilding errors with a clear message when no COSSAC/SCM/SAMBA results exist", {
+	# For a project that never ran a covariate model-building search, the connector
+	# returns a bare FALSE (not NULL/length 0) -> must not surface as the internal
+	# "$ operator is invalid for atomic vectors" error.
+	expect_error(
+		tableModelBuilding("test-projects/monolix/prj08_iov2.mlxtran"),
+		"No model building results found.*COSSAC, SCM, or SAMBA"
+	)
 })
 
 ################################################################################

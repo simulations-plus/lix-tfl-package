@@ -5,36 +5,54 @@
 \title{listingAbbreviation}
 \usage{
 listingAbbreviation(
-  data,
-  abbrevCol = "Abbreviation",
-  fulltermCol = "Full Term"
+  projectFile = NULL,
+  aliases = TRUE,
+  customAliases = NULL,
+  fullTerms = NULL
 )
 }
 \arguments{
-\item{data}{A data frame containing an abbreviation column or a \code{parameter}
-column that will be mapped to the abbreviation list.}
+\item{projectFile}{Character path to the PKanalix project (\code{.pkx}). If
+\code{NULL}, the currently loaded project is used.}
 
-\item{abbrevCol}{Character scalar; name of the input column that holds the
-abbreviations. Defaults to \code{"Abbreviation"}. If not present, the
-function will construct it from \code{data$parameter}.}
+\item{aliases}{Logical; if \code{TRUE} (default) parameter names in the
+\code{Abbreviation} column are replaced by their alias where available,
+falling back to the original name otherwise. Aliases come from
+\code{customAliases} when supplied, otherwise they are fetched from the
+project. HTML \code{<sub>text</sub>} markup in aliases is converted for
+flextable rendering. If \code{FALSE}, the original parameter names are used.}
+
+\item{customAliases}{Optional custom alias mapping used instead of the
+project aliases. Either a named vector (e.g.
+\code{c(Cmax = "C<sub>max</sub>")}) or a 2-column data frame whose first
+column holds parameter names and second column the aliases.}
+
+\item{fullTerms}{Optional mapping used to fill the \code{Full term} column.
+Keyed on the original parameter names. Same accepted forms as
+\code{customAliases}: a named vector (e.g.
+\code{c(Cmax = "Maximum concentration")}) or a 2-column data frame
+(parameter, full term). Parameters without an entry stay empty. If
+\code{NULL} (default), the \code{Full term} column is left empty.}
 }
 \value{
-A data frame with columns \code{Abbreviation} and \code{Full Term},
-de-duplicated and sorted.
+A data frame with columns \code{Abbreviation} (alias where available,
+original parameter name otherwise) and \code{Full term}, de-duplicated and
+sorted. Rename the returned columns afterwards if different labels are
+desired.
 }
 \description{
-Produces a two-column abbreviation listing initialized from an input table,
-returning unique abbreviations and an empty \code{Full Term} column for later
-completion, sorted alphabetically.
+Builds an abbreviation listing for the computed NCA parameters of a PKanalix
+project. The full list of computed parameters is always kept (it is never
+reduced to those that happen to have an alias). When \code{aliases = TRUE}
+the \code{Abbreviation} column shows each parameter's alias where one exists
+and the original parameter name where it does not, so a mix of aliases and
+raw names is expected when aliases are only defined for some parameters. The
+listing also carries an (initially empty) \code{Full term} column that can be
+pre-populated from a user-supplied mapping. Rows are de-duplicated and sorted.
 }
 \examples{
-# listingAbbreviation(NCAParamSummary_info)
-# listingAbbreviation(df, abbrevCol = "abbr")
-#  dt <- data.frame(Abbreviation = data$parameter, stringsAsFactors = FALSE)
-#  abbrev_listing <- dt \%>\%
-#    distinct(!!rlang::sym(abbrevCol)) \%>\%
-#    dplyr::rename(Abbreviation = !!rlang::sym(abbrevCol)) \%>\%
-#    dplyr::mutate(`Full Term` = NA_character_) \%>\%
-#    dplyr::arrange(Abbreviation)
-#  return(abbrev_listing)
+# listingAbbreviation()
+# listingAbbreviation(aliases = FALSE)
+# listingAbbreviation(fullTerms = c(Cmax = "Maximum concentration",
+#                                   AUClast = "Area under the curve to last obs"))
 }

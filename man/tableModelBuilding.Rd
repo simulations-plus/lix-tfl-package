@@ -9,9 +9,12 @@ tableModelBuilding(
   customDescriptions = NULL,
   filterCriteria = c("none", "LL", "BICc"),
   sortBy = c("index", "BICc", "LL", "pValue"),
+  displayBestModelPerStep = FALSE,
   roundDigits = 2,
-  roundMethod = c("monolix", "none", "signif"),
-  prettyLabels = TRUE
+  roundMethod = c("monolixSuiteRounding", "significantFigures",
+    "significantFiguresPreserved", "none"),
+  prettyLabels = TRUE,
+  mock = FALSE
 )
 }
 \arguments{
@@ -49,14 +52,47 @@ model), so the forward and backward phases - and repeated rounds within a
 phase (e.g. a 2nd forward inclusion) - are never mixed; the rounds keep their
 algorithm order. SAMBA has no steps and is sorted globally.}
 
+\item{displayBestModelPerStep}{Logical; if \code{TRUE}, reduces the table to the
+\emph{accepted} best model per step group (round) plus the Base (start) model,
+giving a compact view of the actual model-building path. Default is \code{FALSE}
+(show every evaluated model). Within each round the winner is the model the
+algorithm would pick, which is direction-aware under the LRT criterion:
+forward steps take the \emph{most} significant candidate (smallest LRT p-value),
+backward steps take the \emph{least} significant candidate (largest p-value - the
+covariate whose removal is best justified). Under the BICc criterion (no
+p-value) the winner is the lowest-BICc model in both directions. The winner
+is kept only if that step was actually \strong{accepted}: forward accepts a
+\emph{significant} addition (\code{Significant == "Yes"}); backward accepts a
+\emph{non-significant} removal (\code{Significant == "No"}); under the BICc criterion a
+step is accepted when BICc improved (\code{Improved == "Yes"}). Rounds that ended
+in no change (dead-ends - e.g. a final forward round whose best candidate is
+not significant) are dropped, so the table reads as the selection path rather
+than a mix of path and rejected candidates. Applies only to stepwise
+strategies (COSSAC/SCM); for SAMBA and other runs without a \code{Step} column it
+is ignored (with a message) and the full table is returned. The accepted
+per-step winners are also recorded on the returned data.frame's
+\code{best_per_step} attribute, which \code{\link[=style_tfl]{style_tfl()}} uses (via \code{autoHighlight}) to
+shade those rows. See \code{\link[=.modelBuildingBestPerStep]{.modelBuildingBestPerStep()}}.}
+
 \item{roundDigits}{Integer specifying the number of digits for rounding
 numeric values. Default is \code{2}.}
 
 \item{roundMethod}{Character string specifying the rounding method:
-\code{"monolix"} (default), \code{"signif"}, or \code{"none"}.}
+\code{"monolixSuiteRounding"} (default), \code{"significantFigures"},
+\code{"significantFiguresPreserved"}, or \code{"none"}.}
 
 \item{prettyLabels}{Logical; if \code{TRUE} (default), applies human-readable
 column labels.}
+
+\item{mock}{Logical; if \code{TRUE}, masks the table for documentation / example
+outputs: \code{LL}/\code{BICc}/\code{dLL}/\code{dBICc}/\code{p.value} become placeholders (e.g.
+\code{"xx.xx"}); \code{Description} is blanked; real covariate names embedded in
+\code{Tested} and \code{CovariateModel} (e.g. \code{"WT on CL"}, \code{"CL~WT+SEX"}) are
+replaced with generic labels (\code{"Covariate01"}, \code{"Covariate02"}, ...) using
+one consistent mapping. Parameter names (e.g. \code{CL}, \code{V}) are kept, since
+they are standard PK terms rather than dataset-specific identifiers.
+\code{Run}, \code{Reference}, \code{Step}, and the \code{Significant}/\code{Improved}/\code{BestModel}
+flags are kept. Default \code{FALSE}.}
 }
 \value{
 A data.frame with one row per evaluated model containing (columns

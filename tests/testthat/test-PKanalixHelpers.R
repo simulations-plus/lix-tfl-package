@@ -94,6 +94,26 @@ test_that("tableNCAConcentration with column stratification (stratifyColumns = T
 	expect_gt(length(stratified_cols), 1)
 })
 
+test_that("tableNCAConcentration stratified columns sort integer modalities numerically", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# TINFCAT has integer modalities (e.g. 4, 5, 7, 8, 10, 14, 20). Columns must
+	# appear in ascending numeric order, not lexicographic ("10", "14", "4", ...).
+	table <- tableNCAConcentration(
+		projectFile     = pkx_project_1,
+		splitCovariates = "TINFCAT",
+		stratifyColumns = TRUE,
+		useWideFormat   = FALSE)
+
+	# Extract the modality value from each stratified header ("TINFCAT=10\n(N=31)")
+	modalities <- as.numeric(sub("^TINFCAT=([0-9.]+).*$", "\\1",
+															 grep("^TINFCAT=", names(table), value = TRUE)))
+
+	expect_gt(length(modalities), 1)
+	expect_false(any(is.na(modalities)))
+	expect_identical(modalities, sort(modalities))
+})
+
 test_that("tableNCAConcentration with specific metrics (single metric)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
@@ -170,12 +190,17 @@ test_that("tableNCAConcentration rounding methods", {
 	table_monolix <- tableNCAConcentration(
 		projectFile = pkx_project_1,
 		roundDigits = 2,
-		roundMethod = "monolix")
+		roundMethod = "monolixSuiteRounding")
 
 	table_signif <- tableNCAConcentration(
 		projectFile = pkx_project_1,
 		roundDigits = 2,
-		roundMethod = "signif")
+		roundMethod = "significantFigures")
+
+	table_signif_preserved <- tableNCAConcentration(
+		projectFile = pkx_project_1,
+		roundDigits = 2,
+		roundMethod = "significantFiguresPreserved")
 
 	table_none <- tableNCAConcentration(
 		projectFile = pkx_project_1,
@@ -184,11 +209,26 @@ test_that("tableNCAConcentration rounding methods", {
 	# Verify all tables are valid
 	expect_true(is.data.frame(table_monolix))
 	expect_true(is.data.frame(table_signif))
+	expect_true(is.data.frame(table_signif_preserved))
 	expect_true(is.data.frame(table_none))
 
 	# Verify they have the same structure
 	expect_equal(nrow(table_monolix), nrow(table_signif))
+	expect_equal(nrow(table_monolix), nrow(table_signif_preserved))
 	expect_equal(nrow(table_monolix), nrow(table_none))
+})
+
+test_that("tableNCAConcentration mock = TRUE masks output", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	table_real <- tableNCAConcentration(projectFile = pkx_project_1, mock = FALSE)
+	table_mock <- tableNCAConcentration(projectFile = pkx_project_1, mock = TRUE)
+
+	expect_true(is.data.frame(table_mock))
+	# Masking must not change the table's shape
+	expect_equal(dim(table_real), dim(table_mock))
+	# Masked numeric cells become the "xx.xx"-style placeholder token
+	expect_true(any(grepl("xx", as.matrix(table_mock))))
 })
 
 test_that("tableNCAConcentration prettyLabels", {
@@ -569,13 +609,20 @@ test_that("tableNCAParameters rounding methods", {
 		projectFile = pkx_project_1,
 		ncaParams   = c("Cmax"),
 		roundDigits = 2,
-		roundMethod = "monolix")
+		roundMethod = "monolixSuiteRounding")
 
 	table_signif <- tableNCAParameters(
 		projectFile = pkx_project_1,
 		ncaParams   = c("Cmax"),
 		roundDigits = 2,
-		roundMethod = "signif"
+		roundMethod = "significantFigures"
+	)
+
+	table_signif_preserved <- tableNCAParameters(
+		projectFile = pkx_project_1,
+		ncaParams   = c("Cmax"),
+		roundDigits = 2,
+		roundMethod = "significantFiguresPreserved"
 	)
 
 	table_none <- tableNCAParameters(
@@ -587,11 +634,97 @@ test_that("tableNCAParameters rounding methods", {
 	# Verify all tables are valid
 	expect_true(is.data.frame(table_monolix))
 	expect_true(is.data.frame(table_signif))
+	expect_true(is.data.frame(table_signif_preserved))
 	expect_true(is.data.frame(table_none))
 
 	# Verify they have the same structure
 	expect_equal(nrow(table_monolix), nrow(table_signif))
+	expect_equal(nrow(table_monolix), nrow(table_signif_preserved))
 	expect_equal(nrow(table_monolix), nrow(table_none))
+})
+
+test_that("tableNCAParameters roundByParameter data.frame overrides digits and method per parameter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	args <- list(
+		projectFile   = pkx_project_1,
+		ncaParams     = c("Cmax", "AUClast"),
+		metrics       = "mean",
+		useWideFormat = TRUE,
+		prettyLabels  = FALSE, units = FALSE, aliases = FALSE,
+		roundDigits   = 3, roundMethod = "monolixSuiteRounding")
+
+	base <- do.call(tableNCAParameters, args)
+	over <- do.call(tableNCAParameters, c(args, list(
+		roundByParameter = data.frame(parameter = "Cmax", digits = 1,
+																	method = "significantFigures",
+																	stringsAsFactors = FALSE))))
+
+	get_mean <- function(tb, p) tb$mean[tb$parameter == p]
+
+	# Overridden parameter changes, non-overridden parameter keeps global rounding
+	expect_false(isTRUE(all.equal(get_mean(base, "Cmax"), get_mean(over, "Cmax"))))
+	expect_equal(get_mean(base, "AUClast"), get_mean(over, "AUClast"))
+})
+
+test_that("tableNCAParameters roundByParameter accepts a named numeric vector (digits only)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	args <- list(
+		projectFile   = pkx_project_1,
+		ncaParams     = c("Cmax", "AUClast"),
+		metrics       = "mean",
+		useWideFormat = TRUE,
+		prettyLabels  = FALSE, units = FALSE, aliases = FALSE,
+		roundDigits   = 3, roundMethod = "monolixSuiteRounding")
+
+	base <- do.call(tableNCAParameters, args)
+	over <- do.call(tableNCAParameters, c(args, list(roundByParameter = c(Cmax = 1))))
+
+	get_mean <- function(tb, p) tb$mean[tb$parameter == p]
+
+	expect_false(isTRUE(all.equal(get_mean(base, "Cmax"), get_mean(over, "Cmax"))))
+	expect_equal(get_mean(base, "AUClast"), get_mean(over, "AUClast"))
+})
+
+test_that("tableNCAParameters roundByParameter ignores unknown parameters with a message", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	expect_message(
+		tableNCAParameters(projectFile = pkx_project_1, ncaParams = "Cmax", metrics = "mean",
+											 useWideFormat = TRUE, prettyLabels = FALSE, units = FALSE, aliases = FALSE,
+											 roundByParameter = c(Cmaxx = 2)),
+		"ignoring unknown parameter")
+
+	# Table is still produced; NULL override equals no override
+	a <- tableNCAParameters(projectFile = pkx_project_1, ncaParams = "Cmax", metrics = "mean",
+													useWideFormat = TRUE, prettyLabels = FALSE, units = FALSE, aliases = FALSE)
+	b <- tableNCAParameters(projectFile = pkx_project_1, ncaParams = "Cmax", metrics = "mean",
+													useWideFormat = TRUE, prettyLabels = FALSE, units = FALSE, aliases = FALSE,
+													roundByParameter = NULL)
+	expect_equal(a, b)
+})
+
+test_that("tableNCAParameters roundByParameter rejects invalid digits/method", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	expect_error(
+		tableNCAParameters(projectFile = pkx_project_1, ncaParams = "Cmax",
+											 roundByParameter = data.frame(parameter = "Cmax", digits = 2, method = "bogus")))
+	expect_error(
+		tableNCAParameters(projectFile = pkx_project_1, ncaParams = "Cmax",
+											 roundByParameter = c(Cmax = -1)))
+})
+
+test_that("tableNCAParameters mock = TRUE masks output", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	table_real <- tableNCAParameters(projectFile = pkx_project_1, ncaParams = c("Cmax"), mock = FALSE)
+	table_mock <- tableNCAParameters(projectFile = pkx_project_1, ncaParams = c("Cmax"), mock = TRUE)
+
+	expect_true(is.data.frame(table_mock))
+	expect_equal(dim(table_real), dim(table_mock))
+	expect_true(any(grepl("xx", as.matrix(table_mock))))
 })
 
 test_that("tableNCAParameters units and aliases", {
@@ -682,7 +815,7 @@ test_that("tableNCAParameters complex scenario", {
 		useWideFormat  = FALSE,
 		stratifyColumns = TRUE,
 		roundDigits      = 2,
-		roundMethod      = "signif",
+		roundMethod      = "significantFigures",
 		prettyLabels     = FALSE
 	)
 
@@ -716,14 +849,14 @@ test_that("tableNCAParameters with different roundDigits values", {
 		projectFile = pkx_project_1,
 		ncaParams   = c("Cmax"),
 		roundDigits = 1,
-		roundMethod = "monolix")
+		roundMethod = "monolixSuiteRounding")
 
 	# Test with roundDigits = 5
 	table_5 <- tableNCAParameters(
 		projectFile = pkx_project_1,
 		ncaParams   = c("Cmax"),
 		roundDigits = 5,
-		roundMethod = "monolix")
+		roundMethod = "monolixSuiteRounding")
 
 	# Both should be valid
 	expect_true(is.data.frame(table_1))
@@ -738,7 +871,7 @@ test_that("tableNCAParameters roundMethod with stratification", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test each rounding method with stratification
-	for (method in c("monolix", "signif", "none")) {
+	for (method in c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none")) {
 		table <- tableNCAParameters(
 			projectFile      = pkx_project_1,
 			ncaParams        = c("Cmax"),
@@ -769,7 +902,7 @@ test_that("tableNCAParameters all arguments combined", {
 		stratifyColumns = TRUE,
 		covariateLabels = "Infusion Category",
 		roundDigits      = 4,
-		roundMethod      = "signif",
+		roundMethod      = "significantFigures",
 		units            = TRUE,
 		aliases          = TRUE,
 		prettyLabels     = TRUE
@@ -831,7 +964,7 @@ test_that("tableNCAParameters default values work correctly", {
 	# - useWideFormat = TRUE
 	# - stratifyColumns = FALSE
 	# - roundDigits = 3
-	# - roundMethod = "monolix"
+	# - roundMethod = "monolixSuiteRounding"
 	# - units = TRUE
 	# - aliases = TRUE
 	# - prettyLabels = TRUE
@@ -1096,7 +1229,7 @@ test_that("tableNCAParameters with includeId and different rounding settings", {
 		ncaParams   = c("Cmax"),
 		includeId  = TRUE,
 		roundDigits = 2,
-		roundMethod = "monolix"
+		roundMethod = "monolixSuiteRounding"
 	)
 
 	table_signif <- tableNCAParameters(
@@ -1105,14 +1238,25 @@ test_that("tableNCAParameters with includeId and different rounding settings", {
 		ncaParams   = c("Cmax"),
 		includeId  = TRUE,
 		roundDigits = 2,
-		roundMethod = "signif"
+		roundMethod = "significantFigures"
 	)
 
-	# Both should be valid and have individual IDs
+	table_signif_preserved <- tableNCAParameters(
+		projectFile = pkx_project_1,
+		useWideFormat  = FALSE,
+		ncaParams   = c("Cmax"),
+		includeId  = TRUE,
+		roundDigits = 2,
+		roundMethod = "significantFiguresPreserved"
+	)
+
+	# All should be valid and have individual IDs
 	expect_true(is.data.frame(table_monolix))
 	expect_true(is.data.frame(table_signif))
+	expect_true(is.data.frame(table_signif_preserved))
 	expect_gt(nrow(table_monolix), 0)
 	expect_gt(nrow(table_signif), 0)
+	expect_gt(nrow(table_signif_preserved), 0)
 })
 
 test_that("tableNCAParameters with includeId and specific metrics", {
@@ -1152,7 +1296,7 @@ test_that("tableNCAParameters with includeId comprehensive test", {
 		useWideFormat   = FALSE,
 		includeId   = TRUE,
 		roundDigits  = 3,
-		roundMethod  = "monolix",
+		roundMethod  = "monolixSuiteRounding",
 		units        = TRUE,
 		aliases      = TRUE,
 		prettyLabels = TRUE
@@ -1264,10 +1408,11 @@ test_that("listingNCAParameters works with covariates", {
 		splitCovariates = c("SEX", "TINFCAT")
 	)
 
-	# Check covariates are present and in correct order
+	# Check covariates are present and in correct order: splitCovariates are placed
+	# before id so modalities stay grouped (see commit 87c620a)
 	expect_s3_class(result, "data.frame")
 	expect_true(all(c("id", "SEX", "TINFCAT") %in% names(result)))
-	expect_equal(names(result)[1:3], c("id", "SEX", "TINFCAT"))
+	expect_equal(names(result)[1:3], c("SEX", "TINFCAT", "id"))
 })
 
 test_that("listingNCAParameters filters to selected parameters", {
@@ -1280,7 +1425,7 @@ test_that("listingNCAParameters filters to selected parameters", {
 		splitCovariates = c("FOOD", "TREAT"),
 		ncaParams = selected_params,
 		roundDigits = 2,
-		roundMethod = "signif"
+		roundMethod = "significantFigures"
 	)
 
 	expect_s3_class(result, "data.frame")
@@ -1289,14 +1434,14 @@ test_that("listingNCAParameters filters to selected parameters", {
 	expect_lte(ncol(result), 3 + 2 + length(selected_params) + 5)  # Some buffer for occasions
 })
 
-test_that("listingNCAParameters applies rounding with signif method", {
+test_that("listingNCAParameters applies rounding with significantFigures method", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	result_rounded <- listingNCAParameters(
 		projectFile = pkx_project_2,
 		ncaParams = c("Cmax", "AUClast"),
 		roundDigits = 2,
-		roundMethod = "signif"
+		roundMethod = "significantFigures"
 	)
 
 	result_none <- listingNCAParameters(
@@ -1310,13 +1455,34 @@ test_that("listingNCAParameters applies rounding with signif method", {
 	expect_equal(dim(result_rounded), dim(result_none))
 })
 
-test_that("listingNCAParameters applies rounding with monolix method", {
+test_that("listingNCAParameters applies rounding with significantFiguresPreserved method", {
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	result_rounded <- listingNCAParameters(
+		projectFile = pkx_project_2,
+		ncaParams = c("Cmax", "AUClast"),
+		roundDigits = 2,
+		roundMethod = "significantFiguresPreserved"
+	)
+
+	result_none <- listingNCAParameters(
+		projectFile = pkx_project_2,
+		ncaParams = c("Cmax", "AUClast"),
+		roundMethod = "none"
+	)
+
+	expect_s3_class(result_rounded, "data.frame")
+	expect_s3_class(result_none, "data.frame")
+	expect_equal(dim(result_rounded), dim(result_none))
+})
+
+test_that("listingNCAParameters applies rounding with monolixSuiteRounding method", {
 	skip_if_not(file.exists(pkx_project_4), "Test project not available")
 
 	result <- listingNCAParameters(
 		projectFile = pkx_project_4,
 		roundDigits = 4,
-		roundMethod = "monolix"
+		roundMethod = "monolixSuiteRounding"
 	)
 
 	expect_s3_class(result, "data.frame")
@@ -1402,10 +1568,10 @@ test_that("listingNCAParameters validates invalid NCA parameters", {
 	)
 })
 
-test_that("listingNCAParameters warns for partially invalid parameters", {
+test_that("listingNCAParameters messages for partially invalid parameters", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
-	expect_warning(
+	expect_message(
 		result <- listingNCAParameters(
 			projectFile = pkx_project_2,
 			ncaParams = c("Cmax", "INVALID_PARAM", "AUClast")
@@ -1440,13 +1606,19 @@ test_that("listingNCAParameters handles multiple rounding methods", {
 	result_monolix <- listingNCAParameters(
 		projectFile = pkx_project_3,
 		roundDigits = 3,
-		roundMethod = "monolix"
+		roundMethod = "monolixSuiteRounding"
 	)
 
 	result_signif <- listingNCAParameters(
 		projectFile = pkx_project_3,
 		roundDigits = 3,
-		roundMethod = "signif"
+		roundMethod = "significantFigures"
+	)
+
+	result_signif_preserved <- listingNCAParameters(
+		projectFile = pkx_project_3,
+		roundDigits = 3,
+		roundMethod = "significantFiguresPreserved"
 	)
 
 	result_none <- listingNCAParameters(
@@ -1456,10 +1628,23 @@ test_that("listingNCAParameters handles multiple rounding methods", {
 
 	expect_s3_class(result_monolix, "data.frame")
 	expect_s3_class(result_signif, "data.frame")
+	expect_s3_class(result_signif_preserved, "data.frame")
 	expect_s3_class(result_none, "data.frame")
 	# All should have same structure
 	expect_equal(dim(result_monolix), dim(result_signif))
+	expect_equal(dim(result_monolix), dim(result_signif_preserved))
 	expect_equal(dim(result_monolix), dim(result_none))
+})
+
+test_that("listingNCAParameters mock = TRUE masks output", {
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	result_real <- listingNCAParameters(projectFile = pkx_project_3, mock = FALSE)
+	result_mock <- listingNCAParameters(projectFile = pkx_project_3, mock = TRUE)
+
+	expect_s3_class(result_mock, "data.frame")
+	expect_equal(dim(result_real), dim(result_mock))
+	expect_true(all(grepl("^id[0-9]+$", as.character(result_mock$id))))
 })
 
 test_that("listingNCAParameters returns correct column order", {
@@ -1470,10 +1655,10 @@ test_that("listingNCAParameters returns correct column order", {
 		splitCovariates = c("TREAT", "FOOD")  # Specify order
 	)
 
-	# First columns should be: id, TREAT, FOOD (in that order)
-	expect_equal(names(result)[1], "id")
-	expect_equal(names(result)[2], "TREAT")
-	expect_equal(names(result)[3], "FOOD")
+	# First columns should be: TREAT, FOOD, id (splitCovariates before id, see commit 87c620a)
+	expect_equal(names(result)[1], "TREAT")
+	expect_equal(names(result)[2], "FOOD")
+	expect_equal(names(result)[3], "id")
 })
 
 
@@ -1487,7 +1672,7 @@ test_that("listingNCAParameters applies customAliases and customUnits (named vec
 		projectFile   = pkx_project_complex,
 		ncaParams     = c("AUClast", "Cmax", "C0"),
 		roundDigits   = 3,
-		roundMethod   = "monolix",
+		roundMethod   = "monolixSuiteRounding",
 		customAliases = c(
 			Cmax    = "C<sub>max</sub>",
 			AUClast = "AUC<sub>0-tlast</sub>",
@@ -1583,7 +1768,7 @@ test_that("listingNCAConcentration applies rounding", {
 	result_rounded <- listingNCAConcentration(
 		projectFile = pkx_project_4,
 		roundDigits = 2,
-		roundMethod = "signif"
+		roundMethod = "significantFigures"
 	)
 
 	result_none <- listingNCAConcentration(
@@ -1602,18 +1787,50 @@ test_that("listingNCAConcentration handles different rounding methods", {
 	result_monolix <- listingNCAConcentration(
 		projectFile = pkx_project_4,
 		roundDigits = 4,
-		roundMethod = "monolix"
+		roundMethod = "monolixSuiteRounding"
 	)
 
 	result_signif <- listingNCAConcentration(
 		projectFile = pkx_project_4,
 		roundDigits = 4,
-		roundMethod = "signif"
+		roundMethod = "significantFigures"
+	)
+
+	result_signif_preserved <- listingNCAConcentration(
+		projectFile = pkx_project_4,
+		roundDigits = 4,
+		roundMethod = "significantFiguresPreserved"
 	)
 
 	expect_s3_class(result_monolix, "data.frame")
 	expect_s3_class(result_signif, "data.frame")
+	expect_s3_class(result_signif_preserved, "data.frame")
 	expect_equal(dim(result_monolix), dim(result_signif))
+	expect_equal(dim(result_monolix), dim(result_signif_preserved))
+})
+
+test_that("listingNCAConcentration works with default roundMethod (no argument passed)", {
+	skip_if_not(file.exists(pkx_project_4), "Test project not available")
+
+	# Regression test: roundMethod used to be missing its match.arg() resolution here,
+	# so leaving it at the default (unspecified) crashed with a "'arg' must be of
+	# length 1" error once forwarded into .round_num().
+	result <- listingNCAConcentration(projectFile = pkx_project_4)
+
+	expect_s3_class(result, "data.frame")
+	expect_gt(nrow(result), 0)
+})
+
+test_that("listingNCAConcentration mock = TRUE masks output", {
+	skip_if_not(file.exists(pkx_project_4), "Test project not available")
+
+	result_real <- listingNCAConcentration(projectFile = pkx_project_4, mock = FALSE)
+	result_mock <- listingNCAConcentration(projectFile = pkx_project_4, mock = TRUE)
+
+	expect_s3_class(result_mock, "data.frame")
+	expect_equal(dim(result_real), dim(result_mock))
+	# id column is relabeled to "id1", "id2", ...
+	expect_true(all(grepl("^id[0-9]+$", as.character(result_mock$id))))
 })
 
 test_that("listingNCAConcentration includes UsedConc column", {
@@ -1768,10 +1985,11 @@ test_that("listingNCARatios works with covariates", {
 		splitCovariates = c("SEQ")
 	)
 
-	# Check covariates are present and in correct order
+	# Check covariates are present and in correct order: splitCovariates before id
+	# so modalities stay grouped (see commit 87c620a)
 	expect_s3_class(result, "data.frame")
 	expect_true(all(c("id", "SEQ") %in% names(result)))
-	expect_equal(names(result)[1:2], c("id", "SEQ"))
+	expect_equal(names(result)[1:2], c("SEQ", "id"))
 })
 
 test_that("listingNCARatios filters to selected ratio parameters", {
@@ -1789,7 +2007,7 @@ test_that("listingNCARatios filters to selected ratio parameters", {
 			splitCovariates = c("SEQ"),
 			ratioParams = selected_ratios,
 			roundDigits = 2,
-			roundMethod = "signif"
+			roundMethod = "significantFigures"
 		)
 
 		expect_s3_class(result, "data.frame")
@@ -1799,7 +2017,7 @@ test_that("listingNCARatios filters to selected ratio parameters", {
 	}
 })
 
-test_that("listingNCARatios applies rounding with signif method", {
+test_that("listingNCARatios applies rounding with significantFigures method", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get available ratio parameters
@@ -1813,7 +2031,7 @@ test_that("listingNCARatios applies rounding with signif method", {
 			projectFile = pkx_project_5,
 			ratioParams = selected,
 			roundDigits = 2,
-			roundMethod = "signif"
+			roundMethod = "significantFigures"
 		)
 
 		result_none <- listingNCARatios(
@@ -1828,13 +2046,42 @@ test_that("listingNCARatios applies rounding with signif method", {
 	}
 })
 
-test_that("listingNCARatios applies rounding with monolix method", {
+test_that("listingNCARatios applies rounding with significantFiguresPreserved method", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Get available ratio parameters
+	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	ratio_params <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
+
+	if (length(ratio_params) >= 2) {
+		selected <- ratio_params[1:2]
+
+		result_rounded <- listingNCARatios(
+			projectFile = pkx_project_5,
+			ratioParams = selected,
+			roundDigits = 2,
+			roundMethod = "significantFiguresPreserved"
+		)
+
+		result_none <- listingNCARatios(
+			projectFile = pkx_project_5,
+			ratioParams = selected,
+			roundMethod = "none"
+		)
+
+		expect_s3_class(result_rounded, "data.frame")
+		expect_s3_class(result_none, "data.frame")
+		expect_equal(dim(result_rounded), dim(result_none))
+	}
+})
+
+test_that("listingNCARatios applies rounding with monolixSuiteRounding method", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	result <- listingNCARatios(
 		projectFile = pkx_project_5,
 		roundDigits = 4,
-		roundMethod = "monolix"
+		roundMethod = "monolixSuiteRounding"
 	)
 
 	expect_s3_class(result, "data.frame")
@@ -1902,14 +2149,14 @@ test_that("listingNCARatios validates invalid ratio parameters", {
 	)
 })
 
-test_that("listingNCARatios warns for partially invalid parameters", {
+test_that("listingNCARatios messages for partially invalid parameters", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get one valid ratio parameter
 	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
 	valid_ratio <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))[1]
 
-	expect_warning(
+	expect_message(
 		result <- listingNCARatios(
 			projectFile = pkx_project_5,
 			ratioParams = c(valid_ratio, "INVALID_PARAM")
@@ -1943,13 +2190,19 @@ test_that("listingNCARatios handles multiple rounding methods", {
 	result_monolix <- listingNCARatios(
 		projectFile = pkx_project_5,
 		roundDigits = 3,
-		roundMethod = "monolix"
+		roundMethod = "monolixSuiteRounding"
 	)
 
 	result_signif <- listingNCARatios(
 		projectFile = pkx_project_5,
 		roundDigits = 3,
-		roundMethod = "signif"
+		roundMethod = "significantFigures"
+	)
+
+	result_signif_preserved <- listingNCARatios(
+		projectFile = pkx_project_5,
+		roundDigits = 3,
+		roundMethod = "significantFiguresPreserved"
 	)
 
 	result_none <- listingNCARatios(
@@ -1959,10 +2212,23 @@ test_that("listingNCARatios handles multiple rounding methods", {
 
 	expect_s3_class(result_monolix, "data.frame")
 	expect_s3_class(result_signif, "data.frame")
+	expect_s3_class(result_signif_preserved, "data.frame")
 	expect_s3_class(result_none, "data.frame")
 	# All should have same structure
 	expect_equal(dim(result_monolix), dim(result_signif))
+	expect_equal(dim(result_monolix), dim(result_signif_preserved))
 	expect_equal(dim(result_monolix), dim(result_none))
+})
+
+test_that("listingNCARatios mock = TRUE masks output", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	result_real <- listingNCARatios(projectFile = pkx_project_5, mock = FALSE)
+	result_mock <- listingNCARatios(projectFile = pkx_project_5, mock = TRUE)
+
+	expect_s3_class(result_mock, "data.frame")
+	expect_equal(dim(result_real), dim(result_mock))
+	expect_true(all(grepl("^id[0-9]+$", as.character(result_mock$id))))
 })
 
 test_that("listingNCARatios returns correct column order", {
@@ -1973,9 +2239,9 @@ test_that("listingNCARatios returns correct column order", {
 		splitCovariates = c("SEQ")  # Specify order
 	)
 
-	# First columns should be: id, TRT, SEQ (in that order)
-	expect_equal(names(result)[1], "id")
-	expect_equal(names(result)[2], "SEQ")
+	# First columns should be: SEQ, id (splitCovariates before id, see commit 87c620a)
+	expect_equal(names(result)[1], "SEQ")
+	expect_equal(names(result)[2], "id")
 })
 
 test_that("listingNCARatios validates NCA results availability", {
@@ -2016,6 +2282,68 @@ test_that("listingNCARatios applies customAliases", {
 		customAliases = aliases)
 
 	expect_true(any(grepl("MyRatio[[sub:x]]", names(result), fixed = TRUE)))
+})
+
+################################################################################
+################################################################################
+# Tests for listingAbbreviation -------------------------------------------------
+
+test_that("listingAbbreviation returns basic structure", {
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	result <- listingAbbreviation(projectFile = pkx_project_1)
+
+	expect_true(is.data.frame(result))
+	expect_gt(nrow(result), 0)
+	expect_equal(names(result), c("Abbreviation", "Full term"))
+})
+
+test_that("listingAbbreviation with aliases = FALSE keeps raw parameter names", {
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	result_aliases    <- listingAbbreviation(projectFile = pkx_project_1, aliases = TRUE)
+	result_no_aliases <- listingAbbreviation(projectFile = pkx_project_1, aliases = FALSE)
+
+	expect_true(is.data.frame(result_no_aliases))
+	# Same set of underlying NCA parameters either way
+	expect_equal(nrow(result_aliases), nrow(result_no_aliases))
+})
+
+test_that("listingAbbreviation applies customAliases mapping", {
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# aliases = FALSE so Abbreviation holds the raw parameter name - customAliases is
+	# joined on that raw name, not on whatever alias would otherwise be displayed
+	result_default <- listingAbbreviation(projectFile = pkx_project_1, aliases = FALSE)
+	target_param    <- result_default$Abbreviation[1]
+
+	custom <- setNames("MyCustomAlias", target_param)
+	result_custom <- listingAbbreviation(projectFile = pkx_project_1, customAliases = custom)
+
+	expect_true(is.data.frame(result_custom))
+	expect_true("MyCustomAlias" %in% result_custom$Abbreviation)
+})
+
+test_that("listingAbbreviation applies fullTerms mapping", {
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	result_default <- listingAbbreviation(projectFile = pkx_project_1, aliases = FALSE)
+	target_param    <- result_default$Abbreviation[1]
+
+	full_terms <- setNames("My Full Term Description", target_param)
+	result <- listingAbbreviation(projectFile = pkx_project_1, aliases = FALSE, fullTerms = full_terms)
+
+	expect_true(is.data.frame(result))
+	expect_true("My Full Term Description" %in% result$`Full term`)
+})
+
+test_that("listingAbbreviation errors on wrong project file type", {
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	# .checkProjectFile() validates by file extension; a non-.pkx path should be rejected
+	expect_error(
+		listingAbbreviation(projectFile = "some_project.mlxtran")
+	)
 })
 
 ################################################################################
@@ -2203,13 +2531,19 @@ test_that("tableNCARatios rounding methods", {
 	table_monolix <- tableNCARatios(
 		projectFile = pkx_project_5,
 		roundDigits = 2,
-		roundMethod = "monolix"
+		roundMethod = "monolixSuiteRounding"
 	)
 
 	table_signif <- tableNCARatios(
 		projectFile = pkx_project_5,
 		roundDigits = 2,
-		roundMethod = "signif"
+		roundMethod = "significantFigures"
+	)
+
+	table_signif_preserved <- tableNCARatios(
+		projectFile = pkx_project_5,
+		roundDigits = 2,
+		roundMethod = "significantFiguresPreserved"
 	)
 
 	table_none <- tableNCARatios(
@@ -2220,11 +2554,25 @@ test_that("tableNCARatios rounding methods", {
 	# Verify all tables are valid
 	expect_true(is.data.frame(table_monolix))
 	expect_true(is.data.frame(table_signif))
+	expect_true(is.data.frame(table_signif_preserved))
 	expect_true(is.data.frame(table_none))
 
 	# Verify they have the same structure
 	expect_equal(nrow(table_monolix), nrow(table_signif))
+	expect_equal(nrow(table_monolix), nrow(table_signif_preserved))
 	expect_equal(nrow(table_monolix), nrow(table_none))
+})
+
+test_that("tableNCARatios mock = TRUE masks output", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	table_real <- tableNCARatios(projectFile = pkx_project_5, mock = FALSE)
+	table_mock <- tableNCARatios(projectFile = pkx_project_5, mock = TRUE)
+
+	expect_true(is.data.frame(table_mock))
+	expect_equal(dim(table_real), dim(table_mock))
+	expect_true(any(grepl("xx", as.matrix(table_mock))))
 })
 
 test_that("tableNCARatios with covariateLabels", {
@@ -2546,7 +2894,7 @@ test_that("tableNCARatios all arguments combined", {
 			useWideFormat  = FALSE,
 			includeId       = TRUE,
 			roundDigits      = 4,
-			roundMethod      = "signif",
+			roundMethod      = "significantFigures",
 			prettyLabels     = TRUE
 		)
 
@@ -3375,10 +3723,10 @@ test_that("tableNCAConcentration with includeId validation: stratifyColumns = TR
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Test that conflicting settings (useWideFormat=TRUE + stratifyColumns=TRUE)
-	# generates a warning and falls back to valid settings
+	# emits an informational message and falls back to valid settings
 	# Note: stratifyColumns=TRUE requires useWideFormat=FALSE, so stratifyColumns
 	# gets disabled first, before the includeId+stratifyColumns check can fire
-	expect_warning(
+	expect_message(
 		table <- tableNCAConcentration(
 			projectFile      = pkx_project_1,
 			useWideFormat  = TRUE,
@@ -3386,7 +3734,7 @@ test_that("tableNCAConcentration with includeId validation: stratifyColumns = TR
 			splitCovariates  = "TINFCAT",
 			includeId       = TRUE
 		),
-		"stratifyColumns = TRUE is only compatible with useWideFormat = FALSE"
+		"stratifyColumns = TRUE requires long format"
 	)
 
 	# Table should still be generated with fallback settings
@@ -3496,12 +3844,12 @@ test_that("tableBEResults with specific BEParams", {
 	expect_lte(nrow(table), nrow(table_all))
 })
 
-test_that("tableBEResults with invalid BEParams warns", {
+test_that("tableBEResults with invalid BEParams messages", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_3), "Test project not available")
 
 	# Test with mix of valid and invalid parameters
-	expect_warning(
+	expect_message(
 		tableBEResults(
 			projectFile = pkx_project_3,
 			BEParams    = c("AUClast_D", "INVALID_PARAM")
@@ -3656,7 +4004,7 @@ test_that("tableBEResults rounding methods", {
 	# Test monolix rounding
 	table_monolix <- tableBEResults(
 		projectFile = pkx_project_3,
-		roundMethod = "monolix",
+		roundMethod = "monolixSuiteRounding",
 		roundDigits = 2
 	)
 	expect_true(is.data.frame(table_monolix))
@@ -3664,10 +4012,18 @@ test_that("tableBEResults rounding methods", {
 	# Test signif rounding
 	table_signif <- tableBEResults(
 		projectFile = pkx_project_3,
-		roundMethod = "signif",
+		roundMethod = "significantFigures",
 		roundDigits = 3
 	)
 	expect_true(is.data.frame(table_signif))
+
+	# Test significantFiguresPreserved rounding
+	table_signif_preserved <- tableBEResults(
+		projectFile = pkx_project_3,
+		roundMethod = "significantFiguresPreserved",
+		roundDigits = 3
+	)
+	expect_true(is.data.frame(table_signif_preserved))
 
 	# Test no rounding
 	table_none <- tableBEResults(
@@ -3675,6 +4031,18 @@ test_that("tableBEResults rounding methods", {
 		roundMethod = "none"
 	)
 	expect_true(is.data.frame(table_none))
+})
+
+test_that("tableBEResults mock = TRUE masks output", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	table_real <- tableBEResults(projectFile = pkx_project_3, mock = FALSE)
+	table_mock <- tableBEResults(projectFile = pkx_project_3, mock = TRUE)
+
+	expect_true(is.data.frame(table_mock))
+	expect_equal(dim(table_real), dim(table_mock))
+	expect_true(any(grepl("xx", as.matrix(table_mock))))
 })
 
 test_that("tableBEResults prettyLabels", {
@@ -3728,7 +4096,7 @@ test_that("tableBEResults all arguments combined", {
 		projectFile  = pkx_project_3,
 		BEParams     = c("AUClast_D", "Cmax_D"),
 		roundDigits  = 2,
-		roundMethod  = "monolix",
+		roundMethod  = "monolixSuiteRounding",
 		units        = TRUE,
 		aliases      = TRUE,
 		BELimits     = TRUE,

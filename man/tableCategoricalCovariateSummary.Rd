@@ -14,8 +14,9 @@ tableCategoricalCovariateSummary(
   filterCovariates = NULL,
   filterIds = NULL,
   roundDigits = 2,
-  roundMethod = c("monolix", "signif", "none"),
-  mock = list(enable = FALSE, max_rows = "all")
+  roundMethod = c("monolixSuiteRounding", "significantFigures",
+    "significantFiguresPreserved", "none"),
+  mock = FALSE
 )
 }
 \arguments{
@@ -54,13 +55,18 @@ no ID filtering is applied.}
 
 \item{roundDigits}{number of digits to display.}
 
-\item{roundMethod}{"monolix" to use MonolixSuite rounding where digits specifies
-the number of places after the decimal, or "signif" for digits to specify the
-number of significant figures.}
+\item{roundMethod}{"monolixSuiteRounding" to use MonolixSuite rounding where digits specifies
+the number of significant digits of the fractional part (integer part untouched),
+"significantFigures" for digits to specify the number of significant figures using the
+standard/textbook definition (zeroes non-significant digits before the decimal for large
+numbers), or "significantFiguresPreserved" for the same but never zeroing digits before the
+decimal - once the integer part already has as many digits as requested, the value is simply
+rounded to the nearest whole number.}
 
-\item{mock}{List controlling output masking. \code{mock$enable = TRUE} replaces data
-values with placeholders for documentation outputs. \code{mock$max_rows} controls
-the number of rows kept (default \code{"all"}).}
+\item{mock}{Logical; if \code{TRUE}, masks the table for documentation / example
+outputs: data values become placeholders (e.g. \code{"xx.xx"}) and real category
+codes become generic labels (\code{"Category 1"}, ...). Covariate names are kept.
+Default \code{FALSE}.}
 }
 \value{
 a data.frame

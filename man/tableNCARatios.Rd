@@ -16,17 +16,77 @@ tableNCARatios(
   filterCovariates = NULL,
   filterIds = NULL,
   roundDigits = 3,
-  roundMethod = c("monolix", "signif", "none"),
+  roundMethod = c("monolixSuiteRounding", "significantFigures",
+    "significantFiguresPreserved", "none"),
   prettyLabels = TRUE,
-  customAliases = NULL
+  customAliases = NULL,
+  mock = FALSE
 )
 }
 \arguments{
+\item{projectFile}{Character string specifying the path to a PKanalix project file (.pkx).
+If \code{NULL} (default), uses the currently loaded project.}
+
 \item{splitCovariates}{character vector of column names to stratify by (must be in indivratio but not id/ratio columns).}
+
+\item{stratifyColumns}{Logical; if \code{TRUE}, creates a stratified table layout with
+separate columns for each covariate combination plus an "Overall" column. If \code{FALSE}
+(default), splitCovariates appear as separate columns on the left side of the table.
+Only applicable when \code{splitCovariates} is specified. Only compatible with
+\code{useWideFormat = FALSE}.}
+
+\item{covariateLabels}{Character vector of custom labels for splitCovariates, must be the
+same length as \code{splitCovariates}. If \code{NULL} (default), the original covariate names are
+used. These labels appear in column headers when \code{stratifyColumns = TRUE}.}
+
+\item{ratioParams}{Character vector of ratio parameter names to include. If \code{NULL}
+(default), all available ratio parameters are used.}
+
+\item{metrics}{Character vector specifying which summary statistics to include in the
+output table. If \code{NULL} (default), all available metrics are included.}
 
 \item{useWideFormat}{logical; if TRUE (default) results are wide; if FALSE, results are pivoted to long format.}
 
-\item{digits}{number of digits to round numeric statistics (default = 3).}
+\item{includeId}{Logical. If \code{TRUE} and \code{useWideFormat = FALSE}, adds individual
+subject ratio values below the summary statistics in the "Statistic" column.
+Default is \code{FALSE}. Only works when \code{useWideFormat = FALSE} and
+\code{stratifyColumns = FALSE}.}
+
+\item{filterCovariates}{Named list where names are categorical covariate names
+and values are vectors of allowed values, e.g. \code{list(SEX = "Male")}. If \code{NULL}
+(default), no covariate filtering is applied.}
+
+\item{filterIds}{Character or numeric vector of subject IDs to include. If \code{NULL}
+(default), no ID filtering is applied.}
+
+\item{roundDigits}{number of digits to round numeric statistics (default = 3).}
+
+\item{roundMethod}{Character string specifying the rounding method. Options are:
+\itemize{
+\item \code{"monolixSuiteRounding"} (default): Adaptive rounding that keeps all digits before the
+decimal untouched and rounds only the fractional part to the specified number of
+significant digits (adds extra digits for values < 1)
+\item \code{"significantFigures"}: Standard significant figures rounding - zeroes non-significant
+digits before the decimal for large numbers
+\item \code{"significantFiguresPreserved"}: Modified significant figures rounding that never zeroes
+digits before the decimal - once the integer part already has as many digits as requested,
+the value is simply rounded to the nearest whole number
+\item \code{"none"}: No rounding performed
+}}
+
+\item{prettyLabels}{Logical; if \code{TRUE} (default), converts column names to
+human-readable labels.}
+
+\item{customAliases}{Named vector or 2-column dataframe mapping parameter names
+to custom alias labels. Ratios are dimensionless, so no \code{units} argument is offered.}
+
+\item{mock}{Logical; if \code{TRUE}, masks the table for documentation / example
+outputs: metric values become placeholders (e.g. \code{"xx.xx"}), and
+\code{splitCovariates} values become generic labels (\code{"Category 1"}, ...). The
+parameter name and \code{Statistic}/\code{Section} labels are kept, except that with
+\code{includeId = TRUE} the individual subject IDs listed under \code{Statistic}
+are relabeled (\code{"id1"}, \code{"id2"}, ...), since those are real identifiers.
+Default \code{FALSE}.}
 }
 \value{
 A data.frame with summary statistics for each ratio parameter, optionally stratified.
@@ -54,5 +114,13 @@ tableNCARatios(splitCovariates = "DOSE", useWideFormat = TRUE)
 
 # Stratified by DOSE and VISIT, results in long format:
 tableNCARatios(splitCovariates = c("DOSE", "VISIT"), useWideFormat = FALSE)
+
+\dontrun{
+# Restrict to specific subjects and covariate values
+tableNCARatios(filterCovariates = list(SEX = "Male"), filterIds = c(1, 2, 17))
+
+# Masked table for documentation / example outputs
+tableNCARatios(mock = TRUE)
+}
 
 }

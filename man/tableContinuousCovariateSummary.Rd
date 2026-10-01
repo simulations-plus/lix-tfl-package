@@ -6,7 +6,8 @@
 \usage{
 tableContinuousCovariateSummary(
   projectFile = NULL,
-  covDisplayLabels = NULL,
+  customAliases = NULL,
+  customUnits = NULL,
   splitCovariates = NULL,
   metrics = NULL,
   useWideFormat = TRUE,
@@ -15,14 +16,22 @@ tableContinuousCovariateSummary(
   filterCovariates = NULL,
   filterIds = NULL,
   roundDigits = 2,
-  roundMethod = c("monolix", "signif", "none"),
-  prettyLabels = TRUE
+  roundMethod = c("monolixSuiteRounding", "significantFigures",
+    "significantFiguresPreserved", "none"),
+  prettyLabels = TRUE,
+  mock = FALSE
 )
 }
 \arguments{
 \item{projectFile}{path to project file (Monolix: .mlxtran or PKanalix: .pkx) or NULL to use the currently loaded project}
 
-\item{covDisplayLabels}{(optional) data.frame with columns covariate and label for the dataset covariate name}
+\item{customAliases}{Named vector or 2-column dataframe mapping dataset covariate names to
+custom display labels. Example: \code{c(WEIGHT = "Weight", AGE = "Age")}.
+Covariates not in the mapping keep their original names.}
+
+\item{customUnits}{Named vector or 2-column dataframe mapping dataset covariate names to
+custom unit labels. Example: \code{c(WEIGHT = "kg", HEIGHT = "cm")}.
+Units are appended in parentheses: "Weight (kg)".}
 
 \item{splitCovariates}{vector of categorical covariates to stratify by, or NULL}
 
@@ -54,11 +63,21 @@ no ID filtering is applied.}
 
 \item{roundDigits}{number of digits to display}
 
-\item{roundMethod}{"monolix" to use MonolixSuite rounding where digits specifies the number of places after the decimal, or "signif"
-for digits to specify the number of significant figures}
+\item{roundMethod}{"monolixSuiteRounding" to use MonolixSuite rounding where digits specifies
+the number of significant digits of the fractional part (integer part untouched),
+"significantFigures" for digits to specify the number of significant figures using the
+standard/textbook definition (zeroes non-significant digits before the decimal for large
+numbers), or "significantFiguresPreserved" for the same but never zeroing digits before the
+decimal - once the integer part already has as many digits as requested, the value is simply
+rounded to the nearest whole number}
 
 \item{prettyLabels}{Logical; if \code{TRUE} (default), converts column names to
 human-readable labels (e.g., "CV" becomes "CV (\%)", "geoMean" becomes "Geometric Mean").}
+
+\item{mock}{Logical; if \code{TRUE}, masks the table for documentation / example
+outputs: data values become placeholders (e.g. \code{"xx.xx"}) and real category
+codes of \code{splitCovariates} become generic labels (\code{"Category 1"}, ...).
+Covariate names and statistic labels are kept. Default \code{FALSE}.}
 }
 \value{
 a data.frame
@@ -79,6 +98,12 @@ tableContinuousCovariateSummary(
     splitCovariates  = "ATRTNCA",
     filterCovariates = list(AVISIT = c("CYCLE 1 DAY 8", "CYCLE 1 DAY 15")),
     metrics          = c("N", "mean", "SD", "median", "min", "max")
+)
+
+# With custom aliases and units
+tableContinuousCovariateSummary(
+    customAliases = c(WEIGHT = "Weight", HEIGHT = "Height", AGE = "Age"),
+    customUnits   = c(WEIGHT = "kg", HEIGHT = "cm", AGE = "years")
 )
 }
 }
