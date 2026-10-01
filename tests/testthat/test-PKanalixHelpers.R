@@ -643,6 +643,79 @@ test_that("tableNCAParameters rounding methods", {
 	expect_equal(nrow(table_monolix), nrow(table_none))
 })
 
+test_that("tableNCAParameters roundByParameter data.frame overrides digits and method per parameter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	args <- list(
+		projectFile   = pkx_project_1,
+		ncaParams     = c("Cmax", "AUClast"),
+		metrics       = "mean",
+		useWideFormat = TRUE,
+		prettyLabels  = FALSE, units = FALSE, aliases = FALSE,
+		roundDigits   = 3, roundMethod = "monolixSuiteRounding")
+
+	base <- do.call(tableNCAParameters, args)
+	over <- do.call(tableNCAParameters, c(args, list(
+		roundByParameter = data.frame(parameter = "Cmax", digits = 1,
+																	method = "significantFigures",
+																	stringsAsFactors = FALSE))))
+
+	get_mean <- function(tb, p) tb$mean[tb$parameter == p]
+
+	# Overridden parameter changes, non-overridden parameter keeps global rounding
+	expect_false(isTRUE(all.equal(get_mean(base, "Cmax"), get_mean(over, "Cmax"))))
+	expect_equal(get_mean(base, "AUClast"), get_mean(over, "AUClast"))
+})
+
+test_that("tableNCAParameters roundByParameter accepts a named numeric vector (digits only)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	args <- list(
+		projectFile   = pkx_project_1,
+		ncaParams     = c("Cmax", "AUClast"),
+		metrics       = "mean",
+		useWideFormat = TRUE,
+		prettyLabels  = FALSE, units = FALSE, aliases = FALSE,
+		roundDigits   = 3, roundMethod = "monolixSuiteRounding")
+
+	base <- do.call(tableNCAParameters, args)
+	over <- do.call(tableNCAParameters, c(args, list(roundByParameter = c(Cmax = 1))))
+
+	get_mean <- function(tb, p) tb$mean[tb$parameter == p]
+
+	expect_false(isTRUE(all.equal(get_mean(base, "Cmax"), get_mean(over, "Cmax"))))
+	expect_equal(get_mean(base, "AUClast"), get_mean(over, "AUClast"))
+})
+
+test_that("tableNCAParameters roundByParameter ignores unknown parameters with a message", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	expect_message(
+		tableNCAParameters(projectFile = pkx_project_1, ncaParams = "Cmax", metrics = "mean",
+											 useWideFormat = TRUE, prettyLabels = FALSE, units = FALSE, aliases = FALSE,
+											 roundByParameter = c(Cmaxx = 2)),
+		"ignoring unknown parameter")
+
+	# Table is still produced; NULL override equals no override
+	a <- tableNCAParameters(projectFile = pkx_project_1, ncaParams = "Cmax", metrics = "mean",
+													useWideFormat = TRUE, prettyLabels = FALSE, units = FALSE, aliases = FALSE)
+	b <- tableNCAParameters(projectFile = pkx_project_1, ncaParams = "Cmax", metrics = "mean",
+													useWideFormat = TRUE, prettyLabels = FALSE, units = FALSE, aliases = FALSE,
+													roundByParameter = NULL)
+	expect_equal(a, b)
+})
+
+test_that("tableNCAParameters roundByParameter rejects invalid digits/method", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	expect_error(
+		tableNCAParameters(projectFile = pkx_project_1, ncaParams = "Cmax",
+											 roundByParameter = data.frame(parameter = "Cmax", digits = 2, method = "bogus")))
+	expect_error(
+		tableNCAParameters(projectFile = pkx_project_1, ncaParams = "Cmax",
+											 roundByParameter = c(Cmax = -1)))
+})
+
 test_that("tableNCAParameters mock = TRUE masks output", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
@@ -1495,10 +1568,10 @@ test_that("listingNCAParameters validates invalid NCA parameters", {
 	)
 })
 
-test_that("listingNCAParameters warns for partially invalid parameters", {
+test_that("listingNCAParameters messages for partially invalid parameters", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
-	expect_warning(
+	expect_message(
 		result <- listingNCAParameters(
 			projectFile = pkx_project_2,
 			ncaParams = c("Cmax", "INVALID_PARAM", "AUClast")
@@ -2076,14 +2149,14 @@ test_that("listingNCARatios validates invalid ratio parameters", {
 	)
 })
 
-test_that("listingNCARatios warns for partially invalid parameters", {
+test_that("listingNCARatios messages for partially invalid parameters", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get one valid ratio parameter
 	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
 	valid_ratio <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))[1]
 
-	expect_warning(
+	expect_message(
 		result <- listingNCARatios(
 			projectFile = pkx_project_5,
 			ratioParams = c(valid_ratio, "INVALID_PARAM")
@@ -3771,12 +3844,12 @@ test_that("tableBEResults with specific BEParams", {
 	expect_lte(nrow(table), nrow(table_all))
 })
 
-test_that("tableBEResults with invalid BEParams warns", {
+test_that("tableBEResults with invalid BEParams messages", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_3), "Test project not available")
 
 	# Test with mix of valid and invalid parameters
-	expect_warning(
+	expect_message(
 		tableBEResults(
 			projectFile = pkx_project_3,
 			BEParams    = c("AUClast_D", "INVALID_PARAM")
