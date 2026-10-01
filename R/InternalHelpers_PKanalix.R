@@ -1532,7 +1532,18 @@
 		}
 		param <- as.character(get_col("parameter"))
 		dig   <- get_col("digits")
-		dig   <- if (is.null(dig)) NA_real_ else suppressWarnings(as.numeric(as.character(dig)))
+		if (is.null(dig)) {
+			dig <- NA_real_
+		} else {
+			dig_chr <- as.character(dig)
+			dig     <- suppressWarnings(as.numeric(dig_chr))
+			# Reject values that were supplied but failed to parse (vs. genuinely missing NA)
+			bad_dig <- !is.na(dig_chr) & trimws(dig_chr) != "" & is.na(dig)
+			if (any(bad_dig)) {
+				stop("roundByParameter digits must be numeric; invalid value(s): ",
+						 paste(unique(dig_chr[bad_dig]), collapse = ", "), call. = FALSE)
+			}
+		}
 		meth  <- get_col("method")
 		meth  <- if (is.null(meth)) NA_character_ else as.character(meth)
 
