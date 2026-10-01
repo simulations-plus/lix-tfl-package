@@ -1138,9 +1138,10 @@ listingDosingRegimen <- function(projectFile      = NULL,
 	df <- lixoftConnectors::getInterpretedData()
 
 	# Split covariates that live directly in the dataset (e.g. catcov columns).
-	split_in_df <- intersect(splitCovariates, colnames(df))
+	split_in_df  <- intersect(splitCovariates, colnames(df))
+	filter_in_df <- intersect(names(filterCovariates), colnames(df))
 
-	keep_cols <- c(id_col, occ_cols, admid_col, split_in_df, time_col, amount_col,
+	keep_cols <- c(id_col, occ_cols, admid_col, split_in_df, filter_in_df, time_col, amount_col,
 								 descriptor_cols, evid_col)
 	keep_cols <- intersect(keep_cols, colnames(df))
 
@@ -1184,6 +1185,11 @@ listingDosingRegimen <- function(projectFile      = NULL,
 	# ---------------------------------------------------------------------------
 	# Filters
 	listing <- .applyFilters(listing, filterCovariates, filterIds, id_col = "id")
+
+	filter_only <- setdiff(filter_in_df, unique(c(splitCovariates, strat_cov_names)))
+	if (length(filter_only) > 0) {
+		listing <- listing %>% dplyr::select(-dplyr::any_of(filter_only))
+	}
 
 	# ---------------------------------------------------------------------------
 	# Sort & finalize column order.
