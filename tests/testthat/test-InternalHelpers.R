@@ -253,4 +253,4 @@ test_that("modelBuildingStepGroups separates rounds by (step, reference)", {
 
 ################################################################################
 # setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
-# testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-InernalHelpers.R")
+# testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-InternalHelpers.R")
