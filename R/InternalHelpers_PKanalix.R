@@ -2876,7 +2876,7 @@
 			dplyr::arrange(dplyr::across(
 				dplyr::all_of(splitCovariates),
 				~{
-					num <- suppressWarnings(as.numeric(.x))
+					num <- suppressWarnings(as.numeric(as.character(.x)))
 					if (all(is.na(num))) .x else num
 				}
 			))
