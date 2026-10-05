@@ -969,6 +969,13 @@ tableNCAParameters <- function(projectFile      = NULL,
 #'     digits before the decimal - once the integer part already has as many digits as requested,
 #'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding performed
+#' @param roundByParameter Optional per-parameter rounding overrides on top of the
+#'   global `roundDigits`/`roundMethod`. Either a named numeric vector of digits
+#'   (`c(AUClast_ratio = 2, Cmax_ratio = 4)`; method falls back to `roundMethod`), or a
+#'   data.frame with columns `parameter`, `digits` and/or `method`
+#'   (`NA`/missing entries fall back to the global settings). Parameters not
+#'   listed keep the global settings. Unknown parameter names are ignored with a
+#'   message. Default `NULL` (global rounding everywhere).
 #' @param prettyLabels Logical; if `TRUE` (default), converts column names to
 #'   human-readable labels.
 #' @param customAliases Named vector or 2-column dataframe mapping parameter names
@@ -1014,6 +1021,7 @@ tableNCARatios <- function(projectFile      = NULL,
 													 filterIds        = NULL,
 													 roundDigits      = 3,
 													 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+													 roundByParameter = NULL,
 													 prettyLabels     = TRUE,
 													 customAliases    = NULL,
 													 mock             = FALSE) {
@@ -1040,7 +1048,11 @@ tableNCARatios <- function(projectFile      = NULL,
 	aliases_df <- .normalizeAliasMapping(customAliases, "aliases")
 
 	# Validate set parameters
-	.validateNCAParametersSelection(ratioParams, ratio = TRUE)  # Early validation
+	available_params <- .validateNCAParametersSelection(ratioParams, ratio = TRUE)  # Early validation
+
+	# Normalize + validate per-parameter rounding overrides (keyed by original ratio names)
+	round_overrides <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
+	round_overrides <- .validateRoundOverrides(round_overrides, available_params, context = "tableNCARatios")
 
 	# Validate: stratifyColumns only works with long format
 	if (stratifyColumns && useWideFormat) {
@@ -1089,7 +1101,7 @@ tableNCARatios <- function(projectFile      = NULL,
 
 		if (length(safe_cov_names) > 0) {
 			# unique() collapses the per-occasion rows (identical for invariant
-			# covariates) to one row per id, preventing the merge row explosion.
+			# covariates) to one row per id, preventing merge row explosion.
 			strat_cov_df <- unique(cov_info$covariate[, c("id", safe_cov_names), drop = FALSE])
 			indivratio   <- merge(indivratio, strat_cov_df, by = "id", all.x = TRUE, sort = FALSE)
 		}
@@ -1127,12 +1139,15 @@ tableNCARatios <- function(projectFile      = NULL,
 			id_col    = "id",
 			group_by  = c(splitCovariates, "Parameter"))
 
-		# Apply rounding
-		summary_stats <- .round_num(
-			to_round        = summary_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = c("Parameter", splitCovariates))
+		# Apply rounding (honoring per-parameter overrides)
+		summary_stats <- .applyRounding(
+			df        = summary_stats,
+			digits    = roundDigits,
+			method    = roundMethod,
+			exclude   = c("Parameter", splitCovariates),
+			overrides = round_overrides,
+			paramCol  = "Parameter",
+			paramAxis = "row")
 
 		# Add combined metrics
 		summary_stats <- .combinedStats(summary_stats)
@@ -1163,12 +1178,15 @@ tableNCARatios <- function(projectFile      = NULL,
 			id_col    = "id",
 			group_by  = "Parameter")
 
-		# Apply rounding to overall
-		overall_stats <- .round_num(
-			to_round        = overall_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = "Parameter")
+		# Apply rounding to overall (honoring per-parameter overrides)
+		overall_stats <- .applyRounding(
+			df        = overall_stats,
+			digits    = roundDigits,
+			method    = roundMethod,
+			exclude   = "Parameter",
+			overrides = round_overrides,
+			paramCol  = "Parameter",
+			paramAxis = "row")
 
 		# Add combined metrics to overall
 		overall_stats <- .combinedStats(overall_stats)
@@ -1214,12 +1232,15 @@ tableNCARatios <- function(projectFile      = NULL,
 				group_by  = "Parameter")
 		}
 
-		# Apply rounding
-		summary_tbl <- .round_num(
-			to_round        = summary_tbl,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = c("Parameter", splitCovariates))
+		# Apply rounding (honoring per-parameter overrides)
+		summary_tbl <- .applyRounding(
+			df        = summary_tbl,
+			digits    = roundDigits,
+			method    = roundMethod,
+			exclude   = c("Parameter", splitCovariates),
+			overrides = round_overrides,
+			paramCol  = "Parameter",
+			paramAxis = "row")
 
 		# Add combined metrics
 		summary_tbl <- .combinedStats(summary_tbl)
@@ -1266,6 +1287,7 @@ tableNCARatios <- function(projectFile      = NULL,
 			params          = ratioParams,
 			roundDigits     = roundDigits,
 			roundMethod     = roundMethod,
+			roundOverrides  = round_overrides,
 			units           = FALSE,
 			units_df        = NULL,
 			aliases         = FALSE,
