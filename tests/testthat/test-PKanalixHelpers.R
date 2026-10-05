@@ -716,6 +716,82 @@ test_that("tableNCAParameters roundByParameter rejects invalid digits/method", {
 											 roundByParameter = c(Cmax = -1)))
 })
 
+test_that("tableNCAParameters roundByParameter applies per-parameter rounding to individual values (includeId)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	common <- list(
+		projectFile     = pkx_project_1,
+		useWideFormat   = FALSE,
+		splitCovariates = "TINFCAT",
+		includeId       = TRUE,
+		ncaParams       = c("Cmax", "AUClast"),
+		metrics         = c("MeanSD", "GeomCV", "median"),
+		roundDigits     = 1,
+		roundMethod     = "monolixSuiteRounding",
+		prettyLabels    = FALSE, units = FALSE, aliases = FALSE)  # keep raw param col names
+
+	base <- do.call(tableNCAParameters, common)
+	over <- do.call(tableNCAParameters, c(common, list(
+		roundByParameter = data.frame(parameter = "Cmax", digits = 3,
+																	method = "monolixSuiteRounding",
+																	stringsAsFactors = FALSE))))
+
+	expect_true(all(c("Statistic", "Section") %in% names(over)))
+
+	ind_base <- base[base$Section == "INDIVIDUAL", , drop = FALSE]
+	ind_over <- over[over$Section == "INDIVIDUAL", , drop = FALSE]
+	expect_gt(nrow(ind_over), 0)
+	expect_equal(dim(ind_base), dim(ind_over))
+
+	# Overridden parameter: individual values change; non-overridden: unchanged
+	expect_false(isTRUE(all.equal(ind_base$Cmax, ind_over$Cmax)))
+	expect_equal(ind_over$AUClast, ind_base$AUClast)
+})
+
+test_that("tableNCAParameters includeId individual values match independent per-parameter rounding", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# Decisive check: each overridden individual cell equals the raw parameter value
+	# rounded with that parameter's own digits/method (via the package's .round_num()).
+	cfg <- data.frame(parameter = c("Cmax",   "AUClast"),
+										digits    = c(3,         4),
+										method    = c("monolixSuiteRounding", "significantFigures"),
+										stringsAsFactors = FALSE)
+
+	tbl <- tableNCAParameters(
+		projectFile      = pkx_project_1,
+		useWideFormat    = FALSE,
+		splitCovariates  = "TINFCAT",
+		includeId        = TRUE,
+		ncaParams        = cfg$parameter,
+		metrics          = c("MeanSD", "median"),
+		roundDigits      = 1,
+		roundMethod      = "monolixSuiteRounding",
+		roundByParameter = cfg,
+		prettyLabels     = FALSE, units = FALSE, aliases = FALSE)
+
+	ind <- tbl[tbl$Section == "INDIVIDUAL", , drop = FALSE]
+	expect_gt(nrow(ind), 0)
+
+	# Raw per-subject values from the loaded project
+	raw <- lixoftConnectors::getNCAIndividualParameters()$parameters
+
+	# Only verify exact per-subject values when there are no occasions, i.e. exactly
+	# one INDIVIDUAL row per subject (otherwise Statistic <-> id is not 1:1).
+	skip_if(nrow(ind) != dplyr::n_distinct(raw$id),
+					"Occasions present; per-subject exact match not applicable")
+
+	row_for_id <- match(as.character(raw$id), as.character(ind$Statistic))
+	for (i in seq_len(nrow(cfg))) {
+		p        <- cfg$parameter[i]
+		exp_vals <- .round_num(raw[[p]], digits = cfg$digits[i],
+													 rounding_method = cfg$method[i])
+		obs_vals <- suppressWarnings(as.numeric(ind[[p]]))[row_for_id]
+		expect_equal(obs_vals, unname(exp_vals),
+								 info = paste("per-parameter rounding mismatch for", p))
+	}
+})
+
 test_that("tableNCAParameters mock = TRUE masks output", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
