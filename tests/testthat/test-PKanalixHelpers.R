@@ -1790,6 +1790,76 @@ test_that("listingNCAParameters accepts customAliases/customUnits as a data.fram
 	expect_true(any(grepl("ng/mL",    nm, fixed = TRUE)))
 })
 
+test_that("listingNCAParameters roundByParameter data.frame overrides digits and method per parameter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	# aliases/units FALSE keeps raw parameter codes as column names, so overrides
+	# (and the per-column comparison below) key on the same names.
+	args <- list(
+		projectFile = pkx_project_2,
+		ncaParams   = c("Cmax", "AUClast"),
+		roundDigits = 3, roundMethod = "monolixSuiteRounding",
+		units = FALSE, aliases = FALSE)
+
+	base <- do.call(listingNCAParameters, args)
+	over <- do.call(listingNCAParameters, c(args, list(
+		roundByParameter = data.frame(parameter = "Cmax", digits = 1,
+																	method = "significantFigures",
+																	stringsAsFactors = FALSE))))
+
+	# Overridden column changes; non-overridden column keeps global rounding
+	expect_false(isTRUE(all.equal(base$Cmax, over$Cmax)))
+	expect_equal(base$AUClast, over$AUClast)
+})
+
+test_that("listingNCAParameters roundByParameter accepts a named numeric vector (digits only)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	args <- list(
+		projectFile = pkx_project_2,
+		ncaParams   = c("Cmax", "AUClast"),
+		roundDigits = 3, roundMethod = "monolixSuiteRounding",
+		units = FALSE, aliases = FALSE)
+
+	base <- do.call(listingNCAParameters, args)
+	over <- do.call(listingNCAParameters, c(args, list(roundByParameter = c(Cmax = 1))))
+
+	expect_false(isTRUE(all.equal(base$Cmax, over$Cmax)))
+	expect_equal(base$AUClast, over$AUClast)
+})
+
+test_that("listingNCAParameters roundByParameter ignores unknown parameters with a message", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	expect_message(
+		listingNCAParameters(projectFile = pkx_project_2, ncaParams = "Cmax",
+												 units = FALSE, aliases = FALSE,
+												 roundByParameter = c(Cmaxx = 2)),
+		"ignoring unknown parameter")
+
+	# Listing is still produced; NULL override equals no override
+	a <- listingNCAParameters(projectFile = pkx_project_2, ncaParams = "Cmax",
+														units = FALSE, aliases = FALSE)
+	b <- listingNCAParameters(projectFile = pkx_project_2, ncaParams = "Cmax",
+														units = FALSE, aliases = FALSE, roundByParameter = NULL)
+	expect_equal(a, b)
+})
+
+test_that("listingNCAParameters roundByParameter rejects invalid digits/method", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	expect_error(
+		listingNCAParameters(projectFile = pkx_project_2, ncaParams = "Cmax",
+												 roundByParameter = data.frame(parameter = "Cmax", digits = 2, method = "bogus")))
+	expect_error(
+		listingNCAParameters(projectFile = pkx_project_2, ncaParams = "Cmax",
+												 roundByParameter = c(Cmax = -1)))
+})
+
 ################################################################################
 ################################################################################
 # Tests for listingNCAConcentration --------------------------------------------
@@ -2162,6 +2232,75 @@ test_that("listingNCARatios applies rounding with monolixSuiteRounding method", 
 
 	expect_s3_class(result, "data.frame")
 	expect_gt(ncol(result), 1)
+})
+
+test_that("listingNCARatios roundByParameter data.frame overrides digits and method per parameter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# Ratio parameter columns in pkx_project_5 (aliases are a no-op for ratios,
+	# so these raw codes are also the column names that overrides key on).
+	selected <- c("AUC_inf_Per1_Per2", "AUC_inf_Per1_Per3")
+	args <- list(
+		projectFile = pkx_project_5,
+		ratioParams = selected,
+		roundDigits = 3, roundMethod = "monolixSuiteRounding")
+
+	base <- do.call(listingNCARatios, args)
+	over <- do.call(listingNCARatios, c(args, list(
+		roundByParameter = data.frame(parameter = selected[1], digits = 1,
+																	method = "significantFigures",
+																	stringsAsFactors = FALSE))))
+
+	# Overridden column changes; non-overridden column keeps global rounding
+	expect_false(isTRUE(all.equal(base[[selected[1]]], over[[selected[1]]])))
+	expect_equal(base[[selected[2]]], over[[selected[2]]])
+})
+
+test_that("listingNCARatios roundByParameter accepts a named numeric vector (digits only)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	selected <- c("AUC_inf_Per1_Per2", "AUC_inf_Per1_Per3")
+	args <- list(
+		projectFile = pkx_project_5,
+		ratioParams = selected,
+		roundDigits = 3, roundMethod = "monolixSuiteRounding")
+
+	base <- do.call(listingNCARatios, args)
+	over <- do.call(listingNCARatios, c(args, list(
+		roundByParameter = c(AUC_inf_Per1_Per2 = 1))))
+
+	expect_false(isTRUE(all.equal(base[[selected[1]]], over[[selected[1]]])))
+	expect_equal(base[[selected[2]]], over[[selected[2]]])
+})
+
+test_that("listingNCARatios roundByParameter ignores unknown parameters with a message", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	expect_message(
+		listingNCARatios(projectFile = pkx_project_5,
+										 roundByParameter = c(definitelyNotAParam = 2)),
+		"ignoring unknown parameter")
+
+	# Listing is still produced; NULL override equals no override
+	a <- listingNCARatios(projectFile = pkx_project_5)
+	b <- listingNCARatios(projectFile = pkx_project_5, roundByParameter = NULL)
+	expect_equal(a, b)
+})
+
+test_that("listingNCARatios roundByParameter rejects invalid digits/method", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	expect_error(
+		listingNCARatios(projectFile = pkx_project_5,
+										 roundByParameter = data.frame(parameter = "AUC_inf_Per1_Per2",
+																									 digits = 2, method = "bogus")))
+	expect_error(
+		listingNCARatios(projectFile = pkx_project_5,
+										 roundByParameter = c(AUC_inf_Per1_Per2 = -1)))
 })
 
 test_that("listingNCARatios aliases argument (not yet functional)", {

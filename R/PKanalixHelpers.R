@@ -935,7 +935,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 #'  2. Identifies candidate grouping variables (all columns except id and ratio columns).
 #'  3. Reshapes the data into long format (Parameter, Ratio).
 #'  4. Summarises across subjects to provide descriptive statistics (N, Min, Q1, Mean, Median, Q3, Max).
-#'  5. Returns results either in wide format (one row per Parameter × group) or long format (Statistic/Value pairs).
+#'  5. Returns results either in wide format (one row per Parameter Ã— group) or long format (Statistic/Value pairs).
 #'
 #' @param projectFile Character string specifying the path to a PKanalix project file (.pkx).
 #'   If `NULL` (default), uses the currently loaded project.
@@ -1784,7 +1784,7 @@ listingAbbreviation <- function(projectFile   = NULL,
 #'   with exactly one nominal time point.
 #'
 #'   - **Used concentrations:** After long-formatting, the table is joined with
-#'   \code{lixoftConnectors::getPointsIncludedForLambdaZ()}, which indicates which concentration–
+#'   \code{lixoftConnectors::getPointsIncludedForLambdaZ()}, which indicates which concentrationâ€“
 #'   time points were used in the lambda-z calculation and provides censoring
 #'   flags.
 #'
@@ -1940,7 +1940,7 @@ listingNCAConcentration <- function(projectFile      = NULL,
 				dplyr::left_join(indiv_nom, by = c("id", splitCovariates, "row_id")) %>%
 				dplyr::select(-row_id, -ActualTimeLabel, -NominalTimeLabel, -dummyConc)
 		} else {
-			# User requested nominal time but it's not available ← ADD THIS CASE
+			# User requested nominal time but it's not available â† ADD THIS CASE
 			warning("No nominal time available in project; only actual time will be included.")
 			indiv <- indiv_actual %>% dplyr::select(-row_id, -ActualTimeLabel)
 		}
@@ -2057,6 +2057,17 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #' @param roundDigits Numeric. Number of digits for rounding (default: 3).
 #' @param roundMethod Character. Rounding method: "monolixSuiteRounding" (default),
 #'   "significantFigures", "significantFiguresPreserved", or "none".
+#' @param roundByParameter Optional per-parameter rounding overrides on top of the
+#'   global `roundDigits`/`roundMethod`, supplied in one of two forms (mirroring
+#'   `customAliases`/`customUnits`):
+#'   - a named numeric vector of digits, e.g. `c(Cmax = 2, AUClast = 4)` (the
+#'     rounding method then falls back to the global `roundMethod`); or
+#'   - a 3-column data.frame with columns `parameter`, `digits` and `method`, e.g.
+#'     `data.frame(parameter = "Cmax", digits = 2, method = "significantFigures")`.
+#'     `NA`/missing `digits` or `method` entries fall back to the global settings.
+#'
+#'   Parameters not listed keep the global settings. Unknown parameter names are
+#'   ignored with a message. Default `NULL` (global rounding everywhere).
 #' @param units Logical. If TRUE (default), parameter units are added to column names.
 #' @param aliases Logical. If TRUE (default), parameter names are replaced with their aliases.
 #' @param customUnits Named vector or 2-column dataframe mapping parameter names
@@ -2118,6 +2129,7 @@ listingNCAParameters <- function(projectFile      = NULL,
 																 filterIds        = NULL,
 																 roundDigits      = 3,
 																 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+																 roundByParameter = NULL,
 																 units            = TRUE,
 																 aliases          = TRUE,
 																 customUnits      = NULL,
@@ -2139,7 +2151,11 @@ listingNCAParameters <- function(projectFile      = NULL,
 	# Validate set splitCovariates
 	.validateCovariateSelection(splitCovariates, ratio = FALSE)
 	# Validate set parameters
-	.validateNCAParametersSelection(ncaParams, ratio = FALSE)
+	available_params <- .validateNCAParametersSelection(ncaParams, ratio = FALSE)
+
+	round_overrides <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
+	round_overrides <- .validateRoundOverrides(round_overrides, available_params,
+																						 context = "listingNCAParameters")
 
 	# Normalize custom alias/unit mappings
 	aliases_df <- .normalizeAliasMapping(customAliases, "aliases")
@@ -2174,12 +2190,13 @@ listingNCAParameters <- function(projectFile      = NULL,
 		indivNCA <- indivNCA %>% dplyr::select(dplyr::all_of(cols_to_keep))
 	}
 
-	# Apply rounding to parameter columns (BEFORE renaming)
-	indivNCA <- .round_num(
-		to_round        = indivNCA,
-		digits          = roundDigits,
-		rounding_method = roundMethod,
-		exclude         = c("id", all_splitCovariates, strat_cov_names))
+	indivNCA <- .applyRounding(
+		df        = indivNCA,
+		digits    = roundDigits,
+		method    = roundMethod,
+		exclude   = c("id", all_splitCovariates, strat_cov_names),
+		overrides = round_overrides,
+		paramAxis = "column")
 
 	# Identify parameter columns (exclude id, all splitCovariates and merged strat covariates)
 	param_cols <- setdiff(names(indivNCA), c("id", all_splitCovariates, strat_cov_names))
@@ -2187,7 +2204,7 @@ listingNCAParameters <- function(projectFile      = NULL,
 	# Create temporary data frame with parameter names
 	temp_df <- data.frame(parameter = param_cols, stringsAsFactors = FALSE)
 
-	# Apply units/aliases formatting
+	temp_df_formatted <- temp_df
 	if (isTRUE(units) || isTRUE(aliases)) {
 		temp_df_formatted <- .addUnitsAliases(
 			temp_df,
@@ -2250,6 +2267,17 @@ listingNCAParameters <- function(projectFile      = NULL,
 #' @param roundDigits Numeric. Number of digits for rounding (default: 3).
 #' @param roundMethod Character. Rounding method: "monolixSuiteRounding" (default),
 #'   "significantFigures", "significantFiguresPreserved", or "none".
+#' @param roundByParameter Optional per-parameter rounding overrides on top of the
+#'   global `roundDigits`/`roundMethod`, supplied in one of two forms (mirroring
+#'   `customAliases`):
+#'   - a named numeric vector of digits, e.g. `c(Cmax_ratio = 2, AUClast_ratio = 4)`
+#'     (the rounding method then falls back to the global `roundMethod`); or
+#'   - a 3-column data.frame with columns `parameter`, `digits` and `method`, e.g.
+#'     `data.frame(parameter = "Cmax_ratio", digits = 2, method = "significantFigures")`.
+#'     `NA`/missing `digits` or `method` entries fall back to the global settings.
+#'
+#'   Parameters not listed keep the global settings. Unknown parameter names are
+#'   ignored with a message. Default `NULL` (global rounding everywhere).
 #' @param aliases Logical. If TRUE (default), parameter names are replaced with their aliases.
 #' @param customAliases Named vector or 2-column dataframe mapping parameter names
 #'   to custom alias labels. Example: `c(Cmax_ratio = "C[[sub:max]] ratio")`.
@@ -2312,6 +2340,7 @@ listingNCARatios <- function(projectFile      = NULL,
 														 filterIds        = NULL,
 														 roundDigits      = 3,
 														 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+														 roundByParameter = NULL,
 														 aliases          = TRUE,
 														 customAliases   = NULL,
 														 mock             = FALSE){
@@ -2330,7 +2359,11 @@ listingNCARatios <- function(projectFile      = NULL,
 	# Validate set splitCovariates (rejects occasion-varying split covariates for ratios)
 	.validateCovariateSelection(splitCovariates, ratio = TRUE)
 	# Validate set parameters
-	.validateNCAParametersSelection(ratioParams, ratio = TRUE)
+	available_params <- .validateNCAParametersSelection(ratioParams, ratio = TRUE)
+
+	round_overrides <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
+	round_overrides <- .validateRoundOverrides(round_overrides, available_params,
+																						 context = "listingNCARatios")
 
 	# Normalize custom alias mapping
 	aliases_df        <- .normalizeAliasMapping(customAliases, "aliases")
@@ -2376,12 +2409,13 @@ listingNCARatios <- function(projectFile      = NULL,
 		indivRatios <- indivRatios %>% dplyr::select(dplyr::all_of(cols_to_keep))
 	}
 
-	# Apply rounding to parameter columns (BEFORE renaming)
-	indivRatios <- .round_num(
-		to_round        = indivRatios,
-		digits          = roundDigits,
-		rounding_method = roundMethod,
-		exclude         = c("id", all_splitCovariates, merged_strat_covs))
+	indivRatios <- .applyRounding(
+		df        = indivRatios,
+		digits    = roundDigits,
+		method    = roundMethod,
+		exclude   = c("id", all_splitCovariates, merged_strat_covs),
+		overrides = round_overrides,
+		paramAxis = "column")
 
 	# Identify parameter columns (exclude id, all splitCovariates and merged strat covariates)
 	param_cols <- setdiff(names(indivRatios), c("id", all_splitCovariates, merged_strat_covs))

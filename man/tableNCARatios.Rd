@@ -18,6 +18,7 @@ tableNCARatios(
   roundDigits = 3,
   roundMethod = c("monolixSuiteRounding", "significantFigures",
     "significantFiguresPreserved", "none"),
+  roundByParameter = NULL,
   prettyLabels = TRUE,
   customAliases = NULL,
   mock = FALSE
@@ -73,6 +74,20 @@ digits before the decimal - once the integer part already has as many digits as 
 the value is simply rounded to the nearest whole number
 \item \code{"none"}: No rounding performed
 }}
+
+\item{roundByParameter}{Optional per-parameter rounding overrides on top of the
+global \code{roundDigits}/\code{roundMethod}, supplied in one of two forms (mirroring
+\code{customAliases}):
+\itemize{
+\item a named numeric vector of digits, e.g. \code{c(AUClast_ratio = 2, Cmax_ratio = 4)}
+(the rounding method then falls back to the global \code{roundMethod}); or
+\item a 3-column data.frame with columns \code{parameter}, \code{digits} and \code{method}, e.g.
+\code{data.frame(parameter = "AUClast_ratio", digits = 2, method = "significantFigures")}.
+\code{NA}/missing \code{digits} or \code{method} entries fall back to the global settings.
+}
+
+Parameters not listed keep the global settings. Unknown parameter names are
+ignored with a message. Default \code{NULL} (global rounding everywhere).}
 
 \item{prettyLabels}{Logical; if \code{TRUE} (default), converts column names to
 human-readable labels.}
