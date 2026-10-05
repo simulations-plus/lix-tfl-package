@@ -538,12 +538,16 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   - `"none"`: No rounding performed
 #'
 #' @param roundByParameter Optional per-parameter rounding overrides on top of the
-#'   global `roundDigits`/`roundMethod`. Either a named numeric vector of digits
-#'   (`c(Cmax = 2, AUClast = 4)`; method falls back to `roundMethod`), or a
-#'   data.frame with columns `parameter`, `digits` and/or `method`
-#'   (`NA`/missing entries fall back to the global settings). Parameters not
-#'   listed keep the global settings. Unknown parameter names are ignored with a
-#'   message. Default `NULL` (global rounding everywhere).
+#'   global `roundDigits`/`roundMethod`, supplied in one of two forms (mirroring
+#'   `customAliases`/`customUnits`):
+#'   - a named numeric vector of digits, e.g. `c(Cmax = 2, AUClast = 4)` (the
+#'     rounding method then falls back to the global `roundMethod`); or
+#'   - a 3-column data.frame with columns `parameter`, `digits` and `method`, e.g.
+#'     `data.frame(parameter = "Cmax", digits = 2, method = "significantFigures")`.
+#'     `NA`/missing `digits` or `method` entries fall back to the global settings.
+#'
+#'   Parameters not listed keep the global settings. Unknown parameter names are
+#'   ignored with a message. Default `NULL` (global rounding everywhere).
 #'
 #' @param units Logical. If `TRUE` (default), units are appended to parameter names.
 #'
@@ -970,12 +974,16 @@ tableNCAParameters <- function(projectFile      = NULL,
 #'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding performed
 #' @param roundByParameter Optional per-parameter rounding overrides on top of the
-#'   global `roundDigits`/`roundMethod`. Either a named numeric vector of digits
-#'   (`c(AUClast_ratio = 2, Cmax_ratio = 4)`; method falls back to `roundMethod`), or a
-#'   data.frame with columns `parameter`, `digits` and/or `method`
-#'   (`NA`/missing entries fall back to the global settings). Parameters not
-#'   listed keep the global settings. Unknown parameter names are ignored with a
-#'   message. Default `NULL` (global rounding everywhere).
+#'   global `roundDigits`/`roundMethod`, supplied in one of two forms (mirroring
+#'   `customAliases`):
+#'   - a named numeric vector of digits, e.g. `c(AUClast_ratio = 2, Cmax_ratio = 4)`
+#'     (the rounding method then falls back to the global `roundMethod`); or
+#'   - a 3-column data.frame with columns `parameter`, `digits` and `method`, e.g.
+#'     `data.frame(parameter = "AUClast_ratio", digits = 2, method = "significantFigures")`.
+#'     `NA`/missing `digits` or `method` entries fall back to the global settings.
+#'
+#'   Parameters not listed keep the global settings. Unknown parameter names are
+#'   ignored with a message. Default `NULL` (global rounding everywhere).
 #' @param prettyLabels Logical; if `TRUE` (default), converts column names to
 #'   human-readable labels.
 #' @param customAliases Named vector or 2-column dataframe mapping parameter names
@@ -1402,6 +1410,18 @@ tableNCARatios <- function(projectFile      = NULL,
 #'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding performed
 #'
+#' @param roundByParameter Optional per-parameter rounding overrides on top of the
+#'   global `roundDigits`/`roundMethod`, supplied in one of two forms (mirroring
+#'   `customAliases`/`customUnits`):
+#'   - a named numeric vector of digits, e.g. `c(Cmax = 2, AUClast = 4)` (the
+#'     rounding method then falls back to the global `roundMethod`); or
+#'   - a 3-column data.frame with columns `parameter`, `digits` and `method`, e.g.
+#'     `data.frame(parameter = "Cmax", digits = 2, method = "significantFigures")`.
+#'     `NA`/missing `digits` or `method` entries fall back to the global settings.
+#'
+#'   Parameters not listed keep the global settings. Unknown parameter names are
+#'   ignored with a message. Default `NULL` (global rounding everywhere).
+#'
 #' @param units Logical; if `TRUE` (default), appends units to parameter names
 #'   (e.g., "ln(AUClast) (h*ng/mL)"). Units are retrieved from project settings.
 #'
@@ -1451,6 +1471,7 @@ tableBEResults <- function(projectFile    = NULL,
 													 BEParams       = NULL,
 													 roundDigits    = 3,
 													 roundMethod    = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+													 roundByParameter = NULL,
 													 units          = TRUE,
 													 aliases        = TRUE,
 													 customUnits   = NULL,
@@ -1470,7 +1491,11 @@ tableBEResults <- function(projectFile    = NULL,
 	.validateProjectResultsAvailability(software = "pkanalix", resultType = "be")
 
 	# Validate set parameters
-	.validateNCAParametersSelection(BEParams, ratio = FALSE, be = TRUE)
+	available_params <- .validateNCAParametersSelection(BEParams, ratio = FALSE, be = TRUE)
+
+	# Normalize + validate per-parameter rounding overrides (keyed by original BE names)
+	round_overrides <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
+	round_overrides <- .validateRoundOverrides(round_overrides, available_params, context = "tableBEResults")
 
 	# Normalize custom alias/unit mappings
 	aliases_df <- .normalizeAliasMapping(customAliases, "aliases")
@@ -1515,6 +1540,19 @@ tableBEResults <- function(projectFile    = NULL,
 		result <- result %>% dplyr::filter(Original_Parameter %in% BEParams)
 	}
 
+	# Apply rounding BEFORE aliasing/ln()-wrapping, while Original_Parameter still holds
+	# the raw BE names so per-parameter overrides key correctly. Falls back to the global
+	# digits/method when round_overrides is NULL. Only the numeric columns (Ratio,
+	# CILower, CIUpper) are rounded; BE is a 0/1 flag and must stay untouched.
+	result <- .applyRounding(
+		df        = result,
+		digits    = roundDigits,
+		method    = roundMethod,
+		exclude   = c("Original_Parameter", "parameter", "Comparison", "BE"),
+		overrides = round_overrides,
+		paramCol  = "Original_Parameter",
+		paramAxis = "row")
+
 	# Apply aliases only (no units)
 	result <- .addUnitsAliases(
 		result,
@@ -1533,13 +1571,7 @@ tableBEResults <- function(projectFile    = NULL,
 		result$Original_Parameter <- NULL
 	}
 
-	# style_tfl(result)
-	result <- .round_num(
-		to_round        = result,
-		digits          = roundDigits,
-		rounding_method = roundMethod,
-		exclude         = c("parameter", "Comparison", "BE"))
-
+	# Rounding already applied above (before aliasing) so per-parameter overrides match.
 	result <- result %>% dplyr::mutate(CI = paste0("(",CILower,";",CIUpper,")")) %>%
 		dplyr::select(Comparison, parameter, Ratio, CI, BE) %>%
 		dplyr::arrange(Comparison)

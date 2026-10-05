@@ -2639,6 +2639,93 @@ test_that("tableNCARatios rounding methods", {
 	expect_equal(nrow(table_monolix), nrow(table_none))
 })
 
+test_that("tableNCARatios roundByParameter applies per-parameter rounding to individual values (includeId)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	all_ratios       <- listingNCARatios(projectFile = pkx_project_5)
+	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
+	skip_if(length(available_ratios) < 2, "Need >= 2 ratio parameters")
+	p_over <- available_ratios[1]   # gets the override
+	p_keep <- available_ratios[2]   # stays on the global rule
+
+	common <- list(
+		projectFile     = pkx_project_5,
+		useWideFormat   = FALSE,
+		splitCovariates = "SEQ",
+		includeId       = TRUE,
+		ratioParams     = c(p_over, p_keep),
+		metrics         = c("MeanSD", "GeomCV", "median"),
+		roundDigits     = 1,
+		roundMethod     = "monolixSuiteRounding",
+		prettyLabels    = FALSE)
+
+	base <- do.call(tableNCARatios, common)
+	over <- do.call(tableNCARatios, c(common, list(
+		roundByParameter = data.frame(parameter = p_over, digits = 4,
+																	method = "significantFigures",
+																	stringsAsFactors = FALSE))))
+
+	expect_true(all(c("Statistic", "Section") %in% names(over)))
+	ind_base <- base[base$Section == "INDIVIDUAL", , drop = FALSE]
+	ind_over <- over[over$Section == "INDIVIDUAL", , drop = FALSE]
+	expect_gt(nrow(ind_over), 0)
+	expect_equal(dim(ind_base), dim(ind_over))
+
+	# Overridden ratio param: individual values change; non-overridden: unchanged
+	expect_false(isTRUE(all.equal(ind_base[[p_over]], ind_over[[p_over]])))
+	expect_equal(ind_over[[p_keep]], ind_base[[p_keep]])
+})
+
+test_that("tableNCARatios includeId individual values match independent per-parameter rounding", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	all_ratios       <- listingNCARatios(projectFile = pkx_project_5)
+	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
+	skip_if(length(available_ratios) < 2, "Need >= 2 ratio parameters")
+
+	# Decisive check: each overridden individual cell equals the raw ratio value
+	# rounded with that parameter's own digits/method (via the package's .round_num()).
+	cfg <- data.frame(parameter = available_ratios[1:2],
+										digits    = c(3,         4),
+										method    = c("monolixSuiteRounding", "significantFigures"),
+										stringsAsFactors = FALSE)
+
+	tbl <- tableNCARatios(
+		projectFile      = pkx_project_5,
+		useWideFormat    = FALSE,
+		splitCovariates  = "SEQ",
+		includeId        = TRUE,
+		ratioParams      = cfg$parameter,
+		metrics          = c("MeanSD", "median"),
+		roundDigits      = 1,
+		roundMethod      = "monolixSuiteRounding",
+		roundByParameter = cfg,
+		prettyLabels     = FALSE)
+
+	ind <- tbl[tbl$Section == "INDIVIDUAL", , drop = FALSE]
+	expect_gt(nrow(ind), 0)
+
+	# Raw per-subject ratio values from the loaded project
+	raw <- lixoftConnectors::getNCAIndividualRatios()
+
+	# Only verify exact per-subject values when there are no occasions, i.e. exactly
+	# one INDIVIDUAL row per subject (otherwise Statistic <-> id is not 1:1).
+	skip_if(nrow(ind) != dplyr::n_distinct(raw$id),
+					"Occasions present; per-subject exact match not applicable")
+
+	row_for_id <- match(as.character(raw$id), as.character(ind$Statistic))
+	for (i in seq_len(nrow(cfg))) {
+		p        <- cfg$parameter[i]
+		exp_vals <- .round_num(raw[[p]], digits = cfg$digits[i],
+													 rounding_method = cfg$method[i])
+		obs_vals <- suppressWarnings(as.numeric(ind[[p]]))[row_for_id]
+		expect_equal(obs_vals, unname(exp_vals),
+								 info = paste("per-parameter rounding mismatch for", p))
+	}
+})
+
 test_that("tableNCARatios mock = TRUE masks output", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
@@ -4107,6 +4194,44 @@ test_that("tableBEResults rounding methods", {
 		roundMethod = "none"
 	)
 	expect_true(is.data.frame(table_none))
+})
+
+test_that("tableBEResults roundByParameter overrides rounding per parameter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	# Discover available BE parameters (original, non-aliased names = override keys)
+	lixoftConnectors::loadProject(pkx_project_3)
+	available_be <- lixoftConnectors::getBioequivalenceSettings()$computedbioequivalenceparameters$parameters
+	skip_if(length(available_be) < 2, "Need >= 2 BE parameters")
+	p_over <- available_be[1]   # gets the override
+	p_keep <- available_be[2]   # stays on the global rule
+
+	common <- list(
+		projectFile  = NULL,            # use the project loaded above
+		BEParams     = c(p_over, p_keep),
+		roundDigits  = 1,
+		roundMethod  = "monolixSuiteRounding",
+		units        = FALSE, aliases = FALSE, prettyLabels = FALSE)
+
+	base <- do.call(tableBEResults, common)
+	over <- do.call(tableBEResults, c(common, list(
+		roundByParameter = data.frame(parameter = p_over, digits = 4,
+																	method = "significantFigures",
+																	stringsAsFactors = FALSE))))
+
+	expect_true(all(c("parameter", "Ratio") %in% names(base)))
+
+	# The parameter column may be ln()-wrapped; both runs share identical labels, so
+	# locate each parameter's rows by matching the original name within the label.
+	row_over <- grepl(p_over, base$parameter, fixed = TRUE)
+	row_keep <- grepl(p_keep, base$parameter, fixed = TRUE)
+	expect_true(any(row_over))
+	expect_true(any(row_keep))
+
+	# Overridden parameter's Ratio changes; non-overridden keeps the global rounding
+	expect_false(isTRUE(all.equal(base$Ratio[row_over], over$Ratio[row_over])))
+	expect_equal(over$Ratio[row_keep], base$Ratio[row_keep])
 })
 
 test_that("tableBEResults mock = TRUE masks output", {
