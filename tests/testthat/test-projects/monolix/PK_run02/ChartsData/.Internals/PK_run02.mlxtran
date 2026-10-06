@@ -1,0 +1,83 @@
+<DATAFILE>
+
+[FILEINFO]
+file={path='../../../data_totDrug.csv'}
+delimiter = comma
+header={ID, TIME, DV, DOSE, AMT, SEX, WEIGHT, HEIGHT, AGE, CENS, LIMIT}
+
+[CONTENT]
+ID = {use=identifier}
+TIME = {use=time}
+DV = {use=observation, type=continuous}
+DOSE = {use=covariate, type=categorical}
+AMT = {use=amount}
+SEX = {use=covariate, type=categorical}
+WEIGHT = {use=covariate, type=continuous}
+HEIGHT = {use=covariate, type=continuous}
+AGE = {use=covariate, type=continuous}
+CENS = {use=censored}
+LIMIT = {use=limit}
+
+<MODEL>
+
+[COVARIATE]
+input = {AGE, HEIGHT, WEIGHT, DOSE, SEX}
+
+DOSE = {type=categorical, categories={'150', '300', '800'}}
+SEX = {type=categorical, categories={'F', 'M'}}
+
+EQUATION:
+logtWT = log(WEIGHT/93)
+
+[INDIVIDUAL]
+input = {Cl_pop, omega_Cl, Tlag_pop, omega_Tlag, V_pop, omega_V, ka_pop, omega_ka, logtWT, beta_Cl_logtWT, beta_V_logtWT}
+
+DEFINITION:
+Cl = {distribution=logNormal, typical=Cl_pop, covariate=logtWT, coefficient=beta_Cl_logtWT, sd=omega_Cl}
+Tlag = {distribution=logNormal, typical=Tlag_pop, sd=omega_Tlag}
+V = {distribution=logNormal, typical=V_pop, covariate=logtWT, coefficient=beta_V_logtWT, sd=omega_V}
+ka = {distribution=logNormal, typical=ka_pop, sd=omega_ka}
+
+[LONGITUDINAL]
+input = {a, b}
+
+file = 'lib:oral1_1cpt_TlagkaVCl.txt'
+
+DEFINITION:
+DV = {distribution=normal, prediction=Cc, errorModel=combined1(a, b)}
+
+<FIT>
+data = 'DV'
+model = DV
+
+<PARAMETER>
+Cl_pop = {value=0.5584275, method=MLE}
+Tlag_pop = {value=0.4167811, method=MLE}
+V_pop = {value=8.1828903, method=MLE}
+a = {value=1.2663391, method=MLE}
+b = {value=0.1361871, method=MLE}
+beta_Cl_logtWT = {value=0, method=MLE}
+beta_V_logtWT = {value=0, method=MLE}
+c = {value=1, method=FIXED}
+ka_pop = {value=0.6957202, method=MLE}
+omega_Cl = {value=0.3261875, method=MLE}
+omega_Tlag = {value=0.09053959, method=MLE}
+omega_V = {value=0.07857492, method=MLE}
+omega_ka = {value=0.7164389, method=MLE}
+
+<MONOLIX>
+
+[TASKS]
+populationParameters()
+individualParameters(method = {conditionalMean, conditionalMode })
+fim(method = StochasticApproximation)
+logLikelihood(method = ImportanceSampling)
+
+[PLOTS]
+run = false
+plots = {indfits = {selected = true}, parameterdistribution = {selected = true}, obspred = {selected = true}, covariancemodeldiagnosis = {selected = true}, covariatemodeldiagnosis = {selected = true}, vpc = {selected = true}, residualsscatter = {selected = true}, residualsdistribution = {selected = true}, randomeffects = {selected = true}, saemresults = {selected = true}}
+
+[SETTINGS]
+GLOBAL:
+exportpath = '../../'
+
