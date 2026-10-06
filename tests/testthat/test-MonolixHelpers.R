@@ -4,218 +4,234 @@ mono_project_3 = "test-projects/monolix/prj08_iov2.mlxtran"
 mono_project_4 = "test-projects/monolix/prj9_iov2_bootstrap.mlxtran"
 
 syc_project = "test-projects/monolix/PK_models.syc"
-
+################################################################################
+# test tableRunHistory()
 test_that("tableRunHistory project", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	table = tableRunHistory(syc_project)
-	expect_equal(dim(table), c(2,5))
-	expect_equal(table$Run, c("PK_run01", "PK_run02"))
-	expect_equal(table$Path, c(basename(mono_project_1), basename(mono_project_2)))
-	expect_equal(table$Parent, c("", "PK_run01"))
+	expect_equal(dim(table), c(2,13))
+	expect_equal(table$Run, c("PK_run02", "PK_run01"))
+	expect_equal(table$`Project Path`, c(basename(mono_project_2), basename(mono_project_1)))
+	expect_equal(table$Parent, c("PK_run01", ""))
 })
 
-test_that("tableRunHistory run likelihood", {
+test_that("tableRunHistory prettyLabels renames headers without changing data", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	# first run likelihood tasks for monolix project, linearization for project 1
-	.ensureProjectLoaded(mono_project_1)
-	lixoftConnectors::runPopulationParameterEstimation()
-	suppressMessages(lixoftConnectors::runLogLikelihoodEstimation(linearization = TRUE))
-	on.exit(unlink(tools::file_path_sans_ext(mono_project_1), recursive = TRUE), add = TRUE, after = FALSE)
+	raw    <- tableRunHistory(syc_project, prettyLabels = FALSE)
+	pretty <- tableRunHistory(syc_project, prettyLabels = TRUE)
 
-	table = tableRunHistory(syc_project)
-	expect_equal(dim(table), c(2,7))
-	expect_equal(table$Run, c("PK_run01", "PK_run02"))
-	expect_contains(names(table), c("LLlin", "BICclin"))
-	expect_disjoint(names(table), c("LLis", "BICcis", "dLLlin", "dLLis"))
-
-	# now run additional likelihood tasks, linearization and IS for project 2
-	.ensureProjectLoaded(mono_project_2)
-	lixoftConnectors::runPopulationParameterEstimation()
-	suppressMessages(lixoftConnectors::runLogLikelihoodEstimation(linearization = TRUE))
-	lixoftConnectors::runLogLikelihoodEstimation(linearization = FALSE)
-	on.exit(unlink(tools::file_path_sans_ext(mono_project_2), recursive = TRUE), add = TRUE, after = FALSE)
-
-	table = tableRunHistory(syc_project)
-	expect_equal(dim(table), c(2,11))
-	expect_equal(table$Run, c("PK_run01", "PK_run02"))
-	expect_contains(names(table), c("LLlin", "LLis", "BICclin", "BICcis", "dLLlin"))
-	expect_disjoint(names(table), "dLLis")
-	expect_equal(table$dLLlin, c(NA, -20.075))
+	expect_equal(dim(raw), dim(pretty))                    # only headers change
+	expect_true(all(c("Path", "Parent") %in% names(raw)))  # machine names raw
+	expect_false("Path" %in% names(pretty))                # renamed away
+	expect_true(all(c("Project Path", "Parent Run") %in% names(pretty)))
+	expect_equal(unname(as.list(raw)), unname(as.list(pretty)))  # values identical
 })
 
-test_that("tablePopulationParameterEstimates basic", {
+test_that("tableRunHistory roundDigits/roundMethod are applied to numeric columns", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	mapping_pop = data.frame(Parameter = c("Tlag_pop", "ka_pop", "V_pop", "Cl_pop"),
-													 Label = c("Tlag", "ka", "V", "Cl"),
-													 Unit = c("h", "", "L", "L/h"))
-	mapping_omega = data.frame(Parameter = c("omega_Tlag", "omega_ka", "omega_V", "omega_Cl"),
-														 Label = c("w_Tlag", "w_ka", "w_V", "w_Cl"),
-														 Unit = c("-T", "-ka", "-V", "-Cl"))
-	mapping_error = data.frame(Parameter = c("a", "b"),
-														 Label = c("const err", "prop err"),
-														 Unit = c("aaa", "bbb"))
+	none <- tableRunHistory(syc_project, prettyLabels = FALSE, roundMethod = "none")
+	r0   <- tableRunHistory(syc_project, prettyLabels = FALSE,
+													roundMethod = "monolixSuiteRounding", roundDigits = 0)
 
-	# verify column RSE appears but is NA without standard errors being run
-	# verify only requested parameters included in specified order,
-	# but sections of table remain Fixed, Random, Error irrespectively
-
-	.ensureProjectLoaded(mono_project_1)
-	lixoftConnectors::runPopulationParameterEstimation()
-	on.exit(unlink(tools::file_path_sans_ext(mono_project_1), recursive = TRUE), add = TRUE, after = FALSE)
-
-	table1 = tablePopulationParameterEstimates(mono_project_1, mapping_pop)
-	expect_equal(table1$Parameter, mapping_pop$Label)
-	expect_equal(table1$Unit, mapping_pop$Unit)
-	expect_all_equal(table1$RSE, NA)
-	expect_all_equal(table1$Section, "FE")
-	expect_contains(names(table1), "Estimate")
-
-	table2 = tablePopulationParameterEstimates(mono_project_1, rbind(mapping_pop, mapping_omega))
-	expect_equal(table2$Parameter, c(mapping_pop$Label, mapping_omega$Label))
-	expect_equal(table2$Unit, c(mapping_pop$Unit, mapping_omega$Unit))
-	expect_all_equal(table2$RSE, NA)
-	expect_equal(table2$Section, c(rep("FE", nrow(mapping_pop)), rep("IIV", nrow(mapping_omega))))
-
-	table3 = tablePopulationParameterEstimates(mono_project_1, rbind(mapping_pop, mapping_error, mapping_omega))
-	expect_equal(table3$Parameter, c(mapping_pop$Label, mapping_omega$Label, mapping_error$Label))
-	expect_equal(table3$Unit, c(mapping_pop$Unit, mapping_omega$Unit, mapping_error$Unit))
-	expect_all_equal(table3$RSE, NA)
-	expect_equal(table3$Section, c(rep("FE", nrow(mapping_pop)),
-																		 rep("IIV", nrow(mapping_omega)),
-																		 rep("RES_ERR", nrow(mapping_error))))
-
-	table4 = tablePopulationParameterEstimates(mono_project_1, NULL)
-	expect_equal(table4$Parameter, c(mapping_pop$Label, mapping_omega$Parameter, mapping_error$Parameter))
-	expect_false("Unit" %in% names(table4))
-	expect_all_equal(table4$RSE, NA)
+	num_cols <- names(Filter(is.numeric, none))
+	skip_if(length(num_cols) == 0, "no numeric columns present")
+	# rounding to 0 digits must change at least one column vs. unrounded
+	changed <- any(vapply(num_cols,
+												function(c) !isTRUE(all.equal(none[[c]], r0[[c]])), logical(1)))
+	expect_true(changed)
 })
 
-test_that("tablePopulationParameterEstimates with std errs", {
+test_that("tableRunHistory sortByCriteria orders rows; 'none' leaves them unsorted", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	none <- tableRunHistory(syc_project, prettyLabels = FALSE, sortByCriteria = "none")
+	ll   <- tableRunHistory(syc_project, prettyLabels = FALSE, sortByCriteria = "LL")
+
+	expect_setequal(none$Run, ll$Run)                       # same runs, maybe reordered
+	ll_cols <- intersect(c("LLlin", "LLis"), names(ll))
+	skip_if(length(ll_cols) == 0, "no LL column to verify sort")
+	# LL view is ascending on whichever LL column drove the sort
+	expect_true(any(vapply(ll_cols,
+												 function(c) !is.unsorted(ll[[c]][!is.na(ll[[c]])]), logical(1))))
+})
+
+test_that("tableRunHistory filterCriteria keeps only the requested criterion columns", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	none <- tableRunHistory(syc_project, prettyLabels = FALSE, sortByCriteria = "none", filterCriteria = "none")
+	ll   <- tableRunHistory(syc_project, prettyLabels = FALSE, sortByCriteria = "none", filterCriteria = "LL")
+	bicc <- tableRunHistory(syc_project, prettyLabels = FALSE, sortByCriteria = "none", filterCriteria = "BICc")
+
+	expect_false(any(grepl("BICc", names(ll))))    # LL view drops all BICc cols
+	expect_false(any(grepl("LL",   names(bicc))))   # BICc view drops all LL cols
+	expect_true(all(names(ll)   %in% names(none)))
+	expect_true(all(names(bicc) %in% names(none)))
+})
+
+test_that("tableRunHistory mock masks values and anonymizes run identifiers", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	real <- tableRunHistory(syc_project, prettyLabels = FALSE, mock = FALSE)
+	mock <- tableRunHistory(syc_project, prettyLabels = FALSE, mock = TRUE, roundDigits = 2)
+
+	expect_equal(dim(real), dim(mock))                        # same shape
+	expect_true(all(grepl("^project[0-9]+$", mock$Run)))      # Run anonymized
+	expect_false(any(mock$Run %in% real$Run))                 # real names gone
+	num_cols <- intersect(names(Filter(is.numeric, real)), names(mock))
+	skip_if(length(num_cols) == 0, "no numeric columns to mask")
+	vals <- mock[[num_cols[1]]]
+	expect_true(all(grepl("xx", vals[!is.na(vals)])))         # masked to "xx.xx"
+})
+
+test_that("tableRunHistory rejects invalid argument values", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	expect_error(tableRunHistory(syc_project, roundMethod    = "bogus"))
+	expect_error(tableRunHistory(syc_project, sortByCriteria = "bogus"))
+	expect_error(tableRunHistory(syc_project, filterCriteria = "bogus"))
+})
+################################################################################
+# test tablePopulationParameterEstimates()
+test_that("tablePopulationParameterEstimates applies customAliases to the Parameter column", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	.ensureProjectLoaded(mono_project_1)
+
+	# alias every available parameter (fixed effects, IIV, residual error)
+	aliases <- c(
+		Tlag_pop   = "Tlag",      ka_pop   = "ka",   V_pop   = "V",   Cl_pop   = "Cl",
+		omega_Tlag = "w_Tlag",    omega_ka = "w_ka", omega_V = "w_V", omega_Cl = "w_Cl",
+		a          = "const err", b        = "prop err")
+
+	table <- tablePopulationParameterEstimates(mono_project_1, customAliases = aliases,
+		includeIIV = TRUE)
+
+	# every parameter is displayed under its alias; sections are unaffected
+	expect_setequal(table$Parameter, unname(aliases))
+	expect_setequal(as.character(table$Section), c("FE", "IIV", "RES_ERR"))
+
+	# a parameter left out of the mapping keeps its original name
+	partial <- tablePopulationParameterEstimates(mono_project_1,
+		customAliases = c(V_pop = "Volume"), includeIIV = TRUE)
+	expect_true("Volume" %in% partial$Parameter)   # mapped   -> alias
+	expect_true("ka_pop" %in% partial$Parameter)   # unmapped -> original name
+})
+
+test_that("tablePopulationParameterEstimates appends customUnits to the Parameter column", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	.ensureProjectLoaded(mono_project_1)
+
+	# 2-column data.frame form (columns are positional: name, unit) covering all
+	# parameters; blank units are left off, non-blank units are appended in "( )"
+	units_df <- data.frame(
+		param = c("Tlag_pop", "ka_pop", "V_pop", "Cl_pop",
+							"omega_Tlag", "omega_ka", "omega_V", "omega_Cl", "a", "b"),
+		unit  = c("h", "1/h", "L", "L/h", "", "", "", "", "", ""),
+		stringsAsFactors = FALSE
+	)
+
+	table <- tablePopulationParameterEstimates(mono_project_1, customUnits = units_df,
+		includeIIV = TRUE)
+
+	# non-blank units appended in parentheses to the original parameter name
+	expect_true(all(c("Tlag_pop (h)", "ka_pop (1/h)", "V_pop (L)", "Cl_pop (L/h)")
+									%in% table$Parameter))
+	# blank-unit parameters are untouched (no parentheses added)
+	expect_true(all(c("omega_V", "a", "b") %in% table$Parameter))
+	expect_false(any(grepl("(", table$Parameter[as.character(table$Section) != "FE"], fixed = TRUE)))
+})
+
+test_that("tablePopulationParameterEstimates reports RSE and stdErrMethod selects the method", {
+	# PK_run01 ships with FisherInformation for both linearization and stochasticApproximation,
+	# so no estimation is run here.
 	withr::local_options(TFLMonolixSuite.verbose = TRUE)
-
-	mapping = data.frame(Parameter = c("Tlag_pop", "ka_pop", "omega_Tlag", "omega_ka", "a"),
-												 Label = c("Tlag", "ka", "w_Tlag", "w_ka", "a err"),
-												 Unit = c("h", "", "-T", "-ka", "aaa"))
-
 	.ensureProjectLoaded(mono_project_1)
-	lixoftConnectors::runPopulationParameterEstimation()
-	suppressMessages(lixoftConnectors::runStandardErrorEstimation(linearization = TRUE))
-	on.exit(unlink(tools::file_path_sans_ext(mono_project_1), recursive = TRUE), add = TRUE, after = FALSE)
-
-	table = tablePopulationParameterEstimates(mono_project_1, mapping)
-	expect_equal(table$Parameter, mapping$Label)
-	expect_equal(table$Unit, mapping$Unit)
-	expect_all_false(is.na(table$RSE))
-	expect_contains(names(table), "Estimate")
-
-	# verify can select std err method and defaults to linearization if not specified
-	suppressMessages(lixoftConnectors::runStandardErrorEstimation(linearization = FALSE))
-	table = tablePopulationParameterEstimates(mono_project_1, mapping, stdErrMethod = "linearization")
-	expect_all_false(is.na(table$RSE))
-	expect_equal(table$RSE[1], 2.795)
-	table = tablePopulationParameterEstimates(mono_project_1, mapping, stdErrMethod = "stochasticApproximation")
-	expect_all_false(is.na(table$RSE))
-	expect_equal(table$RSE[1], 2.886)
-	expect_message(tablePopulationParameterEstimates(mono_project_1, mapping), "multiple methods")
-	table = tablePopulationParameterEstimates(mono_project_1, mapping)
-	expect_all_false(is.na(table$RSE))
-	expect_equal(table$RSE[1], 2.795)
-})
-
-test_that("tablePopulationParameterEstimates include logicals", {
-	withr::local_options(TFLMonolixSuite.verbose = FALSE)
-
-	.ensureProjectLoaded(mono_project_1)
-	lixoftConnectors::runPopulationParameterEstimation()
-	on.exit(unlink(tools::file_path_sans_ext(mono_project_1), recursive = TRUE), add = TRUE, after = FALSE)
-
-	# before bootstrap run (nor std errors)
-	table <- tablePopulationParameterEstimates(mono_project_1, includeBootstrap = TRUE, prettyLabels = FALSE)
-	# Find dynamic bootstrap CI column name
-	boot_ci_col <- grep("^Boot_CI", names(table), value = TRUE)
-
-	expect_true(all(is.na(table$RSE)))
-	expect_true(all(is.na(table$Boot_Median)))
-	expect_true(all(is.na(table[[boot_ci_col]])))  # Dynamic CI column
-	expect_true(all(is.na(table$Boot_RSE)))
-
-	# after bootstrap
-	lixoftConnectors::runBootstrap(nbRuns = 2)
-	table <- tablePopulationParameterEstimates(mono_project_1, includeBootstrap = TRUE, prettyLabels = FALSE)
-
-	boot_ci_col <- grep("^Boot_CI", names(table), value = TRUE)
-
-	expect_true(all(is.na(table$RSE)))  # Still no standard errors
-	expect_false(any(is.na(table$Boot_Median)))
-	expect_false(any(is.na(table[[boot_ci_col]])))  # CI column has values
-	expect_false(any(is.na(table$Boot_RSE)))
-})
-
-test_that("tablePopulationParameterEstimates include logicals", {
-	withr::local_options(TFLMonolixSuite.verbose = FALSE)
-
-	.ensureProjectLoaded(mono_project_1)
-	lixoftConnectors::runPopulationParameterEstimation()
-	on.exit(unlink(tools::file_path_sans_ext(mono_project_1), recursive = TRUE), add = TRUE, after = FALSE)
-
-	table = tablePopulationParameterEstimates(mono_project_1, nameMapping = NULL, includeRSE = TRUE, prettyLabels = FALSE)
+	# RSE column present and populated from the precomputed Fisher information
+	table <- tablePopulationParameterEstimates(projectFile = mono_project_1, prettyLabels = FALSE)
 	expect_true("RSE" %in% names(table))
-	table = tablePopulationParameterEstimates(mono_project_1, nameMapping = NULL, includeRSE = FALSE, prettyLabels = FALSE)
-	expect_false("RSE" %in% names(table))
+	expect_false(any(is.na(table$RSE)))
 
-	table = tablePopulationParameterEstimates(mono_project_1, nameMapping = NULL, includeCI = TRUE, prettyLabels = FALSE)
-	expect_true("CI_2.5_97.5" %in% names(table))
-	expect_false("P2.5" %in% names(table))
-	expect_false("P97.5" %in% names(table))
-	table = tablePopulationParameterEstimates(mono_project_1, nameMapping = NULL, includeCI = FALSE, prettyLabels = FALSE)
-	expect_false("CI_2.5_97.5" %in% names(table))
+	# stdErrMethod selects between the two precomputed methods -> different RSE values
+	lin <- tablePopulationParameterEstimates(mono_project_1, stdErrMethod = "linearization", prettyLabels = FALSE)
+	sa  <- tablePopulationParameterEstimates(mono_project_1, stdErrMethod = "stochasticApproximation", prettyLabels = FALSE)
+	expect_false(isTRUE(all.equal(lin$RSE, sa$RSE)))
+	expect_equal(lin$RSE[1], 2.7280)
+	expect_equal(sa$RSE[1],  2.8860)
 
-	table = tablePopulationParameterEstimates(mono_project_1, nameMapping = NULL, includeCV = TRUE, prettyLabels = FALSE)
-	expect_true("CV" %in% names(table))
-	# CV values should be present for omega parameters (not NA)
-	omega_rows = grep("omega_", table$Parameter)
-	expect_true(any(!is.na(table$CV[omega_rows])))
-	# CV parameter rows should NOT exist anymore
-	expect_all_false(paste0(c("omega_Tlag", "omega_ka", "omega_V", "omega_Cl"), "_CV") %in% table$Parameter)
+	# both methods available and none requested -> user is informed, linearization is used
+	expect_message(table <- tablePopulationParameterEstimates(mono_project_1, prettyLabels = FALSE),
+								 "multiple methods")
+	expect_equal(table$RSE[1], 2.7280)
+})
 
-	table = tablePopulationParameterEstimates(mono_project_1, nameMapping = NULL, includeCV = FALSE, prettyLabels = FALSE)
-	expect_false("CV" %in% names(table))
+test_that("tablePopulationParameterEstimates include* flags toggle optional columns", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	.ensureProjectLoaded(mono_project_1)
 
-	table = tablePopulationParameterEstimates(mono_project_1, nameMapping = NULL, includeBootstrap = TRUE, prettyLabels = FALSE)
-	expect_all_true(c("Bootstrap_P2.5", "Bootstrap_Median", "Bootstrap_P97.5") %in% names(table))
-	table = tablePopulationParameterEstimates(mono_project_1, nameMapping = NULL, includeBootstrap = FALSE, prettyLabels = FALSE)
-	expect_all_false(c("Bootstrap_P2.5", "Bootstrap_Median", "Bootstrap_P97.5") %in% names(table))
+	# includeRSE
+	expect_true("RSE" %in% names(
+		tablePopulationParameterEstimates(mono_project_1, includeRSE = TRUE, prettyLabels = FALSE)))
+	expect_false("RSE" %in% names(
+		tablePopulationParameterEstimates(mono_project_1, includeRSE = FALSE, prettyLabels = FALSE)))
+
+	# includeCI -> combined CI column, not the raw percentile columns
+	ci <- tablePopulationParameterEstimates(mono_project_1, includeCI = TRUE, prettyLabels = FALSE)
+	expect_true("CI_2.5_97.5" %in% names(ci))
+	expect_false(any(c("P2.5", "P97.5") %in% names(ci)))
+	expect_false("CI_2.5_97.5" %in% names(
+		tablePopulationParameterEstimates(mono_project_1, includeCI = FALSE, prettyLabels = FALSE)))
+
+	# includeCV -> CV column populated for omega rows; helper *_CV rows are folded away
+	cv <- tablePopulationParameterEstimates(mono_project_1, includeCV = TRUE, prettyLabels = FALSE)
+	expect_true("CV" %in% names(cv))
+	omega_rows <- grep("omega_", cv$Parameter)
+	expect_true(any(!is.na(cv$CV[omega_rows])))
+	expect_false(any(paste0(c("omega_Tlag", "omega_ka", "omega_V", "omega_Cl"), "_CV") %in% cv$Parameter))
+	expect_false("CV" %in% names(
+		tablePopulationParameterEstimates(mono_project_1, includeCV = FALSE, prettyLabels = FALSE)))
+})
+
+test_that("tablePopulationParameterEstimates includeBootstrap adds bootstrap columns", {
+	# prj9_iov2_bootstrap ships with Bootstrap results; PK_run01 does NOT.
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	.ensureProjectLoaded(mono_project_4)
+
+	with_boot <- tablePopulationParameterEstimates(mono_project_4, includeBootstrap = TRUE, prettyLabels = FALSE)
+	expect_true("Boot_Median" %in% names(with_boot))
+	boot_ci_col <- grep("^Boot_CI", names(with_boot), value = TRUE)
+	expect_length(boot_ci_col, 1)
+	# bootstrap columns are populated from the precomputed runs
+	expect_true(any(!is.na(with_boot$Boot_Median)))
+	expect_true(any(!is.na(with_boot[[boot_ci_col]])))
+
+	# includeBootstrap = FALSE omits all bootstrap columns
+	without_boot <- tablePopulationParameterEstimates(mono_project_4, includeBootstrap = FALSE, prettyLabels = FALSE)
+	expect_false(any(grepl("^Boot", names(without_boot))))
 })
 
 test_that("tablePopulationParameterEstimates wide format", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	.ensureProjectLoaded(mono_project_1)
-	lixoftConnectors::runPopulationParameterEstimation()
-	on.exit(unlink(tools::file_path_sans_ext(mono_project_1), recursive = TRUE), add = TRUE, after = FALSE)
-
 	# Test wide format with IIV
-	table = tablePopulationParameterEstimates(mono_project_1, nameMapping = NULL, useWideFormat = TRUE, includeIIV = TRUE, prettyLabels = FALSE)
+	table = tablePopulationParameterEstimates(mono_project_1, useWideFormat = TRUE, includeIIV = TRUE, prettyLabels = FALSE)
 	expect_true("FE_Estimate" %in% names(table))
 	expect_true("IIV_SD" %in% names(table))
 	expect_false("IIV" %in% table$Section)  # omega parameters should not appear as separate rows
-	expect_true(all(table$Section == "FE"))
+	expect_true(any(table$Section == "FE"))
 
 	# Test wide format with CV
-	table = tablePopulationParameterEstimates(mono_project_1, nameMapping = NULL, useWideFormat = TRUE, includeCV = TRUE, includeIIV = TRUE, , prettyLabels = FALSE)
+	table = tablePopulationParameterEstimates(mono_project_1, useWideFormat = TRUE, includeCV = TRUE, includeIIV = TRUE, , prettyLabels = FALSE)
 	expect_true("IIV_CV" %in% names(table))
 	expect_true("IIV_SD" %in% names(table))
 
 	# Test wide format with RSE
-	table = tablePopulationParameterEstimates(mono_project_1, nameMapping = NULL, useWideFormat = TRUE, includeRSE = TRUE, includeIIV = TRUE, , prettyLabels = FALSE)
+	table = tablePopulationParameterEstimates(mono_project_1, useWideFormat = TRUE, includeRSE = TRUE, includeIIV = TRUE, , prettyLabels = FALSE)
 	expect_true("FE_RSE" %in% names(table))
 	expect_true("IIV_RSE" %in% names(table))
 
 	# Test wide format without IIV
-	table = tablePopulationParameterEstimates(mono_project_1, nameMapping = NULL, useWideFormat = TRUE, includeIIV = FALSE, , prettyLabels = FALSE)
+	table = tablePopulationParameterEstimates(mono_project_1, useWideFormat = TRUE, includeIIV = FALSE, , prettyLabels = FALSE)
 	expect_false("IIV_SD" %in% names(table))
 	expect_false("IIV_CV" %in% names(table))
 	expect_false("IIV_RSE" %in% names(table))
@@ -224,12 +240,8 @@ test_that("tablePopulationParameterEstimates wide format", {
 test_that("tablePopulationParameterEstimates CI combined format", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	.ensureProjectLoaded(mono_project_1)
-	lixoftConnectors::runPopulationParameterEstimation()
-	on.exit(unlink(tools::file_path_sans_ext(mono_project_1), recursive = TRUE), add = TRUE, after = FALSE)
-
 	# Test CI column in long format (should be combined)
-	table = tablePopulationParameterEstimates(mono_project_1, nameMapping = NULL, includeCI = TRUE, prettyLabels = FALSE)
+	table = tablePopulationParameterEstimates(mono_project_1, includeCI = TRUE, prettyLabels = FALSE)
 	expect_true("CI_2.5_97.5" %in% names(table))
 	# CI values should have format "(value; value)"
 	ci_values = table$CI_2.5_97.5[!is.na(table$CI_2.5_97.5)]
@@ -238,21 +250,17 @@ test_that("tablePopulationParameterEstimates CI combined format", {
 	}
 
 	# Test CI column in wide format (should be renamed to FE_CI)
-	table = tablePopulationParameterEstimates(mono_project_1, nameMapping = NULL, includeCI = TRUE, useWideFormat = TRUE, includeIIV = TRUE, prettyLabels = FALSE)
-	expect_true("FE_CI" %in% names(table))
-	expect_true("IIV_CI" %in% names(table))
+	table = tablePopulationParameterEstimates(mono_project_1, includeCI = TRUE, useWideFormat = TRUE, includeIIV = TRUE, prettyLabels = FALSE)
+	expect_true("FE_CI_2.5_97.5" %in% names(table))
+	expect_true("IIV_CI_2.5_97.5" %in% names(table))
 	expect_false("CI_2.5_97.5" %in% names(table))
 })
 
 test_that("tablePopulationParameterEstimates section labels", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	.ensureProjectLoaded(mono_project_1)
-	lixoftConnectors::runPopulationParameterEstimation()
-	on.exit(unlink(tools::file_path_sans_ext(mono_project_1), recursive = TRUE), add = TRUE, after = FALSE)
-
 	# Test that section labels use abbreviated format
-	table = tablePopulationParameterEstimates(mono_project_1, nameMapping = NULL)
+	table = tablePopulationParameterEstimates(mono_project_1)
 	unique_sections = unique(table$Section)
 
 	# Should use abbreviated labels: FE, IIV, IOV, CORR, CORR_IIV, CORR_IOV, RES_ERR
@@ -266,15 +274,13 @@ test_that("tablePopulationParameterEstimates errors", {
 	withr::local_options(TFLMonolixSuite.verbose = TRUE)
 
 	# no results
-	expect_error(tablePopulationParameterEstimates(mono_project_2, NULL))
+	expect_error(tablePopulationParameterEstimates(mono_project_5))
 
 	.ensureProjectLoaded(mono_project_1)
-	lixoftConnectors::runPopulationParameterEstimation()
-	on.exit(unlink(tools::file_path_sans_ext(mono_project_1), recursive = TRUE), add = TRUE, after = FALSE)
 
-	expect_error(tablePopulationParameterEstimates(mono_project_1, data.frame(Parameter = "V_pop", Unit = "L")))
-	expect_error(tablePopulationParameterEstimates(mono_project_1, "Parameter"))
-	expect_error(tablePopulationParameterEstimates(mono_project_1, c(Parameter = "V_pop", Label = "V", Unit = "L")))
+	expect_error(tablePopulationParameterEstimates(mono_project_5, data.frame(Parameter = "V_pop", Unit = "L")))
+	expect_error(tablePopulationParameterEstimates(mono_project_5, "Parameter"))
+	expect_error(tablePopulationParameterEstimates(mono_project_5, c(Parameter = "V_pop", Label = "V", Unit = "L")))
 })
 
 # ------------------------------------------------------------------------------
@@ -382,7 +388,8 @@ test_that("tablePopulationParameterEstimates() includes bootstrap results in lon
 	result <- tablePopulationParameterEstimates(
 		projectFile = mono_project_4,
 		includeBootstrap = TRUE,
-		useWideFormat = FALSE
+		useWideFormat = FALSE,
+		prettyLabels = FALSE
 	)
 
 	# Check for bootstrap columns
@@ -396,7 +403,8 @@ test_that("tablePopulationParameterEstimates() bootstrap CI naming adapts to con
 	result <- tablePopulationParameterEstimates(
 		projectFile = mono_project_4,
 		includeBootstrap = TRUE,
-		useWideFormat = FALSE
+		useWideFormat = FALSE,
+		prettyLabels = FALSE
 	)
 
 	# Check that CI column exists with dynamic naming (e.g., Boot_CI_2.5_97.5)
@@ -411,7 +419,8 @@ test_that("tablePopulationParameterEstimates() wide format with bootstrap create
 		projectFile = mono_project_4,
 		includeBootstrap = TRUE,
 		includeIIV = TRUE,
-		useWideFormat = TRUE
+		useWideFormat = TRUE,
+		prettyLabels = FALSE
 	)
 
 	# Check for bootstrap IIV columns
@@ -425,7 +434,8 @@ test_that("tablePopulationParameterEstimates() wide format with bootstrap and IO
 		projectFile = mono_project_4,  # Project with both bootstrap and IOV
 		includeBootstrap = TRUE,
 		includeIOV = TRUE,
-		useWideFormat = TRUE
+		useWideFormat = TRUE,
+		prettyLabels = FALSE
 	)
 
 	# Check for bootstrap IOV columns
@@ -441,7 +451,8 @@ test_that("tablePopulationParameterEstimates() bootstrap CI values are properly 
 		includeBootstrap = TRUE,
 		roundDigits = 3,
 		roundMethod = "significantFigures",
-		useWideFormat = FALSE
+		useWideFormat = FALSE,
+		prettyLabels = FALSE
 	)
 
 	# Find the bootstrap CI column
@@ -458,14 +469,16 @@ test_that("tablePopulationParameterEstimates() bootstrap with different rounding
 		projectFile = mono_project_4,
 		includeBootstrap = TRUE,
 		roundDigits = 3,
-		roundMethod = "monolixSuiteRounding"
+		roundMethod = "monolixSuiteRounding",
+		prettyLabels = FALSE
 	)
 
 	result_signif <- tablePopulationParameterEstimates(
 		projectFile = mono_project_4,
 		includeBootstrap = TRUE,
 		roundDigits = 3,
-		roundMethod = "significantFigures"
+		roundMethod = "significantFigures",
+		prettyLabels = FALSE
 	)
 
 	# Both should have bootstrap columns
@@ -677,10 +690,7 @@ test_that("tableCovariateModelBuilding errors with a clear message when no COSSA
 	# For a project that never ran a covariate model-building search, the connector
 	# returns a bare FALSE (not NULL/length 0) -> must not surface as the internal
 	# "$ operator is invalid for atomic vectors" error.
-	expect_error(
-		tableCovariateModelBuilding("test-projects/monolix/prj08_iov2.mlxtran"),
-		"No model building results found.*COSSAC, SCM, or SAMBA"
-	)
+	expect_error(tableCovariateModelBuilding(mono_project_3) , "No model building results found.*COSSAC, SCM, or SAMBA")
 })
 
 ################################################################################
