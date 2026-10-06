@@ -9,7 +9,7 @@ tableNCARatios(
   splitCovariates = NULL,
   stratifyColumns = FALSE,
   covariateLabels = NULL,
-  ratioParams = NULL,
+  selectParameters = NULL,
   metrics = NULL,
   useWideFormat = TRUE,
   includeId = FALSE,
@@ -40,7 +40,7 @@ Only applicable when \code{splitCovariates} is specified. Only compatible with
 same length as \code{splitCovariates}. If \code{NULL} (default), the original covariate names are
 used. These labels appear in column headers when \code{stratifyColumns = TRUE}.}
 
-\item{ratioParams}{Character vector of ratio parameter names to include. If \code{NULL}
+\item{selectParameters}{Character vector of ratio parameter names to include. If \code{NULL}
 (default), all available ratio parameters are used.}
 
 \item{metrics}{Character vector specifying which summary statistics to include in the

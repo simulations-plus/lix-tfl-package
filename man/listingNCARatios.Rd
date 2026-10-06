@@ -7,7 +7,7 @@
 listingNCARatios(
   projectFile = NULL,
   splitCovariates = NULL,
-  ratioParams = NULL,
+  selectParameters = NULL,
   filterCovariates = NULL,
   filterIds = NULL,
   roundDigits = 3,
@@ -29,7 +29,7 @@ splitCovariates in the order provided. Occasion-varying covariates are
 rejected, since ratios are computed across occasions and cannot be
 stratified by a covariate that changes within subject.}
 
-\item{ratioParams}{Character vector. Ratio parameters to include. If NULL (default),
+\item{selectParameters}{Character vector. Ratio parameters to include. If NULL (default),
 all available ratio parameters are included.}
 
 \item{filterCovariates}{Named list where names are categorical covariate names
@@ -107,7 +107,7 @@ ratios <- listingNCARatios(projectFile = "path/to/project.pkx")
 ratios <- listingNCARatios(
   projectFile = "path/to/project.pkx",
   splitCovariates = c("SEX", "DOSE"),
-  ratioParams = c("AUC_ratio", "Cmax_ratio"),
+  selectParameters = c("AUC_ratio", "Cmax_ratio"),
   roundDigits = 2
 )
 

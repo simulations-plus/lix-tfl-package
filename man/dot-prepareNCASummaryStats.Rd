@@ -6,7 +6,7 @@
 \usage{
 .prepareNCASummaryStats(
   projectFile,
-  ncaParams = NULL,
+  selectParameters = NULL,
   splitCovariates = NULL,
   roundDigits,
   roundMethod,
@@ -17,7 +17,7 @@
 )
 }
 \arguments{
-\item{ncaParams}{A character vector of NCA parameter names to filter by.
+\item{selectParameters}{A character vector of NCA parameter names to filter by.
 If \code{NULL}, all available parameters are retrieved.
 \emph{Applicable only when \code{by_time = FALSE}.}}
 

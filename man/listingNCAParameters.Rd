@@ -7,7 +7,7 @@
 listingNCAParameters(
   projectFile = NULL,
   splitCovariates = NULL,
-  ncaParams = NULL,
+  selectParameters = NULL,
   filterCovariates = NULL,
   filterIds = NULL,
   roundDigits = 3,
@@ -29,7 +29,7 @@ If NULL, uses the currently loaded project.}
 to include and sort by. If specified, the table is sorted by these
 splitCovariates in the order provided.}
 
-\item{ncaParams}{Character vector. NCA parameters to include. If NULL (default),
+\item{selectParameters}{Character vector. NCA parameters to include. If NULL (default),
 all computed NCA parameters are included.}
 
 \item{filterCovariates}{Named list where names are categorical covariate names
@@ -104,7 +104,7 @@ params <- listingNCAParameters(projectFile = "path/to/project.pkx")
 params <- listingNCAParameters(
   projectFile = "path/to/project.pkx",
   splitCovariates = c("SEX", "DOSE"),
-  ncaParams = c("AUC", "Cmax", "Tmax"),
+  selectParameters = c("AUC", "Cmax", "Tmax"),
   roundDigits = 2,
   units = TRUE,
   aliases = TRUE

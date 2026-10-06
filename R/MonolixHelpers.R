@@ -292,7 +292,7 @@ tableRunHistory <- function(sycomoreProjectFile,
 
 
 
-#' tableModelBuilding
+#' tableCovariateModelBuilding
 #'
 #' @description
 #' Creates a summary table of an automatic covariate/statistical model building
@@ -354,7 +354,7 @@ tableRunHistory <- function(sycomoreProjectFile,
 #' @param customDescriptions Named vector or 2-column dataframe mapping model
 #'   labels to descriptive text, added as a separate `Description` column placed
 #'   immediately to the right of the `Tested` relationship column (analogous to
-#'   `customDescriptions` in [tableParameterEstimates()]). Keys must match the
+#'   `customDescriptions` in [tablePopulationParameterEstimates()]). Keys must match the
 #'   `Run` labels of the output table (e.g. `"Model 1"`, `"Model 4"`). Rows whose
 #'   `Run` is not in the mapping receive `NA`; keys that match no row are ignored
 #'   with a message. Example:
@@ -445,12 +445,12 @@ tableRunHistory <- function(sycomoreProjectFile,
 #' @examples
 #' \dontrun{
 #' # Use the currently loaded project (after running model building)
-#' tableModelBuilding()
+#' tableCovariateModelBuilding()
 #'
 #' # From a project file, sorted by BICc, showing only BICc columns
-#' tableModelBuilding("path/to/project.mlxtran", sortBy = "BICc", filterCriteria = "BICc")
+#' tableCovariateModelBuilding("path/to/project.mlxtran", sortBy = "BICc", filterCriteria = "BICc")
 #' }
-tableModelBuilding <- function(projectFile        = NULL,
+tableCovariateModelBuilding <- function(projectFile        = NULL,
 															 customDescriptions = NULL,
 															 filterCriteria     = c("none", "LL", "BICc"),
 															 sortBy             = c("index", "BICc", "LL", "pValue"),
@@ -472,7 +472,7 @@ tableModelBuilding <- function(projectFile        = NULL,
 	res <- suppressMessages(lixoftConnectors::getModelBuildingResults())
 	if (is.null(res) || length(res) == 0 || !is.list(res) ||
 			!all(vapply(res, is.list, logical(1)))) {
-		stop("No model building results found. Run a covariate model-building search (COSSAC, SCM, or SAMBA) in Monolix before calling tableModelBuilding().",
+		stop("No model building results found. Run a covariate model-building search (COSSAC, SCM, or SAMBA) in Monolix before calling tableCovariateModelBuilding().",
 				 call. = FALSE)
 	}
 
@@ -637,7 +637,7 @@ tableModelBuilding <- function(projectFile        = NULL,
 	rownames(df) <- NULL
 
 	# Optional per-model descriptions, keyed on the Run label (mirrors the
-	# customDescriptions feature of tableParameterEstimates()).
+	# customDescriptions feature of tablePopulationParameterEstimates()).
 	descriptions_df <- .normalizeAliasMapping(customDescriptions, "description")
 	if (!is.null(descriptions_df)) {
 		desc_map       <- stats::setNames(descriptions_df$description, descriptions_df$parameter)
@@ -837,30 +837,30 @@ tableModelBuilding <- function(projectFile        = NULL,
 #' @examples
 #' \dontrun{
 #' # Basic usage with default long format
-#' pop_table <- tableParameterEstimates()
+#' pop_table <- tablePopulationParameterEstimates()
 #' style_tfl(pop_table, color = c("RSE"))
 #'
 #' # Wide format with IIV and CV%
-#' pop_table_wide <- tableParameterEstimates(
+#' pop_table_wide <- tablePopulationParameterEstimates(
 #'   useWideFormat = TRUE,
 #'   includeIIV = TRUE,
 #'   includeCV = TRUE)
 #' style_tfl(pop_table_wide, color = c("RSE"), theme_fn = theme_booktabs)
 #'
 #' # With custom aliases and units
-#' pop_table <- tableParameterEstimates(
+#' pop_table <- tablePopulationParameterEstimates(
 #'   customAliases = c(Cl_pop = "Clearance", V_pop = "Volume", ka_pop = "Absorption rate"),
 #'   customUnits = c(Cl_pop = "L/h", V_pop = "L", ka_pop = "1/h"),
 #'   includeCI = TRUE,
 #'   includeRSE = TRUE)
 #'
 #' # Exclude IOV parameters
-#' pop_table_no_iov <- tableParameterEstimates(includeIOV = FALSE)
+#' pop_table_no_iov <- tablePopulationParameterEstimates(includeIOV = FALSE)
 #'
 #' # Simple column names (no pretty formatting)
-#' pop_table_simple <- tableParameterEstimates(prettyLabels = FALSE)
+#' pop_table_simple <- tablePopulationParameterEstimates(prettyLabels = FALSE)
 #' }
-tableParameterEstimates <- function(projectFile        = NULL,
+tablePopulationParameterEstimates <- function(projectFile        = NULL,
 																		customAliases      = NULL,
 																		customUnits        = NULL,
 																		customDescriptions = NULL,

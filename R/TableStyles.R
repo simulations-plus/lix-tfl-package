@@ -737,7 +737,7 @@
 #' @param align_cols Named character vector for column-specific alignment (e.g., `c("Parameter" = "left", "Estimate" = "right")`). Overrides other alignment settings. If `NULL` (default), no column-specific alignment.
 #' @param autoHighlight Logical; if `TRUE`, shades the best-model-per-step rows of
 #'   a covariate model-building table light gray. Default is `FALSE`. The rows are
-#'   read from the `best_per_step` attribute set by [tableModelBuilding()] (the
+#'   read from the `best_per_step` attribute set by [tableCovariateModelBuilding()] (the
 #'   accepted winner of each forward/backward step) and matched by their `Run`
 #'   label, so the shading survives the section-header rows that are inserted for
 #'   model-building tables. When shading is applied, an explanatory footnote is
@@ -770,7 +770,7 @@
 #' style_tfl(df, color = c("RSE"))
 #'
 #' # Population table with section headers
-#' pop_table <- tableParameterEstimates(useWideFormat = TRUE)
+#' pop_table <- tablePopulationParameterEstimates(useWideFormat = TRUE)
 #' style_tfl(pop_table, color = c("RSE"), theme_fn = theme_booktabs)
 #'
 #' # With grouping columns and custom headers

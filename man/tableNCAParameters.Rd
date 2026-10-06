@@ -7,7 +7,7 @@
 tableNCAParameters(
   projectFile = NULL,
   splitCovariates = NULL,
-  ncaParams = NULL,
+  selectParameters = NULL,
   metrics = NULL,
   useWideFormat = TRUE,
   stratifyColumns = FALSE,
@@ -36,7 +36,7 @@ specified project if it differs from the currently active one.}
 (e.g., \code{"TREAT"}, \code{"FOOD"}, or \code{c("TREAT","FOOD")}). If \code{NULL}
 (default), no stratification is applied and overall summaries are returned.}
 
-\item{ncaParams}{Character vector of NCA parameter names to include. If
+\item{selectParameters}{Character vector of NCA parameter names to include. If
 \code{NULL} (default), all parameters currently enabled in the project are used
 (i.e., \code{lixoftConnectors::getNCASettings()$computedncaparameters}).}
 
@@ -138,7 +138,7 @@ Combines individual parameter data with summary statistics for complete reportin
 # Stratified by a categorical covariate, selected parameters, vertical layout
 # tableNCAParameters(
 #   splitCovariates = "FORM",
-#   ncaParams  = c("AUCINF_obs", "AUClast", "Cmax"),
+#   selectParameters  = c("AUCINF_obs", "AUClast", "Cmax"),
 #   roundDigits = 2,
 #   useWideFormat = FALSE
 # )
@@ -147,7 +147,7 @@ Combines individual parameter data with summary statistics for complete reportin
 # tableNCAParameters(
 #   useWideFormat = FALSE,
 #   includeId = TRUE,
-#   ncaParams  = c("Cmax", "AUClast", "Lambda_z")
+#   selectParameters  = c("Cmax", "AUClast", "Lambda_z")
 # )
 
 # Stratified with individual IDs

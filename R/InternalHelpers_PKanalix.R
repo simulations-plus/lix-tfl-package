@@ -1395,12 +1395,12 @@
 #' a message naming them alongside the remaining available (not-yet-selected)
 #' parameters, then continues with the valid ones.
 #'
-#' @param ncaParams Character vector of NCA parameter names to validate, or NULL
+#' @param selectParameters Character vector of NCA parameter names to validate, or NULL
 #' @param ratio Logical; if TRUE, validates for ratio tables (checks ratio parameters).
 #'   If FALSE (default), validates against computed NCA parameters.
 #'
 #' @return Invisibly returns the character vector of available parameters (always
-#'   computed, even when `ncaParams` is NULL, so callers can reuse it - e.g. to
+#'   computed, even when `selectParameters` is NULL, so callers can reuse it - e.g. to
 #'   validate `roundByParameter`). Stops with an error if none of the requested
 #'   parameters are found; emits a message listing unknown parameters and the
 #'   remaining available ones, then continues if at least one is valid.
@@ -1422,8 +1422,8 @@
 #'     available parameters (continues with valid ones)
 #'
 #' @noRd
-.validateNCAParametersSelection <- function(ncaParams, ratio = FALSE, be = FALSE) {
-	# Always compute the available parameters (even when ncaParams is NULL) so the
+.validateNCAParametersSelection <- function(selectParameters, ratio = FALSE, be = FALSE) {
+	# Always compute the available parameters (even when selectParameters is NULL) so the
 	# list can be returned and reused by callers (e.g. to validate roundByParameter).
 	if (be) {
 		# For BE tables: get computed BE parameters
@@ -1449,10 +1449,10 @@
 	}
 
 	# Only validate a selection when one was provided.
-	if (!is.null(ncaParams)) {
+	if (!is.null(selectParameters)) {
 		# Find intersection of requested and available
-		valid_params   <- intersect(ncaParams, available_params)
-		invalid_params <- setdiff(ncaParams, available_params)
+		valid_params   <- intersect(selectParameters, available_params)
+		invalid_params <- setdiff(selectParameters, available_params)
 
 		# Parameters available in the project that have not been (correctly) selected -> displayed as suggestions
 		remaining_params <- setdiff(available_params, valid_params)
@@ -1462,7 +1462,7 @@
 			stop(sprintf(
 				"None of the requested %s were found.\nRequested: %s\nAvailable: %s",
 				context_msg,
-				paste(ncaParams, collapse = ", "),
+				paste(selectParameters, collapse = ", "),
 				if (length(available_params) > 0) paste(available_params, collapse = ", ") else "none"
 			), call. = FALSE)
 		}
@@ -1705,7 +1705,7 @@
 #'   or in wide format with time columns for concentrations)
 #' @param splitCovariates Character vector of covariate names (optional)
 #' @param resultType Type of result: "ncaParameters", "ncaRatio", or "ncaConcentration"
-#' @param params Parameter names to include (ncaParams for parameters, ratioParams for ratios, NULL for all)
+#' @param params Parameter names to include (the caller's selectParameters for both parameters and ratios, NULL for all)
 #' @param roundDigits Number of decimal places for rounding
 #' @param roundMethod Rounding method ("monolixSuiteRounding", "significantFigures",
 #'   "significantFiguresPreserved", or "none")
@@ -2205,7 +2205,7 @@
 #' }
 #'
 #' @param project A character string representing the path to the PKanalix project file (.pkx).
-#' @param ncaParams A character vector of NCA parameter names to filter by.
+#' @param selectParameters A character vector of NCA parameter names to filter by.
 #'   If `NULL`, all available parameters are retrieved.
 #'   \emph{Applicable only when `by_time = FALSE`.}
 #' @param splitCovariates A character vector of covariate names to stratify the results by.
@@ -2235,7 +2235,7 @@
 #' @keywords internal
 #'
 .prepareNCASummaryStats <- function(projectFile,
-																		ncaParams = NULL,
+																		selectParameters = NULL,
 																		splitCovariates = NULL,
 																		roundDigits,
 																		roundMethod,
@@ -2320,7 +2320,7 @@
 		}
 
 		# Get Summary Stats (from getNCAParameterStatistics)
-		summary_stats <- lixoftConnectors::getNCAParameterStatistics(parameters = ncaParams)$statistics
+		summary_stats <- lixoftConnectors::getNCAParameterStatistics(parameters = selectParameters)$statistics
 		if (is.null(summary_stats)) {
 			# Return NULL if no stats, parent function will handle
 			return(NULL)

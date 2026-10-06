@@ -493,7 +493,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   (e.g., `"TREAT"`, `"FOOD"`, or `c("TREAT","FOOD")`). If `NULL`
 #'   (default), no stratification is applied and overall summaries are returned.
 #'
-#' @param ncaParams Character vector of NCA parameter names to include. If
+#' @param selectParameters Character vector of NCA parameter names to include. If
 #'   `NULL` (default), all parameters currently enabled in the project are used
 #'   (i.e., `lixoftConnectors::getNCASettings()$computedncaparameters`).
 #'
@@ -585,7 +585,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #' # Stratified by a categorical covariate, selected parameters, vertical layout
 #' # tableNCAParameters(
 #' #   splitCovariates = "FORM",
-#' #   ncaParams  = c("AUCINF_obs", "AUClast", "Cmax"),
+#' #   selectParameters = c("AUCINF_obs", "AUClast", "Cmax"),
 #' #   roundDigits = 2,
 #' #   useWideFormat = FALSE
 #' # )
@@ -594,7 +594,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #' # tableNCAParameters(
 #' #   useWideFormat = FALSE,
 #' #   includeId = TRUE,
-#' #   ncaParams  = c("Cmax", "AUClast", "Lambda_z")
+#' #   selectParameters = c("Cmax", "AUClast", "Lambda_z")
 #' # )
 #'
 #' # Stratified with individual IDs
@@ -607,7 +607,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #' @export
 tableNCAParameters <- function(projectFile      = NULL,
 															 splitCovariates  = NULL,
-															 ncaParams        = NULL,
+															 selectParameters = NULL,
 															 metrics          = NULL,
 															 useWideFormat  = TRUE,
 															 stratifyColumns = FALSE,
@@ -639,7 +639,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 	covariateLabels <- .validateCovariateLabels(splitCovariates, covariateLabels)
 
 	.validateFilters(filterCovariates, filterIds, resultType = "nca")
-	available_params <- .validateNCAParametersSelection(ncaParams, ratio = FALSE)
+	available_params <- .validateNCAParametersSelection(selectParameters, ratio = FALSE)
 
 	round_overrides <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
 	round_overrides <- .validateRoundOverrides(round_overrides, available_params, context = "tableNCAParameters")
@@ -685,10 +685,10 @@ tableNCAParameters <- function(projectFile      = NULL,
 	occ_vars            <- project_data$header[project_data$headerTypes == "occ"]
 	param_cols          <- setdiff(names(indiv_params), c("id", all_splitCovariates, strat_cov_names))
 
-	if (!is.null(ncaParams)) {
-		param_cols <- intersect(ncaParams, param_cols)
+	if (!is.null(selectParameters)) {
+		param_cols <- intersect(selectParameters, param_cols)
 		if (length(param_cols) == 0) {
-			stop("None of the specified ncaParams found in the individual parameters data.")
+			stop("None of the specified selectParameters found in the individual parameters data.")
 		}
 	}
 
@@ -852,7 +852,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 			summary_stats = summary_stats,
 			splitCovariates    = splitCovariates,
 			resultType    = "ncaParameters",
-			params        = ncaParams,
+			params        = selectParameters,
 			roundDigits   = roundDigits,
 			roundMethod   = roundMethod,
 			roundOverrides = round_overrides,
@@ -948,7 +948,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 #' @param covariateLabels Character vector of custom labels for splitCovariates, must be the
 #'   same length as `splitCovariates`. If `NULL` (default), the original covariate names are
 #'   used. These labels appear in column headers when `stratifyColumns = TRUE`.
-#' @param ratioParams Character vector of ratio parameter names to include. If `NULL`
+#' @param selectParameters Character vector of ratio parameter names to include. If `NULL`
 #'   (default), all available ratio parameters are used.
 #' @param metrics Character vector specifying which summary statistics to include in the
 #'   output table. If `NULL` (default), all available metrics are included.
@@ -1021,7 +1021,7 @@ tableNCARatios <- function(projectFile      = NULL,
 													 splitCovariates  = NULL,
 													 stratifyColumns  = FALSE,
 													 covariateLabels  = NULL,
-													 ratioParams      = NULL,
+													 selectParameters = NULL,
 													 metrics          = NULL,
 													 useWideFormat    = TRUE,
 													 includeId        = FALSE,
@@ -1056,7 +1056,7 @@ tableNCARatios <- function(projectFile      = NULL,
 	aliases_df <- .normalizeAliasMapping(customAliases, "aliases")
 
 	# Validate set parameters
-	available_params <- .validateNCAParametersSelection(ratioParams, ratio = TRUE)  # Early validation
+	available_params <- .validateNCAParametersSelection(selectParameters, ratio = TRUE)  # Early validation
 
 	# Normalize + validate per-parameter rounding overrides (keyed by original ratio names)
 	round_overrides <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
@@ -1082,9 +1082,9 @@ tableNCARatios <- function(projectFile      = NULL,
 	ratio_cols <- names(ratio_info)
 
 	# Determine which ratio columns to pivot
-	if (!is.null(ratioParams)) {
+	if (!is.null(selectParameters)) {
 		# Pivot only requested parameters (already validated)
-		cols_to_pivot <- intersect(ratioParams, ratio_cols)
+		cols_to_pivot <- intersect(selectParameters, ratio_cols)
 	} else {
 		# Pivot all ratio columns
 		cols_to_pivot <- ratio_cols
@@ -1292,7 +1292,7 @@ tableNCARatios <- function(projectFile      = NULL,
 			summary_stats   = summary_tbl,
 			splitCovariates = splitCovariates,
 			resultType      = "ncaRatio",
-			params          = ratioParams,
+			params          = selectParameters,
 			roundDigits     = roundDigits,
 			roundMethod     = roundMethod,
 			roundOverrides  = round_overrides,
@@ -1393,7 +1393,7 @@ tableNCARatios <- function(projectFile      = NULL,
 #' @param projectFile Character string specifying the path to a PKanalix project file (.pkx).
 #'   If `NULL` (default), uses the currently loaded project.
 #'
-#' @param BEParams Character vector of parameter names to include in the output.
+#' @param selectParameters Character vector of parameter names to include in the output.
 #'   If `NULL` (default), all BE parameters are included.
 #'
 #' @param roundDigits Integer specifying the number of decimal places for rounding
@@ -1467,19 +1467,19 @@ tableNCARatios <- function(projectFile      = NULL,
 #' parameters are automatically identified and labeled with "ln()" prefix.
 #'
 #' @export
-tableBEResults <- function(projectFile    = NULL,
-													 BEParams       = NULL,
-													 roundDigits    = 3,
-													 roundMethod    = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+tableBEResults <- function(projectFile      = NULL,
+													 selectParameters = NULL,
+													 roundDigits      = 3,
+													 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 													 roundByParameter = NULL,
-													 units          = TRUE,
-													 aliases        = TRUE,
-													 customUnits   = NULL,
-													 customAliases = NULL,
-													 BELimits       = FALSE,
-													 BEConclusion   = TRUE,
-													 prettyLabels   = TRUE,
-													 mock           = FALSE){
+													 units            = TRUE,
+													 aliases          = TRUE,
+													 customUnits      = NULL,
+													 customAliases    = NULL,
+													 BELimits         = FALSE,
+													 BEConclusion     = TRUE,
+													 prettyLabels     = TRUE,
+													 mock             = FALSE){
 
 	roundMethod <- match.arg(roundMethod)
 
@@ -1491,7 +1491,7 @@ tableBEResults <- function(projectFile    = NULL,
 	.validateProjectResultsAvailability(software = "pkanalix", resultType = "be")
 
 	# Validate set parameters
-	available_params <- .validateNCAParametersSelection(BEParams, ratio = FALSE, be = TRUE)
+	available_params <- .validateNCAParametersSelection(selectParameters, ratio = FALSE, be = TRUE)
 
 	# Normalize + validate per-parameter rounding overrides (keyed by original BE names)
 	round_overrides <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
@@ -1536,8 +1536,8 @@ tableBEResults <- function(projectFile    = NULL,
 	})
 
 	# Filter to selected BE parameters (if specified)
-	if (!is.null(BEParams)) {
-		result <- result %>% dplyr::filter(Original_Parameter %in% BEParams)
+	if (!is.null(selectParameters)) {
+		result <- result %>% dplyr::filter(Original_Parameter %in% selectParameters)
 	}
 
 	# Apply rounding BEFORE aliasing/ln()-wrapping, while Original_Parameter still holds
@@ -2046,7 +2046,7 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #' @param splitCovariates Character vector. Categorical covariates (type "catcov")
 #'   to include and sort by. If specified, the table is sorted by these
 #'   splitCovariates in the order provided.
-#' @param ncaParams Character vector. NCA parameters to include. If NULL (default),
+#' @param selectParameters Character vector. NCA parameters to include. If NULL (default),
 #'   all computed NCA parameters are included.
 #' @param filterCovariates Named list where names are categorical covariate names
 #'   and values are vectors of allowed values, e.g.
@@ -2107,7 +2107,7 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #' params <- listingNCAParameters(
 #'   projectFile = "path/to/project.pkx",
 #'   splitCovariates = c("SEX", "DOSE"),
-#'   ncaParams = c("AUC", "Cmax", "Tmax"),
+#'   selectParameters = c("AUC", "Cmax", "Tmax"),
 #'   roundDigits = 2,
 #'   units = TRUE,
 #'   aliases = TRUE
@@ -2124,7 +2124,7 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #' }
 listingNCAParameters <- function(projectFile      = NULL,
 																 splitCovariates  = NULL,
-																 ncaParams        = NULL,
+																 selectParameters = NULL,
 																 filterCovariates = NULL,
 																 filterIds        = NULL,
 																 roundDigits      = 3,
@@ -2151,7 +2151,7 @@ listingNCAParameters <- function(projectFile      = NULL,
 	# Validate set splitCovariates
 	.validateCovariateSelection(splitCovariates, ratio = FALSE)
 	# Validate set parameters
-	available_params <- .validateNCAParametersSelection(ncaParams, ratio = FALSE)
+	available_params <- .validateNCAParametersSelection(selectParameters, ratio = FALSE)
 
 	round_overrides <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
 	round_overrides <- .validateRoundOverrides(round_overrides, available_params,
@@ -2181,10 +2181,10 @@ listingNCAParameters <- function(projectFile      = NULL,
 	# Apply filters
 	indivNCA <- .applyFilters(indivNCA, filterCovariates, filterIds, id_col = "id")
 
-	# Filter to selected parameters if ncaParams is specified
-	if (!is.null(ncaParams)) {
+	# Filter to selected parameters if selectParameters is specified
+	if (!is.null(selectParameters)) {
 		# Keep id, all splitCovariates, merged strat covariates, and selected parameters only
-		cols_to_keep <- c("id", all_splitCovariates, strat_cov_names, ncaParams)
+		cols_to_keep <- c("id", all_splitCovariates, strat_cov_names, selectParameters)
 		# Only keep columns that exist in the data
 		cols_to_keep <- intersect(cols_to_keep, names(indivNCA))
 		indivNCA <- indivNCA %>% dplyr::select(dplyr::all_of(cols_to_keep))
@@ -2256,7 +2256,7 @@ listingNCAParameters <- function(projectFile      = NULL,
 #'   splitCovariates in the order provided. Occasion-varying covariates are
 #'   rejected, since ratios are computed across occasions and cannot be
 #'   stratified by a covariate that changes within subject.
-#' @param ratioParams Character vector. Ratio parameters to include. If NULL (default),
+#' @param selectParameters Character vector. Ratio parameters to include. If NULL (default),
 #'   all available ratio parameters are included.
 #' @param filterCovariates Named list where names are categorical covariate names
 #'   and values are vectors of allowed values, e.g.
@@ -2320,7 +2320,7 @@ listingNCAParameters <- function(projectFile      = NULL,
 #' ratios <- listingNCARatios(
 #'   projectFile = "path/to/project.pkx",
 #'   splitCovariates = c("SEX", "DOSE"),
-#'   ratioParams = c("AUC_ratio", "Cmax_ratio"),
+#'   selectParameters = c("AUC_ratio", "Cmax_ratio"),
 #'   roundDigits = 2
 #' )
 #'
@@ -2335,7 +2335,7 @@ listingNCAParameters <- function(projectFile      = NULL,
 #' }
 listingNCARatios <- function(projectFile      = NULL,
 														 splitCovariates  = NULL,
-														 ratioParams      = NULL,
+														 selectParameters = NULL,
 														 filterCovariates = NULL,
 														 filterIds        = NULL,
 														 roundDigits      = 3,
@@ -2359,7 +2359,7 @@ listingNCARatios <- function(projectFile      = NULL,
 	# Validate set splitCovariates (rejects occasion-varying split covariates for ratios)
 	.validateCovariateSelection(splitCovariates, ratio = TRUE)
 	# Validate set parameters
-	available_params <- .validateNCAParametersSelection(ratioParams, ratio = TRUE)
+	available_params <- .validateNCAParametersSelection(selectParameters, ratio = TRUE)
 
 	round_overrides <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
 	round_overrides <- .validateRoundOverrides(round_overrides, available_params,
@@ -2400,10 +2400,10 @@ listingNCARatios <- function(projectFile      = NULL,
 	#intersection between all splitCovariates available in data and in ratios listing
 	all_splitCovariates <- intersect(all_splitCovariates, names(indivRatios))
 
-	# Filter to selected parameters if ratioParams is specified
-	if (!is.null(ratioParams)) {
+	# Filter to selected parameters if selectParameters is specified
+	if (!is.null(selectParameters)) {
 		# Keep id, all splitCovariates, merged strat covariates, and selected parameters only
-		cols_to_keep <- c("id", all_splitCovariates, merged_strat_covs, ratioParams)
+		cols_to_keep <- c("id", all_splitCovariates, merged_strat_covs, selectParameters)
 		# Only keep columns that exist in the data
 		cols_to_keep <- intersect(cols_to_keep, names(indivRatios))
 		indivRatios <- indivRatios %>% dplyr::select(dplyr::all_of(cols_to_keep))

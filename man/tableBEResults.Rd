@@ -6,7 +6,7 @@
 \usage{
 tableBEResults(
   projectFile = NULL,
-  BEParams = NULL,
+  selectParameters = NULL,
   roundDigits = 3,
   roundMethod = c("monolixSuiteRounding", "significantFigures",
     "significantFiguresPreserved", "none"),
@@ -25,7 +25,7 @@ tableBEResults(
 \item{projectFile}{Character string specifying the path to a PKanalix project file (.pkx).
 If \code{NULL} (default), uses the currently loaded project.}
 
-\item{BEParams}{Character vector of parameter names to include in the output.
+\item{selectParameters}{Character vector of parameter names to include in the output.
 If \code{NULL} (default), all BE parameters are included.}
 
 \item{roundDigits}{Integer specifying the number of decimal places for rounding

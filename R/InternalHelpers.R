@@ -736,7 +736,7 @@ utils::globalVariables(c("."))
 
 
 ################################################################################
-# Helpers for tableModelBuilding()
+# Helpers for tableCovariateModelBuilding()
 ################################################################################
 
 #' Compact string describing the covariate model of a single built model
