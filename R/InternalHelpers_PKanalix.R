@@ -282,71 +282,6 @@
 	return(df)
 }
 
-
-##################################################################################
-#' RoundNumericCols
-#'
-#' Rounds all numeric columns in a data frame to a specified number of decimal places.
-#' Also attempts to convert character columns that contain numeric values to numeric
-#' before rounding, providing robust handling of mixed data types.
-#'
-#' @param df A data frame containing columns to be rounded.
-#' @param digits An integer specifying the number of decimal places for rounding. Default is 3.
-#'
-#' @return A data frame with all numeric columns rounded to the specified number of decimal places.
-#'
-#' @examples
-#' # Example usage:
-#' # df <- data.frame(param = c("AUC", "Cmax"), value1 = c(123.456, 67.891), value2 = c("234.567", "89.123"))
-#' # RoundNumericCols(df, digits = 2)
-# .roundNumericCols <- function(x,
-#                               digits = 3,
-#                               exclude = NULL,
-#                               rounding_method = c("monolix", "signif")) {
-#     rounding_method <- match.arg(rounding_method)
-#
-#     # Inner function: rounds a single numeric vector
-#     .round_num <- function(number, digits, rounding_method) {
-#         # handle NA/NaN
-#         if (!is.numeric(number)) {
-#             number <- suppressWarnings(as.numeric(as.character(number)))
-#         }
-#
-#         if (!is.numeric(number)) {
-#             return(number)
-#         }
-#
-#         if (rounding_method == "monolix") {
-#             adj_digits <- digits + ifelse(
-#                 abs(number) < 1 & number != 0 & !is.na(number),
-#                 abs(floor(log10(abs(number))) + 1),
-#                 0
-#             )
-#             rounded <- round(number, digits = adj_digits)
-#         } else {
-#             rounded <- signif(number, digits = digits)
-#         }
-#
-#         # keep NaN/NA as-is
-#         rounded[is.nan(number)] <- NaN
-#         rounded[is.na(number)] <- NA
-#         return(rounded)
-#     }
-#
-#     # case 1: data frame apply columnwise
-#     if (is.data.frame(x)) {
-#         for (nm in names(x)) {
-#             if (!is.null(exclude) && nm %in% exclude) next
-#             x[[nm]] <- .round_num(x[[nm]], digits, rounding_method)
-#         }
-#         return(as.data.frame(x))
-#     }
-#
-#     # case 2: atomic vector
-#     return(.round_num(x, digits, rounding_method))
-# }
-
-
 ##################################################################################
 #' .getDelim
 #'
@@ -1345,6 +1280,45 @@
 
 	invisible(NULL)
 }
+
+##################################################################################
+#' Internal helper to relabel split-covariate columns in non-stratified tables
+#'
+#' @description
+#' When `stratifyColumns = FALSE`, the split covariates appear as literal columns
+#' (left-side columns in wide format, leftmost columns in long format). This
+#' helper renames those columns from their raw covariate names to the validated
+#' `splitCovariateLabels`, so the same labels drive both the stratified header
+#' text and the non-stratified column headers. Columns that are absent (e.g.
+#' reshaped away) or whose label equals the raw name are skipped.
+#'
+#' @param df Data frame whose covariate columns should be relabeled.
+#' @param splitCovariates Character vector of raw covariate column names.
+#' @param splitCovariate_labels Character vector of labels aligned to
+#'   `splitCovariates` (as returned by `.validateCovariateLabels`).
+#'
+#' @return `df` with covariate columns renamed where a distinct label is given.
+#'
+#' @keywords internal
+#' @noRd
+.applyCovariateColumnLabels <- function(df, splitCovariates, splitCovariate_labels) {
+	if (is.null(splitCovariates) || is.null(splitCovariate_labels)) {
+		return(df)
+	}
+
+	# dplyr::rename() wants new_name = old_name, so names() are the labels
+	rename_map <- stats::setNames(splitCovariates, splitCovariate_labels)
+
+	# keep only columns still present and whose label actually differs from the raw name
+	rename_map <- rename_map[rename_map %in% names(df) & names(rename_map) != rename_map]
+
+	if (length(rename_map) > 0) {
+		df <- dplyr::rename(df, !!!rename_map)
+	}
+
+	return(df)
+}
+
 
 ##################################################################################
 
