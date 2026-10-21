@@ -493,6 +493,18 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   (e.g., `"TREAT"`, `"FOOD"`, or `c("TREAT","FOOD")`). If `NULL`
 #'   (default), no stratification is applied and overall summaries are returned.
 #'
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original covariate names are used. These labels are applied
+#'   in both layouts: they appear in the combined column headers when
+#'   `stratifyColumns = TRUE`, and they rename the split-covariate columns when
+#'   `stratifyColumns = FALSE`.
+#'
+#' @param stratifyColumns Logical; if `TRUE`, creates a stratified table layout with
+#'   separate columns for each covariate combination plus an "Overall" column. If `FALSE`
+#'   (default), splitCovariates appear as separate columns on the left side of the table.
+#'   Only applicable when `splitCovariates` is specified.
+#'
 #' @param selectParameters Character vector of NCA parameter names to include. If
 #'   `NULL` (default), all parameters currently enabled in the project are used
 #'   (i.e., `lixoftConnectors::getNCASettings()$computedncaparameters`).
@@ -507,11 +519,6 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   each parameter, i.e., PKanalix-like structure. If `FALSE`, returns a
 #'   "vertical" table where \code{Statistic} forms the first column and the
 #'   parameters form the subsequent columns (useful for reporting).
-#'
-#' @param stratifyColumns Logical; if `TRUE`, creates a stratified table layout with
-#'   separate columns for each covariate combination plus an "Overall" column. If `FALSE`
-#'   (default), splitCovariates appear as separate columns on the left side of the table.
-#'   Only applicable when `splitCovariates` is specified.
 #'
 #' @param covariateLabels Character vector of custom labels for splitCovariates, must be the
 #'   same length as `splitCovariates`. If `NULL` (default), the original covariate names are
@@ -605,25 +612,25 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #' # )
 #'
 #' @export
-tableNCAParameters <- function(projectFile      = NULL,
-															 splitCovariates  = NULL,
-															 selectParameters = NULL,
-															 metrics          = NULL,
-															 useWideFormat  = TRUE,
-															 stratifyColumns = FALSE,
-															 covariateLabels = NULL,
-															 includeId       = FALSE,
-															 filterCovariates = NULL,
-															 filterIds        = NULL,
-															 roundDigits      = 3,
-															 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
-															 roundByParameter = NULL,
-															 units            = TRUE,
-															 aliases          = TRUE,
-															 customUnits     = NULL,
-															 customAliases   = NULL,
-															 prettyLabels     = TRUE,
-															 mock             = FALSE) {
+tableNCAParameters <- function(projectFile          = NULL,
+															 splitCovariates      = NULL,
+															 splitCovariateLabels = NULL,
+															 stratifyColumns      = FALSE,
+															 selectParameters     = NULL,
+															 metrics              = NULL,
+															 useWideFormat        = TRUE,
+															 includeId            = FALSE,
+															 filterCovariates     = NULL,
+															 filterIds            = NULL,
+															 roundDigits          = 3,
+															 roundMethod          = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+															 roundByParameter     = NULL,
+															 units                = TRUE,
+															 aliases              = TRUE,
+															 customUnits          = NULL,
+															 customAliases        = NULL,
+															 prettyLabels         = TRUE,
+															 mock                 = FALSE) {
 
 	roundMethod <- match.arg(roundMethod)
 
@@ -635,8 +642,8 @@ tableNCAParameters <- function(projectFile      = NULL,
 	.validateProjectResultsAvailability(software = "pkanalix", resultType = "nca")
 	.validateCovariateSelection(splitCovariates, ratio = FALSE)
 
-	stratifyColumns <- .validateStratificationArgs(splitCovariates, stratifyColumns)
-	covariateLabels <- .validateCovariateLabels(splitCovariates, covariateLabels)
+	stratifyColumns      <- .validateStratificationArgs(splitCovariates, stratifyColumns)
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 
 	.validateFilters(filterCovariates, filterIds, resultType = "nca")
 	available_params <- .validateNCAParametersSelection(selectParameters, ratio = FALSE)
@@ -791,7 +798,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 			splitCovariates  = splitCovariates,
 			selected_metrics = selected_metrics,
 			param_col        = param_col,
-			covariateLabels  = covariateLabels)
+			covariateLabels  = splitCovariateLabels)
 
 	} else {
 		group_by_vars <- if (!is.null(splitCovariates)) c("parameter", splitCovariates) else "parameter"
@@ -911,6 +918,13 @@ tableNCAParameters <- function(projectFile      = NULL,
 			naFillAxis   = if (stratifyColumns || !useWideFormat) "row" else "column")
 
 		summary_stats <- .mockIndividualSection(summary_stats)
+	}
+
+	if (!stratifyColumns && !is.null(splitCovariates)) {
+		summary_stats <- .applyCovariateColumnLabels(
+			df                    = summary_stats,
+			splitCovariates       = splitCovariates,
+			splitCovariate_labels = splitCovariateLabels)
 	}
 
 	if (includeId && "Section" %in% names(summary_stats)) {
