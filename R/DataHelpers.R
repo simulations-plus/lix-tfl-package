@@ -8,19 +8,22 @@
 #'   custom unit labels. Example: `c(WEIGHT = "kg", HEIGHT = "cm")`.
 #'   Units are appended in parentheses: "Weight (kg)".
 #' @param splitCovariates vector of categorical covariates to stratify by, or NULL
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original covariate names are used. These labels are applied
+#'   in both layouts: they appear in the combined column headers when
+#'   `stratifyColumns = TRUE`, and they rename the split-covariate columns when
+#'   `stratifyColumns = FALSE`.
+#' @param stratifyColumns Logical; if `TRUE`, creates a stratified table layout with
+#'   separate columns for each covariate combination plus an "Overall" column. If `FALSE`
+#'   (default), splitCovariates appear as separate columns on the left side of the table.
+#'   Only applicable when `splitCovariates` is specified.s
 #' @param metrics vector of metrics to display, or NULL to display all available metrics
 #' @param useWideFormat Logical. If `TRUE` (default), returns a "wide" table format where
 #'   statistics appear as columns and covariates appear as rows.
 #'   If `FALSE`, returns a "long" table format where statistics appear as rows
 #'   (useful for vertical reporting layouts).
 #'   Note: `stratifyColumns = TRUE` is only compatible with `useWideFormat = FALSE`.
-#' @param stratifyColumns Logical; if `TRUE`, creates a stratified table layout with
-#'   separate columns for each covariate combination plus an "Overall" column. If `FALSE`
-#'   (default), splitCovariates appear as separate columns on the left side of the table.
-#'   Only applicable when `splitCovariates` is specified.
-#' @param covariateLabels Character vector of custom labels for splitCovariates, must be the
-#'   same length as `splitCovariates`. If `NULL` (default), the original covariate names are
-#'   used. These labels appear in column headers when `stratifyColumns = TRUE`.
 #' @param filterCovariates Named list where names are categorical covariate names
 #'   (type "categorical", "additionalstratificationcategorical" or "stratificationcategorical"
 #'   in `getCovariateInformation()`) and values are vectors of allowed values.
@@ -70,20 +73,20 @@
 #'     customUnits   = c(WEIGHT = "kg", HEIGHT = "cm", AGE = "years")
 #' )
 #' }
-tableContinuousCovariateSummary <- function(projectFile      = NULL,
-																						customAliases    = NULL,
-																						customUnits      = NULL,
-																						splitCovariates  = NULL,
-																						metrics          = NULL,
-																						useWideFormat  = TRUE,
-																						stratifyColumns = FALSE,
-																						covariateLabels = NULL,
-																						filterCovariates = NULL,
-																						filterIds        = NULL,
-																						roundDigits      = 2,
-																						roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
-																						prettyLabels     = TRUE,
-																						mock             = FALSE)
+tableContinuousCovariateSummary <- function(projectFile          = NULL,
+																						customAliases        = NULL,
+																						customUnits          = NULL,
+																						splitCovariates      = NULL,
+																						splitCovariateLabels = NULL,
+																						stratifyColumns      = FALSE,
+																						metrics              = NULL,
+																						useWideFormat        = TRUE,
+																						filterCovariates     = NULL,
+																						filterIds            = NULL,
+																						roundDigits          = 2,
+																						roundMethod          = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+																						prettyLabels         = TRUE,
+																						mock                 = FALSE)
 {
 
 	roundMethod <- match.arg(roundMethod)
@@ -94,14 +97,11 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 	aliases_df <- .normalizeAliasMapping(customAliases, "aliases")
 	units_df   <- .normalizeAliasMapping(customUnits, "units")
 
-	# Validate stratifyColumns and covariateLabels (using same logic as PKanalixHelpers).
-	# allowed_types restricts splitCovariates to categorical-like types from
-	# getCovariateInformation() (incl. PKanalix-derived stratification covariates).
 	cat_types        <- c("categorical",
 												"additionalstratificationcategorical",
 												"stratificationcategorical")
 	stratifyColumns <- .validateStratificationArgs(splitCovariates, stratifyColumns, allowed_types = cat_types)
-	covariateLabels <- .validateCovariateLabels(splitCovariates, covariateLabels)
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 
 	# Validate covariate and id filters (categorical-like types as defined above)
 	.validateFilters(filterCovariates, filterIds, resultType = "covariateSummary")
@@ -193,7 +193,7 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 			splitCovariates  = splitCovariates,
 			selected_metrics = selected_metrics,
 			param_col        = "Covariate",
-			covariateLabels = covariateLabels)
+			covariateLabels = splitCovariateLabels)
 
 		# Apply custom aliases and units using covariate names
 		if (!is.null(aliases_df) || !is.null(units_df)) {
@@ -288,6 +288,13 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 			excludeCols  = c("Covariate", "Statistic"),
 			modalityCols = if (length(modality_cols)) modality_cols else NULL,
 			naFillAxis   = if (stratifyColumns || !useWideFormat) "row" else "column")
+	}
+
+	if (!stratifyColumns && !is.null(splitCovariates)) {
+		cov_summary <- .applyCovariateColumnLabels(
+			df                    = cov_summary,
+			splitCovariates       = splitCovariates,
+			splitCovariate_labels = splitCovariateLabels)
 	}
 
 	# ==========================================================================
