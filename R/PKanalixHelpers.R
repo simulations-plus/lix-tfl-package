@@ -959,9 +959,12 @@ tableNCAParameters <- function(projectFile          = NULL,
 #'   (default), splitCovariates appear as separate columns on the left side of the table.
 #'   Only applicable when `splitCovariates` is specified. Only compatible with
 #'   `useWideFormat = FALSE`.
-#' @param covariateLabels Character vector of custom labels for splitCovariates, must be the
-#'   same length as `splitCovariates`. If `NULL` (default), the original covariate names are
-#'   used. These labels appear in column headers when `stratifyColumns = TRUE`.
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original covariate names are used. These labels are applied
+#'   in both layouts: they appear in the combined column headers when
+#'   `stratifyColumns = TRUE`, and they rename the split-covariate columns when
+#'   `stratifyColumns = FALSE`.
 #' @param selectParameters Character vector of ratio parameter names to include. If `NULL`
 #'   (default), all available ratio parameters are used.
 #' @param metrics Character vector specifying which summary statistics to include in the
@@ -1031,22 +1034,22 @@ tableNCAParameters <- function(projectFile          = NULL,
 #' }
 #'
 #' @export
-tableNCARatios <- function(projectFile      = NULL,
-													 splitCovariates  = NULL,
-													 stratifyColumns  = FALSE,
-													 covariateLabels  = NULL,
-													 selectParameters = NULL,
-													 metrics          = NULL,
-													 useWideFormat    = TRUE,
-													 includeId        = FALSE,
-													 filterCovariates = NULL,
-													 filterIds        = NULL,
-													 roundDigits      = 3,
-													 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
-													 roundByParameter = NULL,
-													 prettyLabels     = TRUE,
-													 customAliases    = NULL,
-													 mock             = FALSE) {
+tableNCARatios <- function(projectFile           = NULL,
+													 splitCovariates       = NULL,
+													 stratifyColumns       = FALSE,
+													 splitCovariateLabels  = NULL,
+													 selectParameters      = NULL,
+													 metrics               = NULL,
+													 useWideFormat         = TRUE,
+													 includeId             = FALSE,
+													 filterCovariates      = NULL,
+													 filterIds             = NULL,
+													 roundDigits           = 3,
+													 roundMethod           = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+													 roundByParameter      = NULL,
+													 prettyLabels          = TRUE,
+													 customAliases         = NULL,
+													 mock                  = FALSE) {
 
 
 
@@ -1063,8 +1066,8 @@ tableNCARatios <- function(projectFile      = NULL,
 	.validateFilters(filterCovariates, filterIds, resultType = "ncaRatio")
 
 	.validateCovariateSelection(splitCovariates, ratio = TRUE)
-	stratifyColumns <- .validateStratificationArgs(splitCovariates, stratifyColumns)
-	covariateLabels <- .validateCovariateLabels(splitCovariates, covariateLabels)
+	stratifyColumns      <- .validateStratificationArgs(splitCovariates, stratifyColumns)
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 
 	# Normalize custom alias mapping
 	aliases_df <- .normalizeAliasMapping(customAliases, "aliases")
@@ -1229,10 +1232,10 @@ tableNCARatios <- function(projectFile      = NULL,
 		summary_tbl <- .buildStratifiedTable(
 			summary_stats    = summary_stats,
 			overall_stats    = overall_stats,
-			splitCovariates       = splitCovariates,
+			splitCovariates  = splitCovariates,
 			selected_metrics = selected_metrics,
 			param_col        = "Parameter",
-			covariateLabels = covariateLabels)
+			covariateLabels  = splitCovariateLabels)
 
 	} else {
 		# -----------------------------------------------------------------------
@@ -1383,10 +1386,14 @@ tableNCARatios <- function(projectFile      = NULL,
 
 		summary_tbl <- .mockIndividualSection(summary_tbl)
 	}
+	if (!stratifyColumns && !is.null(splitCovariates)) {
+		summary_tbl <- .applyCovariateColumnLabels(
+			df                    = summary_tbl,
+			splitCovariates       = splitCovariates,
+			splitCovariate_labels = splitCovariateLabels)
+	}
 
-	# ==========================================================================
-	# SET ATTRIBUTES for style_tfl
-	# To recognize this as NCA ratio table with sections
+	# SET ATTRIBUTES for style_tfl --> identify NCA ratio table with sections
 	if (includeId && "Section" %in% names(summary_tbl)) {
 		attr(summary_tbl, "table_type") <- "nca_ratio"
 		attr(summary_tbl, "format")     <- "long"  # Always long when includeId=TRUE
