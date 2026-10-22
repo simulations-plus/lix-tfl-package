@@ -167,14 +167,14 @@ test_that("tableNCAConcentration with useNominalTime", {
 	expect_gt(nrow(table), 0)
 })
 
-test_that("tableNCAConcentration with covariateLabels", {
+test_that("tableNCAConcentration with splitCovariateLabels", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with custom covariate labels
 	table <- tableNCAConcentration(
 		projectFile      = pkx_project_1,
 		splitCovariates  = "TINFCAT",
-		covariateLabels = "Infusion Category",
+		splitCovariateLabels = "Infusion Category",
 		stratifyColumns = TRUE,
 		useWideFormat  = FALSE)
 
@@ -566,14 +566,14 @@ test_that("tableNCAParameters with multiple covariates", {
 	expect_true(any(grepl("Overall", names(table), ignore.case = TRUE)))
 })
 
-test_that("tableNCAParameters with covariateLabels", {
+test_that("tableNCAParameters with splitCovariateLabels", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with custom covariate labels
 	table <- tableNCAParameters(
 		projectFile      = pkx_project_1,
 		splitCovariates  = "TINFCAT",
-		covariateLabels = "Infusion Category",
+		splitCovariateLabels = "Infusion Category",
 		selectParameters = c("AUCINF_obs", "Cmax"),
 		stratifyColumns = TRUE,
 		useWideFormat  = FALSE)
@@ -583,7 +583,7 @@ test_that("tableNCAParameters with covariateLabels", {
 	expect_true(any(grepl("Infusion Category", header_names)))
 })
 
-test_that("tableNCAParameters with multiple covariateLabels", {
+test_that("tableNCAParameters with multiple splitCovariateLabels", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with multiple custom covariate labels
@@ -591,7 +591,7 @@ test_that("tableNCAParameters with multiple covariateLabels", {
 		projectFile      = pkx_project_3,
 		selectParameters = c("AUCINF_obs", "Cmax"),
 		splitCovariates  = c("DOSE_mg", "ROUTE"),  # Changed from "DOSE" to "DOSE_mg"
-		covariateLabels = c("Dose Level", "Route of Administration"),
+		splitCovariateLabels = c("Dose Level", "Route of Administration"),
 		stratifyColumns = TRUE,
 		useWideFormat  = FALSE,
 		metrics          = "GeomCV")
@@ -976,7 +976,7 @@ test_that("tableNCAParameters all arguments combined", {
 		metrics          = c("min", "MeanSD", "median", "GeomCV", "max"),
 		useWideFormat       = FALSE,
 		stratifyColumns = TRUE,
-		covariateLabels = "Infusion Category",
+		splitCovariateLabels = "Infusion Category",
 		roundDigits      = 4,
 		roundMethod      = "significantFigures",
 		units            = TRUE,
@@ -2877,7 +2877,7 @@ test_that("tableNCARatios mock = TRUE masks output", {
 	expect_true(any(grepl("xx", as.matrix(table_mock))))
 })
 
-test_that("tableNCARatios with covariateLabels", {
+test_that("tableNCARatios with splitCovariateLabels", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
@@ -2885,7 +2885,7 @@ test_that("tableNCARatios with covariateLabels", {
 	table <- tableNCARatios(
 		projectFile      = pkx_project_5,
 		splitCovariates       = "SEQ",
-		covariateLabels = "Sequence",
+		splitCovariateLabels = "Sequence",
 		stratifyColumns = TRUE,
 		useWideFormat  = FALSE
 	)
