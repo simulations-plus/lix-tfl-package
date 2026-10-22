@@ -7,7 +7,8 @@
 #' @param customUnits Named vector or 2-column dataframe mapping dataset covariate names to
 #'   custom unit labels. Example: `c(WEIGHT = "kg", HEIGHT = "cm")`.
 #'   Units are appended in parentheses: "Weight (kg)".
-#' @param splitCovariates vector of categorical covariates to stratify by, or NULL
+#' @param splitCovariates vector of categorical covariates or occasion columns
+#'   (e.g. "Period") to stratify by, or NULL
 #' @param splitCovariateLabels Character vector of custom labels for
 #'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
 #'   (default), the original covariate names are used. These labels are applied
@@ -98,7 +99,7 @@ tableContinuousCovariateSummary <- function(projectFile          = NULL,
 	units_df   <- .normalizeAliasMapping(customUnits, "units")
 
 	cat_types            <- c("categorical", "additionalstratificationcategorical", "stratificationcategorical")
-	stratifyColumns      <- .validateStratificationArgs(splitCovariates, stratifyColumns, allowed_types = cat_types)
+	stratifyColumns      <- .validateStratificationArgs(splitCovariates, stratifyColumns, allowed_types = cat_types, allow_occasions = TRUE)
 	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 
 	# Validate covariate and id filters (categorical-like types as defined above)
