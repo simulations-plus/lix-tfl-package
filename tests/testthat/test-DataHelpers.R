@@ -85,3 +85,46 @@ test_that("tableCategoricalCovariateSummary digits arguments", {
 	table = tableCategoricalCovariateSummary(mono_project_1, digits = 3)
 	expect_equal(table$Percentage, c(0.333, 0.333, 0.333, 0.5, 0.5))
 })
+
+test_that("tableContinuousCovariateSummary non-stratified relabels the split covariate column", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	# stratifyColumns = FALSE (default): the split covariate appears as a literal
+	# column; splitCovariateLabels renames it (raw name gone, label present).
+	table = tableContinuousCovariateSummary(mono_project_1,
+																					splitCovariates      = "SEX",
+																					splitCovariateLabels = "Sex",
+																					prettyLabels         = FALSE)
+	expect_true("Sex" %in% names(table))
+	expect_false("SEX" %in% names(table))
+})
+
+test_that("tableCategoricalCovariateSummary non-stratified relabels the split covariate column", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	# stratifyColumns = FALSE (default): SEX becomes a left-side grouping column
+	# that splitCovariateLabels renames to "Sex".
+	table = tableCategoricalCovariateSummary(mono_project_1,
+																					 splitCovariates      = "SEX",
+																					 splitCovariateLabels = "Sex")
+	expect_true("Sex" %in% names(table))
+	expect_false("SEX" %in% names(table))
+})
+
+test_that("listingDosingRegimen renames the time and amount columns to Time/Amount", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	# The dataset time/amount headers (TIME/AMT) are always renamed to Time/Amount.
+	listing = listingDosingRegimen(mono_project_1)
+	expect_s3_class(listing, "data.frame")
+	expect_true(all(c("Time", "Amount") %in% names(listing)))
+	expect_false(any(c("TIME", "AMT") %in% names(listing)))
+})
+
+test_that("listingDosingRegimen relabels split covariate columns with splitCovariateLabels", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	listing = listingDosingRegimen(mono_project_1,
+																 splitCovariates      = "SEX",
+																 splitCovariateLabels = "Sex")
+	expect_true("Sex" %in% names(listing))
+	expect_false("SEX" %in% names(listing))
+	# Time/Amount rename still applies alongside the covariate relabel.
+	expect_true(all(c("Time", "Amount") %in% names(listing)))
+})

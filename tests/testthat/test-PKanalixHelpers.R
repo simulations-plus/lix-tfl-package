@@ -183,6 +183,22 @@ test_that("tableNCAConcentration with splitCovariateLabels", {
 	expect_true(any(grepl("Infusion Category", header_names)))
 })
 
+test_that("tableNCAConcentration non-stratified relabels the split covariate column", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# When stratifyColumns = FALSE the covariate is a literal column; the label
+	# should rename that column (raw covariate name gone, label present).
+	table <- tableNCAConcentration(
+		projectFile          = pkx_project_1,
+		splitCovariates      = "TINFCAT",
+		splitCovariateLabels = "Infusion Category",
+		stratifyColumns      = FALSE,
+		useWideFormat        = FALSE)
+
+	expect_true("Infusion Category" %in% names(table))
+	expect_false("TINFCAT" %in% names(table))
+})
+
 test_that("tableNCAConcentration rounding methods", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
@@ -599,6 +615,22 @@ test_that("tableNCAParameters with multiple splitCovariateLabels", {
 	# Verify custom labels appear
 	header_names <- names(table)
 	expect_true(any(grepl("Dose Level|Route of Administration", header_names)))
+})
+
+test_that("tableNCAParameters non-stratified relabels the split covariate column", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# stratifyColumns = FALSE -> covariate stays a literal column that the label
+	# should rename, mirroring the stratified-header behaviour.
+	table <- tableNCAParameters(
+		projectFile          = pkx_project_1,
+		splitCovariates      = "TINFCAT",
+		splitCovariateLabels = "Infusion Category",
+		selectParameters     = c("AUCINF_obs", "Cmax"),
+		stratifyColumns      = FALSE)
+
+	expect_true("Infusion Category" %in% names(table))
+	expect_false("TINFCAT" %in% names(table))
 })
 
 test_that("tableNCAParameters rounding methods", {
@@ -1491,6 +1523,20 @@ test_that("listingNCAParameters works with covariates", {
 	expect_equal(names(result)[1:3], c("SEX", "TINFCAT", "id"))
 })
 
+test_that("listingNCAParameters relabels split covariate columns with splitCovariateLabels", {
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	result <- listingNCAParameters(
+		projectFile          = pkx_project_1,
+		splitCovariates      = c("SEX", "TINFCAT"),
+		splitCovariateLabels = c("Sex", "Infusion Category")
+	)
+
+	# Labels rename the covariate columns; raw covariate names are gone.
+	expect_true(all(c("Sex", "Infusion Category") %in% names(result)))
+	expect_false(any(c("SEX", "TINFCAT") %in% names(result)))
+})
+
 test_that("listingNCAParameters filters to selected parameters", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
@@ -1890,6 +1936,19 @@ test_that("listingNCAConcentration works with covariates", {
 	expect_true(which(names(result) == "FOOD") < which(names(result) == "ActualTime"))
 })
 
+test_that("listingNCAConcentration relabels split covariate columns with splitCovariateLabels", {
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	result <- listingNCAConcentration(
+		projectFile          = pkx_project_2,
+		splitCovariates      = c("FOOD", "TREAT"),
+		splitCovariateLabels = c("Food Status", "Treatment")
+	)
+
+	expect_true(all(c("Food Status", "Treatment") %in% names(result)))
+	expect_false(any(c("FOOD", "TREAT") %in% names(result)))
+})
+
 test_that("listingNCAConcentration works with useNominalTime", {
 	skip_if_not(file.exists(pkx_project_4), "Test project not available")
 
@@ -2136,6 +2195,19 @@ test_that("listingNCARatios works with covariates", {
 	expect_s3_class(result, "data.frame")
 	expect_true(all(c("id", "SEQ") %in% names(result)))
 	expect_equal(names(result)[1:2], c("SEQ", "id"))
+})
+
+test_that("listingNCARatios relabels split covariate columns with splitCovariateLabels", {
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	result <- listingNCARatios(
+		projectFile          = pkx_project_5,
+		splitCovariates      = "SEQ",
+		splitCovariateLabels = "Sequence"
+	)
+
+	expect_true("Sequence" %in% names(result))
+	expect_false("SEQ" %in% names(result))
 })
 
 test_that("listingNCARatios filters to selected ratio parameters", {
@@ -2893,6 +2965,21 @@ test_that("tableNCARatios with splitCovariateLabels", {
 	# Verify custom labels appear in column headers
 	header_names <- names(table)
 	expect_true(any(grepl("Sequence", header_names)))
+})
+
+test_that("tableNCARatios non-stratified relabels the split covariate column", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	# stratifyColumns = FALSE -> covariate is a literal column renamed by the label.
+	table <- tableNCARatios(
+		projectFile          = pkx_project_5,
+		splitCovariates      = "SEQ",
+		splitCovariateLabels = "Sequence",
+		stratifyColumns      = FALSE)
+
+	expect_true("Sequence" %in% names(table))
+	expect_false("SEQ" %in% names(table))
 })
 
 test_that("tableNCARatios prettyLabels", {
