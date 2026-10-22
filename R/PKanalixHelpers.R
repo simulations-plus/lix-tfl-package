@@ -520,10 +520,6 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   "vertical" table where \code{Statistic} forms the first column and the
 #'   parameters form the subsequent columns (useful for reporting).
 #'
-#' @param covariateLabels Character vector of custom labels for splitCovariates, must be the
-#'   same length as `splitCovariates`. If `NULL` (default), the original covariate names are
-#'   used. These labels appear in column headers when `stratifyColumns = TRUE`.
-#'
 #' @param includeId Logical. If `TRUE` and `useWideFormat = FALSE`, adds individual
 #'   subject IDs and their parameter values below the summary statistics in the
 #'   "Statistic" column. When stratified by splitCovariates, individual IDs are grouped
@@ -2067,6 +2063,10 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #' @param splitCovariates Character vector. Categorical covariates (type "catcov")
 #'   to include and sort by. If specified, the table is sorted by these
 #'   splitCovariates in the order provided.
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original covariate names are used. When `splitCovariates` is
+#'   set, these labels rename the corresponding covariate columns in the listing.
 #' @param selectParameters Character vector. NCA parameters to include. If NULL (default),
 #'   all computed NCA parameters are included.
 #' @param filterCovariates Named list where names are categorical covariate names
@@ -2143,19 +2143,20 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #' # Masked listing for documentation / example outputs
 #' params <- listingNCAParameters(mock = TRUE)
 #' }
-listingNCAParameters <- function(projectFile      = NULL,
-																 splitCovariates  = NULL,
-																 selectParameters = NULL,
-																 filterCovariates = NULL,
-																 filterIds        = NULL,
-																 roundDigits      = 3,
-																 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
-																 roundByParameter = NULL,
-																 units            = TRUE,
-																 aliases          = TRUE,
-																 customUnits      = NULL,
-																 customAliases    = NULL,
-																 mock             = FALSE){
+listingNCAParameters <- function(projectFile          = NULL,
+																 splitCovariates      = NULL,
+																 splitCovariateLabels = NULL,
+																 selectParameters     = NULL,
+																 filterCovariates     = NULL,
+																 filterIds            = NULL,
+																 roundDigits          = 3,
+																 roundMethod          = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+																 roundByParameter     = NULL,
+																 units                = TRUE,
+																 aliases              = TRUE,
+																 customUnits          = NULL,
+																 customAliases        = NULL,
+																 mock                 = FALSE){
 
 
 	roundMethod <- match.arg(roundMethod)
@@ -2171,6 +2172,7 @@ listingNCAParameters <- function(projectFile      = NULL,
 
 	# Validate set splitCovariates
 	.validateCovariateSelection(splitCovariates, ratio = FALSE)
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 	# Validate set parameters
 	available_params <- .validateNCAParametersSelection(selectParameters, ratio = FALSE)
 
@@ -2261,6 +2263,14 @@ listingNCAParameters <- function(projectFile      = NULL,
 		indivNCA <- .mockDataListing(indivNCA, colTypes = col_types, digits = roundDigits)
 	}
 
+	# Relabel split-covariate columns (done last so mock's raw-name colTypes lookup is unaffected)
+	if (!is.null(splitCovariates)) {
+		indivNCA <- .applyCovariateColumnLabels(
+			df                    = indivNCA,
+			splitCovariates       = splitCovariates,
+			splitCovariate_labels = splitCovariateLabels)
+	}
+
 	attr(indivNCA, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(indivNCA, "r_source")       <- .getRScriptPath()
 	return(indivNCA)
@@ -2277,6 +2287,10 @@ listingNCAParameters <- function(projectFile      = NULL,
 #'   splitCovariates in the order provided. Occasion-varying covariates are
 #'   rejected, since ratios are computed across occasions and cannot be
 #'   stratified by a covariate that changes within subject.
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original covariate names are used. When `splitCovariates` is
+#'   set, these labels rename the corresponding covariate columns in the listing.
 #' @param selectParameters Character vector. Ratio parameters to include. If NULL (default),
 #'   all available ratio parameters are included.
 #' @param filterCovariates Named list where names are categorical covariate names
@@ -2356,6 +2370,7 @@ listingNCAParameters <- function(projectFile      = NULL,
 #' }
 listingNCARatios <- function(projectFile      = NULL,
 														 splitCovariates  = NULL,
+														 splitCovariateLabels = NULL,
 														 selectParameters = NULL,
 														 filterCovariates = NULL,
 														 filterIds        = NULL,
@@ -2379,6 +2394,7 @@ listingNCARatios <- function(projectFile      = NULL,
 
 	# Validate set splitCovariates (rejects occasion-varying split covariates for ratios)
 	.validateCovariateSelection(splitCovariates, ratio = TRUE)
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 	# Validate set parameters
 	available_params <- .validateNCAParametersSelection(selectParameters, ratio = TRUE)
 
@@ -2476,6 +2492,14 @@ listingNCARatios <- function(projectFile      = NULL,
 		col_types[merged_strat_covs] <- "catcov"
 
 		indivRatios <- .mockDataListing(indivRatios, colTypes = col_types, digits = roundDigits)
+	}
+
+	# Relabel split-covariate columns (done last so mock's raw-name colTypes lookup is unaffected)
+	if (!is.null(splitCovariates)) {
+		indivRatios <- .applyCovariateColumnLabels(
+			df                    = indivRatios,
+			splitCovariates       = splitCovariates,
+			splitCovariate_labels = splitCovariateLabels)
 	}
 
 	attr(indivRatios, "project_source") <- lixoftConnectors::getProjectSettings()$directory
