@@ -36,9 +36,12 @@
 #'   (default), splitCovariates appear as separate columns on the left side of the table.
 #'   Only applicable when `splitCovariates` is specified.
 #'
-#' @param covariateLabels Character vector of custom labels for splitCovariates, must be the
-#'   same length as `splitCovariates`. If `NULL` (default), the original covariate names are
-#'   used. These labels appear in column headers when `stratifyColumns = TRUE`.
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original covariate names are used. These labels are applied
+#'   in both layouts: they appear in the combined column headers when
+#'   `stratifyColumns = TRUE`, and they rename the split-covariate columns when
+#'   `stratifyColumns = FALSE`.
 #'
 #' @param useWideFormat Logical. If `TRUE` (default), returns a "wide" table format where
 #'   time points appear as columns and statistics appear as rows (one row per statistic).
@@ -119,7 +122,7 @@
 #' # tableNCAConcentration(
 #' #   splitCovariates = c("SEX", "AGE_CAT"),
 #' #   metrics = c("GeomCV", "MeanSD"),
-#' #   covariateLabels = c("Sex", "Age Category"),
+#' #   splitCovariateLabels = c("Sex", "Age Category"),
 #' #   stratifyColumns = TRUE
 #' # )
 #'
@@ -133,13 +136,13 @@
 #' @export
 tableNCAConcentration <- function(projectFile      = NULL,
 																	splitCovariates  = NULL,
+																	splitCovariateLabels = NULL,
+																	stratifyColumns  = FALSE,
 																	useNominalTime   = TRUE,
 																	metrics          = NULL,
-																	stratifyColumns = FALSE,
-																	covariateLabels = NULL,
-																	useWideFormat  = TRUE,
+																	useWideFormat    = TRUE,
 																	maxTimeDeviation = NULL,
-																	includeId       = FALSE,
+																	includeId        = FALSE,
 																	filterCovariates = NULL,
 																	filterIds        = NULL,
 																	roundDigits      = 3,
@@ -160,7 +163,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	# Validate splitCovariates, stratification and covariate label arguments
 	.validateCovariateSelection(splitCovariates, ratio = FALSE)
 	stratifyColumns <- .validateStratificationArgs(splitCovariates, stratifyColumns)
-	covariateLabels <- .validateCovariateLabels(splitCovariates, covariateLabels)
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 
 	# Validate covariate and id filters
 	.validateFilters(filterCovariates, filterIds, resultType = "nca")
@@ -230,7 +233,11 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	# For stratified analysis, calculate stats separately by splitCovariates
 	# For non-stratified, calculate overall stats (may still include splitCovariates as grouping)
 	if (stratifyColumns && !is.null(splitCovariates)) {
-		# STRATIFIED CASE: Calculate stats for each covariate combination
+		if (is.null(metrics)) {
+			metrics <- "GeomCV"
+			message("No metric specified for stratified table. Defaulting to 'GeomCV'. To show multiple metrics specify metrics explicitly.")
+		}
+
 		group_by_vars <- c(time_col, splitCovariates)
 
 		summary_stats <- .calculateDescriptiveStats(
@@ -278,7 +285,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			splitCovariates       = splitCovariates,
 			selected_metrics = selected_metrics,
 			param_col        = time_col,
-			covariateLabels = covariateLabels)
+			covariateLabels = splitCovariateLabels)
 
 		# Apply pretty labels to the Statistic column (metric names)
 		if (isTRUE(prettyLabels) && "Statistic" %in% names(final_df)) {
@@ -463,9 +470,15 @@ tableNCAConcentration <- function(projectFile      = NULL,
 		final_df <- .mockIndividualSection(final_df)
 	}
 
+	if (!stratifyColumns && !is.null(splitCovariates)) {
+		final_df <- .applyCovariateColumnLabels(
+			df                    = final_df,
+			splitCovariates       = splitCovariates,
+			splitCovariate_labels = splitCovariateLabels)
+	}
+
 	# ==========================================================================
-	# SET ATTRIBUTES for style_tfl
-	# To recognize this as NCA concentration table with sections
+	# SET ATTRIBUTES for style_tfl --> to identify NCA concentration table with sections
 	if (includeId && "Section" %in% names(final_df)) {
 		attr(final_df, "table_type") <- "nca_concentration"
 		attr(final_df, "format")     <- "long"  # Always long when includeId=TRUE
@@ -1750,6 +1763,11 @@ listingAbbreviation <- function(projectFile   = NULL,
 #'   stratification. Occasion columns present in the project are appended
 #'   automatically (see Details).
 #'
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original covariate names are used. When `splitCovariates` is
+#'   set, these labels rename the corresponding covariate columns in the listing.
+#'
 #' @param useNominalTime Logical; if \code{TRUE}, the function attempts to use
 #'   nominal time for the concentration listing. If nominal time is not available
 #'   in the project (checked via \code{lixoftConnectors::getData()} and \code{headerTypes ==
@@ -1834,14 +1852,15 @@ listingAbbreviation <- function(projectFile   = NULL,
 #' }
 #'
 #' @export
-listingNCAConcentration <- function(projectFile      = NULL,
-																		splitCovariates  = NULL,
-																		useNominalTime   = FALSE,
-																		filterCovariates = NULL,
-																		filterIds        = NULL,
-																		roundDigits      = 3,
-																		roundMethod      = c("none", "monolixSuiteRounding", "significantFigures", "significantFiguresPreserved"),
-																		mock             = FALSE) {
+listingNCAConcentration <- function(projectFile          = NULL,
+																		splitCovariates      = NULL,
+																		splitCovariateLabels = NULL,
+																		useNominalTime       = FALSE,
+																		filterCovariates     = NULL,
+																		filterIds            = NULL,
+																		roundDigits          = 3,
+																		roundMethod          = c("none", "monolixSuiteRounding", "significantFigures", "significantFiguresPreserved"),
+																		mock                 = FALSE) {
 
 	roundMethod <- match.arg(roundMethod)
 
@@ -1857,6 +1876,8 @@ listingNCAConcentration <- function(projectFile      = NULL,
 
 	# Validate set splitCovariates
 	.validateCovariateSelection(splitCovariates, ratio = FALSE)
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
+	label_covs           <- splitCovariates
 
 	# Get occasion variables from data and add to stratification
 	project_data <- lixoftConnectors::getData()
@@ -2046,6 +2067,13 @@ listingNCAConcentration <- function(projectFile      = NULL,
 		col_types["id"] <- "id"
 
 		indiv <- .mockDataListing(indiv, colTypes = col_types, digits = roundDigits)
+	}
+
+	if (!is.null(label_covs)) {
+		indiv <- .applyCovariateColumnLabels(
+			df                    = indiv,
+			splitCovariates       = label_covs,
+			splitCovariate_labels = splitCovariateLabels)
 	}
 
 	attr(indiv, "project_source") <- lixoftConnectors::getProjectSettings()$directory
@@ -2263,7 +2291,6 @@ listingNCAParameters <- function(projectFile          = NULL,
 		indivNCA <- .mockDataListing(indivNCA, colTypes = col_types, digits = roundDigits)
 	}
 
-	# Relabel split-covariate columns (done last so mock's raw-name colTypes lookup is unaffected)
 	if (!is.null(splitCovariates)) {
 		indivNCA <- .applyCovariateColumnLabels(
 			df                    = indivNCA,
@@ -2494,7 +2521,6 @@ listingNCARatios <- function(projectFile      = NULL,
 		indivRatios <- .mockDataListing(indivRatios, colTypes = col_types, digits = roundDigits)
 	}
 
-	# Relabel split-covariate columns (done last so mock's raw-name colTypes lookup is unaffected)
 	if (!is.null(splitCovariates)) {
 		indivRatios <- .applyCovariateColumnLabels(
 			df                    = indivRatios,
