@@ -638,6 +638,10 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 #'   such as Exclusion_reason); only non-existent names are rejected. A warning is
 #'   emitted if a chosen column has too many modalities per subject (see
 #'   \code{maxSubjectRatio}). If NULL, an overall summary is provided.
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original column names are used. When `splitCovariates` is
+#'   set, these labels rename the corresponding grouping columns in the table.
 #' @param filterCovariates Named list where names are existing dataset columns
 #'   (any column, not only covariates) and values are vectors of allowed values,
 #'   e.g. \code{list(VISIT = c("DAY 1", "DAY 7"))}. If NULL, no covariate filtering.
@@ -675,13 +679,14 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 #' }
 #'
 #' @export
-tableExclusions <- function(projectFile       = NULL,
-														splitCovariates   = NULL,
-														filterCovariates  = NULL,
-														filterIds         = NULL,
-														useWideFormat   = TRUE,
-														maxSubjectRatio = 0.5,
-														mock            = FALSE) {
+tableExclusions <- function(projectFile          = NULL,
+														splitCovariates      = NULL,
+														splitCovariateLabels = NULL,
+														filterCovariates     = NULL,
+														filterIds            = NULL,
+														useWideFormat        = TRUE,
+														maxSubjectRatio      = 0.5,
+														mock                 = FALSE) {
 
 	.checkProjectFile(projectFile, c("pkanalix", "monolix"))
 	.ensureProjectLoaded(projectFile)
@@ -718,6 +723,8 @@ tableExclusions <- function(projectFile       = NULL,
 	} else {
 		splitCovariates <- character(0)
 	}
+
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 
 	# Warn if a chosen grouping variable has too many modalities per subject.
 	.warnUnsuitableGrouping(dataUsed, splitCovariates, id_col = id,
@@ -817,6 +824,13 @@ tableExclusions <- function(projectFile       = NULL,
 			excludeCols  = "Statistic",
 			modalityCols = if (length(modality_cols)) modality_cols else NULL,
 			naFillAxis   = if (useWideFormat) "column" else "row")
+	}
+
+	if (length(splitCovariates) > 0) {
+		summary_tbl <- .applyCovariateColumnLabels(
+			df                    = summary_tbl,
+			splitCovariates       = splitCovariates,
+			splitCovariate_labels = splitCovariateLabels)
 	}
 
 	attr(summary_tbl, "project_source") <- lixoftConnectors::getProjectSettings()$directory
