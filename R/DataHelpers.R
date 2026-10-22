@@ -1086,6 +1086,10 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
 #'   (.mlxtran) project file. If NULL, the currently loaded project is used.
 #' @param splitCovariates Character vector of categorical covariate / occasion
 #'   names to include as columns and sort by. Validated against the project.
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original covariate names are used. When `splitCovariates` is
+#'   set, these labels rename the corresponding covariate columns in the listing.
 #' @param filterCovariates Named list of categorical covariate filters, e.g.
 #'   `list(SEX = "M", DOSE = c("100", "200"))`. Rows not matching are dropped.
 #' @param filterIds Vector of subject ids to keep. If NULL, no id filtering.
@@ -1113,6 +1117,7 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
 #' @export
 listingDosingRegimen <- function(projectFile      = NULL,
 																 splitCovariates  = NULL,
+																 splitCovariateLabels = NULL,
 																 filterCovariates = NULL,
 																 filterIds        = NULL,
 																 mock             = FALSE) {
@@ -1122,6 +1127,7 @@ listingDosingRegimen <- function(projectFile      = NULL,
 	.ensureProjectLoaded(projectFile)
 
 	.validateCovariateSelection(splitCovariates, ratio = FALSE)
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 	.validateFilters(filterCovariates, filterIds, resultType = "covariateSummary")
 
 	# Detect header-typed columns (only used if present in dataset)
@@ -1245,6 +1251,17 @@ listingDosingRegimen <- function(projectFile      = NULL,
 
 		listing <- .mockDataListing(listing, colTypes = col_types)
 	}
+
+	if (!is.null(user_split)) {
+		listing <- .applyCovariateColumnLabels(
+			df                    = listing,
+			splitCovariates       = user_split,
+			splitCovariate_labels = splitCovariateLabels)
+	}
+
+	listing <- listing %>%
+		dplyr::rename(Time   = dplyr::all_of(time_col),
+									Amount = dplyr::all_of(amount_col))
 
 	attr(listing, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(listing, "r_source")       <- .getRScriptPath()
