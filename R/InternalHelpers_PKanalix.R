@@ -3157,6 +3157,120 @@
 }
 
 ################################################################################
+#' Internal helper to relabel / unit-annotate NCA concentration listing columns
+#'
+#' @description
+#' Applies presentation labels to the fixed columns of a `listingNCAConcentration`
+#' output. `prettyLabels` delegates naming to the shared `.prettyLabels()` helper
+#' (which maps `ActualTime` -> "Actual time", `NominalTime` -> "Nominal time",
+#' `UsedConc` -> "Used concentration"; `Concentration` / `Censoring` are already
+#' their pretty form). `units` appends the project unit in parentheses: the time
+#' columns use `getDataSettings()$units$time` and the concentration columns use
+#' amount-per-volume (`units$dose` / `units$volume`, e.g. "mg/L").
+#'
+#' The two flags are independent and compose freely:
+#' \itemize{
+#'   \item `prettyLabels = FALSE, units = FALSE` -> `ActualTime`
+#'   \item `prettyLabels = TRUE,  units = FALSE` -> `Actual time`
+#'   \item `prettyLabels = FALSE, units = TRUE`  -> `ActualTime (h)`
+#'   \item `prettyLabels = TRUE,  units = TRUE`  -> `Actual time (h)`
+#' }
+#'
+#' The time/concentration columns are captured by their raw names *before* any
+#' rename, so units are appended by position onto whatever the final (raw or
+#' pretty) label is. Units are only added when units are enabled in the project
+#' (`getDataSettings()$enableunits`); otherwise a warning is issued and labels
+#' are applied without units. Only columns present in `df` are touched, so this is
+#' safe whether actual time, nominal time, or both exist.
+#'
+#' @param df Data frame (a `listingNCAConcentration` result).
+#' @param prettyLabels Logical; rename fixed columns to publication form.
+#' @param units Logical; append project units to time and concentration columns.
+#'
+#' @return `df` with the fixed columns renamed where requested.
+#'
+#' @keywords internal
+#' @noRd
+.applyNCAConcentrationColumnLabels <- function(df, prettyLabels = FALSE, units = FALSE) {
+	if (!isTRUE(prettyLabels) && !isTRUE(units)) {
+		return(df)
+	}
+
+	# Resolve project units once (shared by the time and concentration columns)
+	unit_info <- .getNCAConcentrationUnits(enabled = isTRUE(units))
+
+	# Capture the time / concentration columns by raw name BEFORE renaming,
+	# so units can be appended by position regardless of the pretty rename.
+	time_idx <- which(names(df) %in% c("ActualTime", "NominalTime"))
+	conc_idx <- which(names(df) %in% c("Concentration", "UsedConc"))
+
+	# Pretty names via the shared package helper (single source of truth)
+	if (isTRUE(prettyLabels)) {
+		df <- .prettyLabels(df)
+	}
+
+	# Append units onto the (now possibly pretty) labels by captured position
+	if (isTRUE(units)) {
+		if (nzchar(unit_info$time) && length(time_idx) > 0) {
+			names(df)[time_idx] <- paste0(names(df)[time_idx], " (", unit_info$time, ")")
+		}
+		if (nzchar(unit_info$concentration) && length(conc_idx) > 0) {
+			names(df)[conc_idx] <- paste0(names(df)[conc_idx], " (", unit_info$concentration, ")")
+		}
+	}
+
+	return(df)
+}
+
+################################################################################
+#' Internal helper to resolve time and concentration units from the project
+#'
+#' @description
+#' Reads the project unit settings via `lixoftConnectors::getDataSettings()`.
+#' The time unit is taken directly from `$units$time`; the concentration unit is
+#' derived as amount per volume (`$units$dose` / `$units$volume`, e.g. "mg/L").
+#' Each component is passed through `.formatUnits()` for consistent display.
+#'
+#' Units are only returned when `enabled = TRUE` *and* units are enabled in the
+#' project (`$enableunits`); otherwise a warning is issued (when `enabled`) and
+#' empty strings are returned so callers can skip unit annotation.
+#'
+#' @param enabled Logical; whether the caller requested units.
+#'
+#' @return A list with character elements `time` and `concentration` (possibly
+#'   empty strings).
+#'
+#' @keywords internal
+#' @noRd
+.getNCAConcentrationUnits <- function(enabled = FALSE) {
+	empty <- list(time = "", concentration = "")
+	if (!isTRUE(enabled)) {
+		return(empty)
+	}
+
+	data_settings <- lixoftConnectors::getDataSettings()
+	if (!isTRUE(data_settings$enableunits)) {
+		warning("Units were requested (units = TRUE) but are not enabled in the current project. Skipping unit retrieval.")
+		return(empty)
+	}
+
+	u <- data_settings$units
+
+	time_unit <- ""
+	if (!is.null(u$time) && nzchar(u$time)) {
+		time_unit <- .formatUnits(u$time)
+	}
+
+	# Concentration is amount (dose) per volume
+	conc_unit <- ""
+	if (!is.null(u$dose) && !is.null(u$volume) && nzchar(u$dose) && nzchar(u$volume)) {
+		conc_unit <- paste0(.formatUnits(u$dose), "/", .formatUnits(u$volume))
+	}
+
+	list(time = time_unit, concentration = conc_unit)
+}
+
+################################################################################
 #' .isCensoredFlag
 #'
 #' Interprets a single value from the interpreted-data censoring column as a
