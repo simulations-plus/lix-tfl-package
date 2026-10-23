@@ -1782,6 +1782,21 @@ listingAbbreviation <- function(projectFile   = NULL,
 #' @param filterIds Character or numeric vector of subject IDs to include. If
 #'   `NULL` (default), no ID filtering is applied.
 #'
+#' @param prettyLabels Logical; if `TRUE`, renames the fixed listing columns to
+#'   publication form: `ActualTime` -> "Actual time", `NominalTime` ->
+#'   "Nominal time", `Concentration` -> "Concentration", `UsedConc` ->
+#'   "Used concentration", `Censoring` -> "Censoring". Default `FALSE` (raw
+#'   column names are kept, e.g. for downstream processing).
+#'
+#' @param units Logical; if `TRUE`, appends the project unit (in parentheses) to
+#'   the time columns (from `getDataSettings()$units$time`) and the concentration
+#'   columns (amount-per-volume, from `units$dose` / `units$volume`, e.g.
+#'   "mg/L"). Units are only added when units are enabled in the project
+#'   (`getDataSettings()$enableunits`); otherwise a warning is issued and no
+#'   units are appended. Independent of `prettyLabels` and composes with it, e.g.
+#'   `ActualTime (h)` when `prettyLabels = FALSE`, "Actual time (h)" when
+#'   `prettyLabels = TRUE`. Default `FALSE`.
+#'
 #' @param roundDigits Integer specifying the number of decimal places for rounding
 #'   numeric values. Default is `3`.
 #'
@@ -1828,7 +1843,9 @@ listingAbbreviation <- function(projectFile   = NULL,
 #'
 #' @return A data frame in long format containing (if present) \code{splitCovariates},
 #'   \code{id}, \code{ActualTime}, \code{NominalTime} (if available),
-#'   \code{Concentration}, \code{UsedConc}, and \code{Censoring}.
+#'   \code{Concentration}, \code{UsedConc}, and \code{Censoring}. When
+#'   \code{prettyLabels} and/or \code{units} are set, the fixed columns are
+#'   renamed accordingly (e.g. \code{ActualTime} -> "Actual time (h)").
 #'
 #' @examples
 #' # Default: actual time only
@@ -1839,6 +1856,10 @@ listingAbbreviation <- function(projectFile   = NULL,
 #'
 #' # Include nominal time if available
 #' listingNCAConcentration(splitCovariates = c("TREAT", "FOOD"), useNominalTime = TRUE)
+#'
+#' # Publication-style column labels with project units, e.g. "Actual time (h)"
+#' # and "Concentration (mg/L)"
+#' listingNCAConcentration(prettyLabels = TRUE, units = TRUE)
 #'
 #' \dontrun{
 #' # Restrict to specific subjects and covariate values
@@ -1858,6 +1879,8 @@ listingNCAConcentration <- function(projectFile          = NULL,
 																		useNominalTime       = FALSE,
 																		filterCovariates     = NULL,
 																		filterIds            = NULL,
+																		prettyLabels         = TRUE,
+																		units                = TRUE,
 																		roundDigits          = 3,
 																		roundMethod          = c("none", "monolixSuiteRounding", "significantFigures", "significantFiguresPreserved"),
 																		mock                 = FALSE) {
@@ -2075,6 +2098,13 @@ listingNCAConcentration <- function(projectFile          = NULL,
 			splitCovariates       = label_covs,
 			splitCovariate_labels = splitCovariateLabels)
 	}
+
+	# Apply pretty labels and/or project units to the fixed TFL columns.
+	# Done last so renaming does not interfere with sorting/joining/rounding.
+	indiv <- .applyNCAConcentrationColumnLabels(
+		df           = indiv,
+		prettyLabels = prettyLabels,
+		units        = units)
 
 	attr(indiv, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(indiv, "r_source")       <- .getRScriptPath()
