@@ -1886,11 +1886,14 @@
 		occ_vars <- project_data$header[project_data$headerTypes == "occ"]
 
 		# Use provided indiv_data or fetch individual concentration data
+		# Force raw column names; code below joins/groups on raw names
 		if (is.null(indiv_data)) {
 			indiv_data <- listingNCAConcentration(
 				projectFile    = NULL,  # Already loaded
 				splitCovariates     = splitCovariates,
 				useNominalTime = useNominalTime,
+				prettyLabels   = FALSE,
+				units          = FALSE,
 				roundDigits    = NULL,  # Don't round here, will round below
 				roundMethod    = "none")
 		}

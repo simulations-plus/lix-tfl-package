@@ -84,6 +84,11 @@
 #'   human-readable labels (e.g., "CV" becomes "CV (%)", "geoMean" becomes "Geometric Mean").
 #'   If `FALSE`, uses raw column names.
 #'
+#' @param units Logical; if `TRUE` and units are enabled in the project,
+#'   appends the time unit to the time column header in long format
+#'   (`useWideFormat = FALSE`), e.g. "Nominal time (d)". No effect in wide
+#'   layout. Default `FALSE`.
+#'
 #' @param mock Logical; if `TRUE`, masks the table for documentation / example
 #'   outputs: concentration statistic values become placeholders (e.g.
 #'   `"xx.xx"`), and `splitCovariates` values become generic labels
@@ -148,6 +153,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 																	roundDigits      = 3,
 																	roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 																	prettyLabels     = TRUE,
+																	units            = TRUE,
 																	mock             = FALSE) {
 
 	roundMethod <- match.arg(roundMethod)
@@ -170,6 +176,11 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	# Initialize time deviation attributes container (for footnote generation)
 	.time_dev_attrs <- NULL
 
+	unit_info   <- .getNCAConcentrationUnits(enabled = units)
+	# Tracks the current display name of the single time column (long formats),
+	# so mock masking and unit annotation can locate it after prettyLabels.
+	time_header <- NA_character_
+
 	# Validate: stratifyColumns only works with long format
 	if (stratifyColumns && useWideFormat) {
 		message("stratifyColumns = TRUE requires long format, but useWideFormat = TRUE was set; ignoring stratifyColumns. To stratify, set useWideFormat = FALSE.")
@@ -190,11 +201,14 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	# GET RAW INDIVIDUAL DATA
 
 	# Get individual concentration data using listingNCAConcentration
+	# Force raw column names; downstream code joins/groups on raw names
 	# Don't apply rounding yet (will be done after calculating stats)
 	raw_data  <- listingNCAConcentration(
 		projectFile    = NULL, # project already loaded
 		splitCovariates= splitCovariates,
 		useNominalTime = useNominalTime,
+		prettyLabels   = FALSE,
+		units          = FALSE,
 		roundDigits    = NULL,
 		roundMethod    = "none")
 
@@ -295,6 +309,21 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			dummy_df        <- .prettyLabels(dummy_df)
 			metric_map      <- setNames(names(dummy_df), stat_metrics)
 			final_df$Statistic <- metric_map[final_df$Statistic]
+		}
+
+		# Pretty-label and/or unit-annotate the single time column
+		if (time_col %in% names(final_df)) {
+			time_idx <- which(names(final_df) == time_col)
+			if (isTRUE(prettyLabels)) {
+				dummy_t        <- as.data.frame(matrix(NA, nrow = 1, ncol = 1))
+				names(dummy_t) <- time_col
+				names(final_df)[time_idx] <- names(.prettyLabels(dummy_t))
+			}
+			time_header <- names(final_df)[time_idx]
+			if (isTRUE(units) && nzchar(unit_info$time)) {
+				time_header <- paste0(time_header, " (", unit_info$time, ")")
+				names(final_df)[time_idx] <- time_header
+			}
 		}
 
 	} else {
@@ -425,11 +454,8 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			# ======================================================================
 			# Data is already in long format, just apply pretty labels and sorting
 
-			if (isTRUE(prettyLabels)) {
-				final_df <- .prettyLabels(final_df)
-			}
-
-			# Sort by splitCovariates (if present and not stratified), then by Time
+			# Sort FIRST, while raw time_col name still exists: prettyLabels
+			# renames time column (ActualTime/NominalTime -> "Actual/Nominal time")
 			if (!stratifyColumns && !is.null(splitCovariates) && length(splitCovariates) > 0) {
 				final_df <- final_df %>%
 					dplyr::arrange(dplyr::across(dplyr::all_of(splitCovariates)),
@@ -437,6 +463,22 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			} else if (time_col %in% names(final_df)) {
 				final_df <- final_df %>%
 					dplyr::arrange(suppressWarnings(as.numeric(!!rlang::sym(time_col))))
+			}
+
+			# Capture the time column position before prettyLabels renames it
+			time_idx <- which(names(final_df) == time_col)
+
+			if (isTRUE(prettyLabels)) {
+				final_df <- .prettyLabels(final_df)
+			}
+
+			# Track (possibly renamed) time col and append project time unit to header
+			if (length(time_idx) == 1) {
+				time_header <- names(final_df)[time_idx]
+				if (isTRUE(units) && nzchar(unit_info$time)) {
+					time_header <- paste0(time_header, " (", unit_info$time, ")")
+					names(final_df)[time_idx] <- time_header
+				}
 			}
 		}
 	}
@@ -460,10 +502,13 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			for (sc in splitCovariates) modality_cols[[sc]] <- NA_character_
 		}
 
+		# In long format prettyLabels/units may have renamed the time column, so
+		# exclude it by its current header (time_header); fall back to the raw name.
+		time_exclude <- if (!is.na(time_header)) time_header else time_col
 		final_df <- .mockOutputData(
 			df           = final_df,
 			digits       = roundDigits,
-			excludeCols  = c(time_col, "Statistic", "Section"),
+			excludeCols  = c(time_exclude, "Statistic", "Section"),
 			modalityCols = if (length(modality_cols)) modality_cols else NULL,
 			naFillAxis   = if (stratifyColumns || useWideFormat) "row" else "column")
 
@@ -1788,14 +1833,10 @@ listingAbbreviation <- function(projectFile   = NULL,
 #'   "Used concentration", `Censoring` -> "Censoring". Default `FALSE` (raw
 #'   column names are kept, e.g. for downstream processing).
 #'
-#' @param units Logical; if `TRUE`, appends the project unit (in parentheses) to
-#'   the time columns (from `getDataSettings()$units$time`) and the concentration
-#'   columns (amount-per-volume, from `units$dose` / `units$volume`, e.g.
-#'   "mg/L"). Units are only added when units are enabled in the project
-#'   (`getDataSettings()$enableunits`); otherwise a warning is issued and no
-#'   units are appended. Independent of `prettyLabels` and composes with it, e.g.
-#'   `ActualTime (h)` when `prettyLabels = FALSE`, "Actual time (h)" when
-#'   `prettyLabels = TRUE`. Default `FALSE`.
+#' @param units Logical; if `TRUE` and units are enabled in the project,
+#'   appends the time unit to the time columns and the concentration unit
+#'   (amount/volume, e.g. "mg/L") to the concentration columns, e.g.
+#'   "Actual time (h)". Default `FALSE`.
 #'
 #' @param roundDigits Integer specifying the number of decimal places for rounding
 #'   numeric values. Default is `3`.
@@ -2099,8 +2140,6 @@ listingNCAConcentration <- function(projectFile          = NULL,
 			splitCovariate_labels = splitCovariateLabels)
 	}
 
-	# Apply pretty labels and/or project units to the fixed TFL columns.
-	# Done last so renaming does not interfere with sorting/joining/rounding.
 	indiv <- .applyNCAConcentrationColumnLabels(
 		df           = indiv,
 		prettyLabels = prettyLabels,
