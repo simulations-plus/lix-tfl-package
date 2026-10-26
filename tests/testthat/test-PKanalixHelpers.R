@@ -1913,7 +1913,8 @@ test_that("listingNCAParameters roundByParameter rejects invalid digits/method",
 test_that("listingNCAConcentration works with basic settings", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
-	result <- listingNCAConcentration(projectFile = pkx_project_2)
+	result <- listingNCAConcentration(projectFile = pkx_project_2,
+																		prettyLabels = FALSE, units = FALSE)
 
 	expect_s3_class(result, "data.frame")
 	expect_true("id" %in% names(result))
@@ -1927,7 +1928,8 @@ test_that("listingNCAConcentration works with covariates", {
 
 	result <- listingNCAConcentration(
 		projectFile = pkx_project_2,
-		splitCovariates = c("FOOD", "TREAT")
+		splitCovariates = c("FOOD", "TREAT"),
+		prettyLabels = FALSE, units = FALSE
 	)
 
 	expect_s3_class(result, "data.frame")
@@ -2041,7 +2043,8 @@ test_that("listingNCAConcentration mock = TRUE masks output", {
 test_that("listingNCAConcentration includes UsedConc column", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
-	result <- listingNCAConcentration(projectFile = pkx_project_2)
+	result <- listingNCAConcentration(projectFile = pkx_project_2,
+																		prettyLabels = FALSE, units = FALSE)
 
 	expect_true("UsedConc" %in% names(result))
 	expect_true("Censoring" %in% names(result))
@@ -2050,10 +2053,25 @@ test_that("listingNCAConcentration includes UsedConc column", {
 test_that("listingNCAConcentration includes ActualTime", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
-	result <- listingNCAConcentration(projectFile = pkx_project_5)
+	result <- listingNCAConcentration(projectFile = pkx_project_5,
+																		prettyLabels = FALSE, units = FALSE)
 
 	expect_true("ActualTime" %in% names(result))
 	expect_type(result$ActualTime, "double")
+})
+
+test_that("listingNCAConcentration applies pretty labels by default", {
+	skip_if_not(file.exists(pkx_project_2), "Test project not available")
+
+	result <- listingNCAConcentration(projectFile = pkx_project_2)
+
+	# Default prettyLabels = TRUE renames the raw time/concentration headers
+	expect_false("ActualTime" %in% names(result))
+	expect_false("UsedConc" %in% names(result))
+	# With default units = TRUE the labels may carry a " (unit)" suffix, so match
+	# the renamed stem rather than an exact string.
+	expect_true(any(grepl("^Actual Time", names(result))))
+	expect_true(any(grepl("^Used Concentration", names(result))))
 })
 
 test_that("listingNCAConcentration handles occasions", {
