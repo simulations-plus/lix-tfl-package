@@ -36,9 +36,12 @@
 #'   (default), splitCovariates appear as separate columns on the left side of the table.
 #'   Only applicable when `splitCovariates` is specified.
 #'
-#' @param covariateLabels Character vector of custom labels for splitCovariates, must be the
-#'   same length as `splitCovariates`. If `NULL` (default), the original covariate names are
-#'   used. These labels appear in column headers when `stratifyColumns = TRUE`.
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original covariate names are used. These labels are applied
+#'   in both layouts: they appear in the combined column headers when
+#'   `stratifyColumns = TRUE`, and they rename the split-covariate columns when
+#'   `stratifyColumns = FALSE`.
 #'
 #' @param useWideFormat Logical. If `TRUE` (default), returns a "wide" table format where
 #'   time points appear as columns and statistics appear as rows (one row per statistic).
@@ -81,6 +84,11 @@
 #'   human-readable labels (e.g., "CV" becomes "CV (%)", "geoMean" becomes "Geometric Mean").
 #'   If `FALSE`, uses raw column names.
 #'
+#' @param units Logical; if `TRUE` and units are enabled in the project,
+#'   appends the time unit to the time column header in long format
+#'   (`useWideFormat = FALSE`), e.g. "Nominal time (d)". No effect in wide
+#'   layout. Default `FALSE`.
+#'
 #' @param mock Logical; if `TRUE`, masks the table for documentation / example
 #'   outputs: concentration statistic values become placeholders (e.g.
 #'   `"xx.xx"`), and `splitCovariates` values become generic labels
@@ -119,7 +127,7 @@
 #' # tableNCAConcentration(
 #' #   splitCovariates = c("SEX", "AGE_CAT"),
 #' #   metrics = c("GeomCV", "MeanSD"),
-#' #   covariateLabels = c("Sex", "Age Category"),
+#' #   splitCovariateLabels = c("Sex", "Age Category"),
 #' #   stratifyColumns = TRUE
 #' # )
 #'
@@ -133,18 +141,19 @@
 #' @export
 tableNCAConcentration <- function(projectFile      = NULL,
 																	splitCovariates  = NULL,
+																	splitCovariateLabels = NULL,
+																	stratifyColumns  = FALSE,
 																	useNominalTime   = TRUE,
 																	metrics          = NULL,
-																	stratifyColumns = FALSE,
-																	covariateLabels = NULL,
-																	useWideFormat  = TRUE,
+																	useWideFormat    = TRUE,
 																	maxTimeDeviation = NULL,
-																	includeId       = FALSE,
+																	includeId        = FALSE,
 																	filterCovariates = NULL,
 																	filterIds        = NULL,
 																	roundDigits      = 3,
 																	roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 																	prettyLabels     = TRUE,
+																	units            = TRUE,
 																	mock             = FALSE) {
 
 	roundMethod <- match.arg(roundMethod)
@@ -160,12 +169,17 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	# Validate splitCovariates, stratification and covariate label arguments
 	.validateCovariateSelection(splitCovariates, ratio = FALSE)
 	stratifyColumns <- .validateStratificationArgs(splitCovariates, stratifyColumns)
-	covariateLabels <- .validateCovariateLabels(splitCovariates, covariateLabels)
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 
 	# Validate covariate and id filters
 	.validateFilters(filterCovariates, filterIds, resultType = "nca")
 	# Initialize time deviation attributes container (for footnote generation)
 	.time_dev_attrs <- NULL
+
+	unit_info   <- .getNCAConcentrationUnits(enabled = units)
+	# Tracks the current display name of the single time column (long formats),
+	# so mock masking and unit annotation can locate it after prettyLabels.
+	time_header <- NA_character_
 
 	# Validate: stratifyColumns only works with long format
 	if (stratifyColumns && useWideFormat) {
@@ -187,11 +201,14 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	# GET RAW INDIVIDUAL DATA
 
 	# Get individual concentration data using listingNCAConcentration
+	# Force raw column names; downstream code joins/groups on raw names
 	# Don't apply rounding yet (will be done after calculating stats)
 	raw_data  <- listingNCAConcentration(
 		projectFile    = NULL, # project already loaded
 		splitCovariates= splitCovariates,
 		useNominalTime = useNominalTime,
+		prettyLabels   = FALSE,
+		units          = FALSE,
 		roundDigits    = NULL,
 		roundMethod    = "none")
 
@@ -230,7 +247,11 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	# For stratified analysis, calculate stats separately by splitCovariates
 	# For non-stratified, calculate overall stats (may still include splitCovariates as grouping)
 	if (stratifyColumns && !is.null(splitCovariates)) {
-		# STRATIFIED CASE: Calculate stats for each covariate combination
+		if (is.null(metrics)) {
+			metrics <- "GeomCV"
+			message("No metric specified for stratified table. Defaulting to 'GeomCV'. To show multiple metrics specify metrics explicitly.")
+		}
+
 		group_by_vars <- c(time_col, splitCovariates)
 
 		summary_stats <- .calculateDescriptiveStats(
@@ -278,7 +299,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			splitCovariates       = splitCovariates,
 			selected_metrics = selected_metrics,
 			param_col        = time_col,
-			covariateLabels = covariateLabels)
+			covariateLabels = splitCovariateLabels)
 
 		# Apply pretty labels to the Statistic column (metric names)
 		if (isTRUE(prettyLabels) && "Statistic" %in% names(final_df)) {
@@ -288,6 +309,21 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			dummy_df        <- .prettyLabels(dummy_df)
 			metric_map      <- setNames(names(dummy_df), stat_metrics)
 			final_df$Statistic <- metric_map[final_df$Statistic]
+		}
+
+		# Pretty-label and/or unit-annotate the single time column
+		if (time_col %in% names(final_df)) {
+			time_idx <- which(names(final_df) == time_col)
+			if (isTRUE(prettyLabels)) {
+				dummy_t        <- as.data.frame(matrix(NA, nrow = 1, ncol = 1))
+				names(dummy_t) <- time_col
+				names(final_df)[time_idx] <- names(.prettyLabels(dummy_t))
+			}
+			time_header <- names(final_df)[time_idx]
+			if (isTRUE(units) && nzchar(unit_info$time)) {
+				time_header <- paste0(time_header, " (", unit_info$time, ")")
+				names(final_df)[time_idx] <- time_header
+			}
 		}
 
 	} else {
@@ -418,11 +454,8 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			# ======================================================================
 			# Data is already in long format, just apply pretty labels and sorting
 
-			if (isTRUE(prettyLabels)) {
-				final_df <- .prettyLabels(final_df)
-			}
-
-			# Sort by splitCovariates (if present and not stratified), then by Time
+			# Sort FIRST, while raw time_col name still exists: prettyLabels
+			# renames time column (ActualTime/NominalTime -> "Actual/Nominal time")
 			if (!stratifyColumns && !is.null(splitCovariates) && length(splitCovariates) > 0) {
 				final_df <- final_df %>%
 					dplyr::arrange(dplyr::across(dplyr::all_of(splitCovariates)),
@@ -430,6 +463,22 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			} else if (time_col %in% names(final_df)) {
 				final_df <- final_df %>%
 					dplyr::arrange(suppressWarnings(as.numeric(!!rlang::sym(time_col))))
+			}
+
+			# Capture the time column position before prettyLabels renames it
+			time_idx <- which(names(final_df) == time_col)
+
+			if (isTRUE(prettyLabels)) {
+				final_df <- .prettyLabels(final_df)
+			}
+
+			# Track (possibly renamed) time col and append project time unit to header
+			if (length(time_idx) == 1) {
+				time_header <- names(final_df)[time_idx]
+				if (isTRUE(units) && nzchar(unit_info$time)) {
+					time_header <- paste0(time_header, " (", unit_info$time, ")")
+					names(final_df)[time_idx] <- time_header
+				}
 			}
 		}
 	}
@@ -453,19 +502,28 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			for (sc in splitCovariates) modality_cols[[sc]] <- NA_character_
 		}
 
+		# In long format prettyLabels/units may have renamed the time column, so
+		# exclude it by its current header (time_header); fall back to the raw name.
+		time_exclude <- if (!is.na(time_header)) time_header else time_col
 		final_df <- .mockOutputData(
 			df           = final_df,
 			digits       = roundDigits,
-			excludeCols  = c(time_col, "Statistic", "Section"),
+			excludeCols  = c(time_exclude, "Statistic", "Section"),
 			modalityCols = if (length(modality_cols)) modality_cols else NULL,
 			naFillAxis   = if (stratifyColumns || useWideFormat) "row" else "column")
 
 		final_df <- .mockIndividualSection(final_df)
 	}
 
+	if (!stratifyColumns && !is.null(splitCovariates)) {
+		final_df <- .applyCovariateColumnLabels(
+			df                    = final_df,
+			splitCovariates       = splitCovariates,
+			splitCovariate_labels = splitCovariateLabels)
+	}
+
 	# ==========================================================================
-	# SET ATTRIBUTES for style_tfl
-	# To recognize this as NCA concentration table with sections
+	# SET ATTRIBUTES for style_tfl --> to identify NCA concentration table with sections
 	if (includeId && "Section" %in% names(final_df)) {
 		attr(final_df, "table_type") <- "nca_concentration"
 		attr(final_df, "format")     <- "long"  # Always long when includeId=TRUE
@@ -493,7 +551,19 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   (e.g., `"TREAT"`, `"FOOD"`, or `c("TREAT","FOOD")`). If `NULL`
 #'   (default), no stratification is applied and overall summaries are returned.
 #'
-#' @param ncaParams Character vector of NCA parameter names to include. If
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original covariate names are used. These labels are applied
+#'   in both layouts: they appear in the combined column headers when
+#'   `stratifyColumns = TRUE`, and they rename the split-covariate columns when
+#'   `stratifyColumns = FALSE`.
+#'
+#' @param stratifyColumns Logical; if `TRUE`, creates a stratified table layout with
+#'   separate columns for each covariate combination plus an "Overall" column. If `FALSE`
+#'   (default), splitCovariates appear as separate columns on the left side of the table.
+#'   Only applicable when `splitCovariates` is specified.
+#'
+#' @param selectParameters Character vector of NCA parameter names to include. If
 #'   `NULL` (default), all parameters currently enabled in the project are used
 #'   (i.e., `lixoftConnectors::getNCASettings()$computedncaparameters`).
 #'
@@ -507,15 +577,6 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   each parameter, i.e., PKanalix-like structure. If `FALSE`, returns a
 #'   "vertical" table where \code{Statistic} forms the first column and the
 #'   parameters form the subsequent columns (useful for reporting).
-#'
-#' @param stratifyColumns Logical; if `TRUE`, creates a stratified table layout with
-#'   separate columns for each covariate combination plus an "Overall" column. If `FALSE`
-#'   (default), splitCovariates appear as separate columns on the left side of the table.
-#'   Only applicable when `splitCovariates` is specified.
-#'
-#' @param covariateLabels Character vector of custom labels for splitCovariates, must be the
-#'   same length as `splitCovariates`. If `NULL` (default), the original covariate names are
-#'   used. These labels appear in column headers when `stratifyColumns = TRUE`.
 #'
 #' @param includeId Logical. If `TRUE` and `useWideFormat = FALSE`, adds individual
 #'   subject IDs and their parameter values below the summary statistics in the
@@ -538,12 +599,16 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   - `"none"`: No rounding performed
 #'
 #' @param roundByParameter Optional per-parameter rounding overrides on top of the
-#'   global `roundDigits`/`roundMethod`. Either a named numeric vector of digits
-#'   (`c(Cmax = 2, AUClast = 4)`; method falls back to `roundMethod`), or a
-#'   data.frame with columns `parameter`, `digits` and/or `method`
-#'   (`NA`/missing entries fall back to the global settings). Parameters not
-#'   listed keep the global settings. Unknown parameter names are ignored with a
-#'   message. Default `NULL` (global rounding everywhere).
+#'   global `roundDigits`/`roundMethod`, supplied in one of two forms (mirroring
+#'   `customAliases`/`customUnits`):
+#'   - a named numeric vector of digits, e.g. `c(Cmax = 2, AUClast = 4)` (the
+#'     rounding method then falls back to the global `roundMethod`); or
+#'   - a 3-column data.frame with columns `parameter`, `digits` and `method`, e.g.
+#'     `data.frame(parameter = "Cmax", digits = 2, method = "significantFigures")`.
+#'     `NA`/missing `digits` or `method` entries fall back to the global settings.
+#'
+#'   Parameters not listed keep the global settings. Unknown parameter names are
+#'   ignored with a message. Default `NULL` (global rounding everywhere).
 #'
 #' @param units Logical. If `TRUE` (default), units are appended to parameter names.
 #'
@@ -581,7 +646,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #' # Stratified by a categorical covariate, selected parameters, vertical layout
 #' # tableNCAParameters(
 #' #   splitCovariates = "FORM",
-#' #   ncaParams  = c("AUCINF_obs", "AUClast", "Cmax"),
+#' #   selectParameters = c("AUCINF_obs", "AUClast", "Cmax"),
 #' #   roundDigits = 2,
 #' #   useWideFormat = FALSE
 #' # )
@@ -590,7 +655,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #' # tableNCAParameters(
 #' #   useWideFormat = FALSE,
 #' #   includeId = TRUE,
-#' #   ncaParams  = c("Cmax", "AUClast", "Lambda_z")
+#' #   selectParameters = c("Cmax", "AUClast", "Lambda_z")
 #' # )
 #'
 #' # Stratified with individual IDs
@@ -601,25 +666,25 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #' # )
 #'
 #' @export
-tableNCAParameters <- function(projectFile      = NULL,
-															 splitCovariates  = NULL,
-															 ncaParams        = NULL,
-															 metrics          = NULL,
-															 useWideFormat  = TRUE,
-															 stratifyColumns = FALSE,
-															 covariateLabels = NULL,
-															 includeId       = FALSE,
-															 filterCovariates = NULL,
-															 filterIds        = NULL,
-															 roundDigits      = 3,
-															 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
-															 roundByParameter = NULL,
-															 units            = TRUE,
-															 aliases          = TRUE,
-															 customUnits     = NULL,
-															 customAliases   = NULL,
-															 prettyLabels     = TRUE,
-															 mock             = FALSE) {
+tableNCAParameters <- function(projectFile          = NULL,
+															 splitCovariates      = NULL,
+															 splitCovariateLabels = NULL,
+															 stratifyColumns      = FALSE,
+															 selectParameters     = NULL,
+															 metrics              = NULL,
+															 useWideFormat        = TRUE,
+															 includeId            = FALSE,
+															 filterCovariates     = NULL,
+															 filterIds            = NULL,
+															 roundDigits          = 3,
+															 roundMethod          = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+															 roundByParameter     = NULL,
+															 units                = TRUE,
+															 aliases              = TRUE,
+															 customUnits          = NULL,
+															 customAliases        = NULL,
+															 prettyLabels         = TRUE,
+															 mock                 = FALSE) {
 
 	roundMethod <- match.arg(roundMethod)
 
@@ -631,11 +696,11 @@ tableNCAParameters <- function(projectFile      = NULL,
 	.validateProjectResultsAvailability(software = "pkanalix", resultType = "nca")
 	.validateCovariateSelection(splitCovariates, ratio = FALSE)
 
-	stratifyColumns <- .validateStratificationArgs(splitCovariates, stratifyColumns)
-	covariateLabels <- .validateCovariateLabels(splitCovariates, covariateLabels)
+	stratifyColumns      <- .validateStratificationArgs(splitCovariates, stratifyColumns)
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 
 	.validateFilters(filterCovariates, filterIds, resultType = "nca")
-	available_params <- .validateNCAParametersSelection(ncaParams, ratio = FALSE)
+	available_params <- .validateNCAParametersSelection(selectParameters, ratio = FALSE)
 
 	round_overrides <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
 	round_overrides <- .validateRoundOverrides(round_overrides, available_params, context = "tableNCAParameters")
@@ -681,10 +746,10 @@ tableNCAParameters <- function(projectFile      = NULL,
 	occ_vars            <- project_data$header[project_data$headerTypes == "occ"]
 	param_cols          <- setdiff(names(indiv_params), c("id", all_splitCovariates, strat_cov_names))
 
-	if (!is.null(ncaParams)) {
-		param_cols <- intersect(ncaParams, param_cols)
+	if (!is.null(selectParameters)) {
+		param_cols <- intersect(selectParameters, param_cols)
 		if (length(param_cols) == 0) {
-			stop("None of the specified ncaParams found in the individual parameters data.")
+			stop("None of the specified selectParameters found in the individual parameters data.")
 		}
 	}
 
@@ -787,7 +852,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 			splitCovariates  = splitCovariates,
 			selected_metrics = selected_metrics,
 			param_col        = param_col,
-			covariateLabels  = covariateLabels)
+			covariateLabels  = splitCovariateLabels)
 
 	} else {
 		group_by_vars <- if (!is.null(splitCovariates)) c("parameter", splitCovariates) else "parameter"
@@ -848,9 +913,10 @@ tableNCAParameters <- function(projectFile      = NULL,
 			summary_stats = summary_stats,
 			splitCovariates    = splitCovariates,
 			resultType    = "ncaParameters",
-			params        = ncaParams,
+			params        = selectParameters,
 			roundDigits   = roundDigits,
 			roundMethod   = roundMethod,
+			roundOverrides = round_overrides,
 			units         = units,
 			units_df      = units_df,
 			aliases       = aliases,
@@ -908,6 +974,13 @@ tableNCAParameters <- function(projectFile      = NULL,
 		summary_stats <- .mockIndividualSection(summary_stats)
 	}
 
+	if (!stratifyColumns && !is.null(splitCovariates)) {
+		summary_stats <- .applyCovariateColumnLabels(
+			df                    = summary_stats,
+			splitCovariates       = splitCovariates,
+			splitCovariate_labels = splitCovariateLabels)
+	}
+
 	if (includeId && "Section" %in% names(summary_stats)) {
 		attr(summary_stats, "table_type") <- "nca_parameters"
 		attr(summary_stats, "format")     <- "long"
@@ -930,7 +1003,7 @@ tableNCAParameters <- function(projectFile      = NULL,
 #'  2. Identifies candidate grouping variables (all columns except id and ratio columns).
 #'  3. Reshapes the data into long format (Parameter, Ratio).
 #'  4. Summarises across subjects to provide descriptive statistics (N, Min, Q1, Mean, Median, Q3, Max).
-#'  5. Returns results either in wide format (one row per Parameter × group) or long format (Statistic/Value pairs).
+#'  5. Returns results either in wide format (one row per Parameter Ã— group) or long format (Statistic/Value pairs).
 #'
 #' @param projectFile Character string specifying the path to a PKanalix project file (.pkx).
 #'   If `NULL` (default), uses the currently loaded project.
@@ -940,10 +1013,13 @@ tableNCAParameters <- function(projectFile      = NULL,
 #'   (default), splitCovariates appear as separate columns on the left side of the table.
 #'   Only applicable when `splitCovariates` is specified. Only compatible with
 #'   `useWideFormat = FALSE`.
-#' @param covariateLabels Character vector of custom labels for splitCovariates, must be the
-#'   same length as `splitCovariates`. If `NULL` (default), the original covariate names are
-#'   used. These labels appear in column headers when `stratifyColumns = TRUE`.
-#' @param ratioParams Character vector of ratio parameter names to include. If `NULL`
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original covariate names are used. These labels are applied
+#'   in both layouts: they appear in the combined column headers when
+#'   `stratifyColumns = TRUE`, and they rename the split-covariate columns when
+#'   `stratifyColumns = FALSE`.
+#' @param selectParameters Character vector of ratio parameter names to include. If `NULL`
 #'   (default), all available ratio parameters are used.
 #' @param metrics Character vector specifying which summary statistics to include in the
 #'   output table. If `NULL` (default), all available metrics are included.
@@ -968,6 +1044,17 @@ tableNCAParameters <- function(projectFile      = NULL,
 #'     digits before the decimal - once the integer part already has as many digits as requested,
 #'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding performed
+#' @param roundByParameter Optional per-parameter rounding overrides on top of the
+#'   global `roundDigits`/`roundMethod`, supplied in one of two forms (mirroring
+#'   `customAliases`):
+#'   - a named numeric vector of digits, e.g. `c(AUClast_ratio = 2, Cmax_ratio = 4)`
+#'     (the rounding method then falls back to the global `roundMethod`); or
+#'   - a 3-column data.frame with columns `parameter`, `digits` and `method`, e.g.
+#'     `data.frame(parameter = "AUClast_ratio", digits = 2, method = "significantFigures")`.
+#'     `NA`/missing `digits` or `method` entries fall back to the global settings.
+#'
+#'   Parameters not listed keep the global settings. Unknown parameter names are
+#'   ignored with a message. Default `NULL` (global rounding everywhere).
 #' @param prettyLabels Logical; if `TRUE` (default), converts column names to
 #'   human-readable labels.
 #' @param customAliases Named vector or 2-column dataframe mapping parameter names
@@ -1001,21 +1088,22 @@ tableNCAParameters <- function(projectFile      = NULL,
 #' }
 #'
 #' @export
-tableNCARatios <- function(projectFile      = NULL,
-													 splitCovariates  = NULL,
-													 stratifyColumns  = FALSE,
-													 covariateLabels  = NULL,
-													 ratioParams      = NULL,
-													 metrics          = NULL,
-													 useWideFormat    = TRUE,
-													 includeId        = FALSE,
-													 filterCovariates = NULL,
-													 filterIds        = NULL,
-													 roundDigits      = 3,
-													 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
-													 prettyLabels     = TRUE,
-													 customAliases    = NULL,
-													 mock             = FALSE) {
+tableNCARatios <- function(projectFile           = NULL,
+													 splitCovariates       = NULL,
+													 stratifyColumns       = FALSE,
+													 splitCovariateLabels  = NULL,
+													 selectParameters      = NULL,
+													 metrics               = NULL,
+													 useWideFormat         = TRUE,
+													 includeId             = FALSE,
+													 filterCovariates      = NULL,
+													 filterIds             = NULL,
+													 roundDigits           = 3,
+													 roundMethod           = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+													 roundByParameter      = NULL,
+													 prettyLabels          = TRUE,
+													 customAliases         = NULL,
+													 mock                  = FALSE) {
 
 
 
@@ -1032,14 +1120,18 @@ tableNCARatios <- function(projectFile      = NULL,
 	.validateFilters(filterCovariates, filterIds, resultType = "ncaRatio")
 
 	.validateCovariateSelection(splitCovariates, ratio = TRUE)
-	stratifyColumns <- .validateStratificationArgs(splitCovariates, stratifyColumns)
-	covariateLabels <- .validateCovariateLabels(splitCovariates, covariateLabels)
+	stratifyColumns      <- .validateStratificationArgs(splitCovariates, stratifyColumns)
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 
 	# Normalize custom alias mapping
 	aliases_df <- .normalizeAliasMapping(customAliases, "aliases")
 
 	# Validate set parameters
-	.validateNCAParametersSelection(ratioParams, ratio = TRUE)  # Early validation
+	available_params <- .validateNCAParametersSelection(selectParameters, ratio = TRUE)  # Early validation
+
+	# Normalize + validate per-parameter rounding overrides (keyed by original ratio names)
+	round_overrides <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
+	round_overrides <- .validateRoundOverrides(round_overrides, available_params, context = "tableNCARatios")
 
 	# Validate: stratifyColumns only works with long format
 	if (stratifyColumns && useWideFormat) {
@@ -1061,9 +1153,9 @@ tableNCARatios <- function(projectFile      = NULL,
 	ratio_cols <- names(ratio_info)
 
 	# Determine which ratio columns to pivot
-	if (!is.null(ratioParams)) {
+	if (!is.null(selectParameters)) {
 		# Pivot only requested parameters (already validated)
-		cols_to_pivot <- intersect(ratioParams, ratio_cols)
+		cols_to_pivot <- intersect(selectParameters, ratio_cols)
 	} else {
 		# Pivot all ratio columns
 		cols_to_pivot <- ratio_cols
@@ -1088,7 +1180,7 @@ tableNCARatios <- function(projectFile      = NULL,
 
 		if (length(safe_cov_names) > 0) {
 			# unique() collapses the per-occasion rows (identical for invariant
-			# covariates) to one row per id, preventing the merge row explosion.
+			# covariates) to one row per id, preventing merge row explosion.
 			strat_cov_df <- unique(cov_info$covariate[, c("id", safe_cov_names), drop = FALSE])
 			indivratio   <- merge(indivratio, strat_cov_df, by = "id", all.x = TRUE, sort = FALSE)
 		}
@@ -1126,12 +1218,15 @@ tableNCARatios <- function(projectFile      = NULL,
 			id_col    = "id",
 			group_by  = c(splitCovariates, "Parameter"))
 
-		# Apply rounding
-		summary_stats <- .round_num(
-			to_round        = summary_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = c("Parameter", splitCovariates))
+		# Apply rounding (honoring per-parameter overrides)
+		summary_stats <- .applyRounding(
+			df        = summary_stats,
+			digits    = roundDigits,
+			method    = roundMethod,
+			exclude   = c("Parameter", splitCovariates),
+			overrides = round_overrides,
+			paramCol  = "Parameter",
+			paramAxis = "row")
 
 		# Add combined metrics
 		summary_stats <- .combinedStats(summary_stats)
@@ -1162,12 +1257,15 @@ tableNCARatios <- function(projectFile      = NULL,
 			id_col    = "id",
 			group_by  = "Parameter")
 
-		# Apply rounding to overall
-		overall_stats <- .round_num(
-			to_round        = overall_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = "Parameter")
+		# Apply rounding to overall (honoring per-parameter overrides)
+		overall_stats <- .applyRounding(
+			df        = overall_stats,
+			digits    = roundDigits,
+			method    = roundMethod,
+			exclude   = "Parameter",
+			overrides = round_overrides,
+			paramCol  = "Parameter",
+			paramAxis = "row")
 
 		# Add combined metrics to overall
 		overall_stats <- .combinedStats(overall_stats)
@@ -1188,10 +1286,10 @@ tableNCARatios <- function(projectFile      = NULL,
 		summary_tbl <- .buildStratifiedTable(
 			summary_stats    = summary_stats,
 			overall_stats    = overall_stats,
-			splitCovariates       = splitCovariates,
+			splitCovariates  = splitCovariates,
 			selected_metrics = selected_metrics,
 			param_col        = "Parameter",
-			covariateLabels = covariateLabels)
+			covariateLabels  = splitCovariateLabels)
 
 	} else {
 		# -----------------------------------------------------------------------
@@ -1213,12 +1311,15 @@ tableNCARatios <- function(projectFile      = NULL,
 				group_by  = "Parameter")
 		}
 
-		# Apply rounding
-		summary_tbl <- .round_num(
-			to_round        = summary_tbl,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = c("Parameter", splitCovariates))
+		# Apply rounding (honoring per-parameter overrides)
+		summary_tbl <- .applyRounding(
+			df        = summary_tbl,
+			digits    = roundDigits,
+			method    = roundMethod,
+			exclude   = c("Parameter", splitCovariates),
+			overrides = round_overrides,
+			paramCol  = "Parameter",
+			paramAxis = "row")
 
 		# Add combined metrics
 		summary_tbl <- .combinedStats(summary_tbl)
@@ -1262,9 +1363,10 @@ tableNCARatios <- function(projectFile      = NULL,
 			summary_stats   = summary_tbl,
 			splitCovariates = splitCovariates,
 			resultType      = "ncaRatio",
-			params          = ratioParams,
+			params          = selectParameters,
 			roundDigits     = roundDigits,
 			roundMethod     = roundMethod,
+			roundOverrides  = round_overrides,
 			units           = FALSE,
 			units_df        = NULL,
 			aliases         = FALSE,
@@ -1338,10 +1440,14 @@ tableNCARatios <- function(projectFile      = NULL,
 
 		summary_tbl <- .mockIndividualSection(summary_tbl)
 	}
+	if (!stratifyColumns && !is.null(splitCovariates)) {
+		summary_tbl <- .applyCovariateColumnLabels(
+			df                    = summary_tbl,
+			splitCovariates       = splitCovariates,
+			splitCovariate_labels = splitCovariateLabels)
+	}
 
-	# ==========================================================================
-	# SET ATTRIBUTES for style_tfl
-	# To recognize this as NCA ratio table with sections
+	# SET ATTRIBUTES for style_tfl --> identify NCA ratio table with sections
 	if (includeId && "Section" %in% names(summary_tbl)) {
 		attr(summary_tbl, "table_type") <- "nca_ratio"
 		attr(summary_tbl, "format")     <- "long"  # Always long when includeId=TRUE
@@ -1362,7 +1468,7 @@ tableNCARatios <- function(projectFile      = NULL,
 #' @param projectFile Character string specifying the path to a PKanalix project file (.pkx).
 #'   If `NULL` (default), uses the currently loaded project.
 #'
-#' @param BEParams Character vector of parameter names to include in the output.
+#' @param selectParameters Character vector of parameter names to include in the output.
 #'   If `NULL` (default), all BE parameters are included.
 #'
 #' @param roundDigits Integer specifying the number of decimal places for rounding
@@ -1378,6 +1484,18 @@ tableNCARatios <- function(projectFile      = NULL,
 #'     digits before the decimal - once the integer part already has as many digits as requested,
 #'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding performed
+#'
+#' @param roundByParameter Optional per-parameter rounding overrides on top of the
+#'   global `roundDigits`/`roundMethod`, supplied in one of two forms (mirroring
+#'   `customAliases`/`customUnits`):
+#'   - a named numeric vector of digits, e.g. `c(Cmax = 2, AUClast = 4)` (the
+#'     rounding method then falls back to the global `roundMethod`); or
+#'   - a 3-column data.frame with columns `parameter`, `digits` and `method`, e.g.
+#'     `data.frame(parameter = "Cmax", digits = 2, method = "significantFigures")`.
+#'     `NA`/missing `digits` or `method` entries fall back to the global settings.
+#'
+#'   Parameters not listed keep the global settings. Unknown parameter names are
+#'   ignored with a message. Default `NULL` (global rounding everywhere).
 #'
 #' @param units Logical; if `TRUE` (default), appends units to parameter names
 #'   (e.g., "ln(AUClast) (h*ng/mL)"). Units are retrieved from project settings.
@@ -1424,18 +1542,19 @@ tableNCARatios <- function(projectFile      = NULL,
 #' parameters are automatically identified and labeled with "ln()" prefix.
 #'
 #' @export
-tableBEResults <- function(projectFile    = NULL,
-													 BEParams       = NULL,
-													 roundDigits    = 3,
-													 roundMethod    = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
-													 units          = TRUE,
-													 aliases        = TRUE,
-													 customUnits   = NULL,
-													 customAliases = NULL,
-													 BELimits       = FALSE,
-													 BEConclusion   = TRUE,
-													 prettyLabels   = TRUE,
-													 mock           = FALSE){
+tableBEResults <- function(projectFile      = NULL,
+													 selectParameters = NULL,
+													 roundDigits      = 3,
+													 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+													 roundByParameter = NULL,
+													 units            = TRUE,
+													 aliases          = TRUE,
+													 customUnits      = NULL,
+													 customAliases    = NULL,
+													 BELimits         = FALSE,
+													 BEConclusion     = TRUE,
+													 prettyLabels     = TRUE,
+													 mock             = FALSE){
 
 	roundMethod <- match.arg(roundMethod)
 
@@ -1447,7 +1566,11 @@ tableBEResults <- function(projectFile    = NULL,
 	.validateProjectResultsAvailability(software = "pkanalix", resultType = "be")
 
 	# Validate set parameters
-	.validateNCAParametersSelection(BEParams, ratio = FALSE, be = TRUE)
+	available_params <- .validateNCAParametersSelection(selectParameters, ratio = FALSE, be = TRUE)
+
+	# Normalize + validate per-parameter rounding overrides (keyed by original BE names)
+	round_overrides <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
+	round_overrides <- .validateRoundOverrides(round_overrides, available_params, context = "tableBEResults")
 
 	# Normalize custom alias/unit mappings
 	aliases_df <- .normalizeAliasMapping(customAliases, "aliases")
@@ -1488,9 +1611,22 @@ tableBEResults <- function(projectFile    = NULL,
 	})
 
 	# Filter to selected BE parameters (if specified)
-	if (!is.null(BEParams)) {
-		result <- result %>% dplyr::filter(Original_Parameter %in% BEParams)
+	if (!is.null(selectParameters)) {
+		result <- result %>% dplyr::filter(Original_Parameter %in% selectParameters)
 	}
+
+	# Apply rounding BEFORE aliasing/ln()-wrapping, while Original_Parameter still holds
+	# the raw BE names so per-parameter overrides key correctly. Falls back to the global
+	# digits/method when round_overrides is NULL. Only the numeric columns (Ratio,
+	# CILower, CIUpper) are rounded; BE is a 0/1 flag and must stay untouched.
+	result <- .applyRounding(
+		df        = result,
+		digits    = roundDigits,
+		method    = roundMethod,
+		exclude   = c("Original_Parameter", "parameter", "Comparison", "BE"),
+		overrides = round_overrides,
+		paramCol  = "Original_Parameter",
+		paramAxis = "row")
 
 	# Apply aliases only (no units)
 	result <- .addUnitsAliases(
@@ -1510,13 +1646,7 @@ tableBEResults <- function(projectFile    = NULL,
 		result$Original_Parameter <- NULL
 	}
 
-	# style_tfl(result)
-	result <- .round_num(
-		to_round        = result,
-		digits          = roundDigits,
-		rounding_method = roundMethod,
-		exclude         = c("parameter", "Comparison", "BE"))
-
+	# Rounding already applied above (before aliasing) so per-parameter overrides match.
 	result <- result %>% dplyr::mutate(CI = paste0("(",CILower,";",CIUpper,")")) %>%
 		dplyr::select(Comparison, parameter, Ratio, CI, BE) %>%
 		dplyr::arrange(Comparison)
@@ -1678,6 +1808,11 @@ listingAbbreviation <- function(projectFile   = NULL,
 #'   stratification. Occasion columns present in the project are appended
 #'   automatically (see Details).
 #'
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original covariate names are used. When `splitCovariates` is
+#'   set, these labels rename the corresponding covariate columns in the listing.
+#'
 #' @param useNominalTime Logical; if \code{TRUE}, the function attempts to use
 #'   nominal time for the concentration listing. If nominal time is not available
 #'   in the project (checked via \code{lixoftConnectors::getData()} and \code{headerTypes ==
@@ -1691,6 +1826,17 @@ listingAbbreviation <- function(projectFile   = NULL,
 #'
 #' @param filterIds Character or numeric vector of subject IDs to include. If
 #'   `NULL` (default), no ID filtering is applied.
+#'
+#' @param prettyLabels Logical; if `TRUE`, renames the fixed listing columns to
+#'   publication form: `ActualTime` -> "Actual time", `NominalTime` ->
+#'   "Nominal time", `Concentration` -> "Concentration", `UsedConc` ->
+#'   "Used concentration", `Censoring` -> "Censoring". Default `FALSE` (raw
+#'   column names are kept, e.g. for downstream processing).
+#'
+#' @param units Logical; if `TRUE` and units are enabled in the project,
+#'   appends the time unit to the time columns and the concentration unit
+#'   (amount/volume, e.g. "mg/L") to the concentration columns, e.g.
+#'   "Actual time (h)". Default `FALSE`.
 #'
 #' @param roundDigits Integer specifying the number of decimal places for rounding
 #'   numeric values. Default is `3`.
@@ -1729,7 +1875,7 @@ listingAbbreviation <- function(projectFile   = NULL,
 #'   with exactly one nominal time point.
 #'
 #'   - **Used concentrations:** After long-formatting, the table is joined with
-#'   \code{lixoftConnectors::getPointsIncludedForLambdaZ()}, which indicates which concentration–
+#'   \code{lixoftConnectors::getPointsIncludedForLambdaZ()}, which indicates which concentrationâ€“
 #'   time points were used in the lambda-z calculation and provides censoring
 #'   flags.
 #'
@@ -1738,7 +1884,9 @@ listingAbbreviation <- function(projectFile   = NULL,
 #'
 #' @return A data frame in long format containing (if present) \code{splitCovariates},
 #'   \code{id}, \code{ActualTime}, \code{NominalTime} (if available),
-#'   \code{Concentration}, \code{UsedConc}, and \code{Censoring}.
+#'   \code{Concentration}, \code{UsedConc}, and \code{Censoring}. When
+#'   \code{prettyLabels} and/or \code{units} are set, the fixed columns are
+#'   renamed accordingly (e.g. \code{ActualTime} -> "Actual time (h)").
 #'
 #' @examples
 #' # Default: actual time only
@@ -1749,6 +1897,10 @@ listingAbbreviation <- function(projectFile   = NULL,
 #'
 #' # Include nominal time if available
 #' listingNCAConcentration(splitCovariates = c("TREAT", "FOOD"), useNominalTime = TRUE)
+#'
+#' # Publication-style column labels with project units, e.g. "Actual time (h)"
+#' # and "Concentration (mg/L)"
+#' listingNCAConcentration(prettyLabels = TRUE, units = TRUE)
 #'
 #' \dontrun{
 #' # Restrict to specific subjects and covariate values
@@ -1762,14 +1914,17 @@ listingAbbreviation <- function(projectFile   = NULL,
 #' }
 #'
 #' @export
-listingNCAConcentration <- function(projectFile      = NULL,
-																		splitCovariates  = NULL,
-																		useNominalTime   = FALSE,
-																		filterCovariates = NULL,
-																		filterIds        = NULL,
-																		roundDigits      = 3,
-																		roundMethod      = c("none", "monolixSuiteRounding", "significantFigures", "significantFiguresPreserved"),
-																		mock             = FALSE) {
+listingNCAConcentration <- function(projectFile          = NULL,
+																		splitCovariates      = NULL,
+																		splitCovariateLabels = NULL,
+																		useNominalTime       = FALSE,
+																		filterCovariates     = NULL,
+																		filterIds            = NULL,
+																		prettyLabels         = TRUE,
+																		units                = TRUE,
+																		roundDigits          = 3,
+																		roundMethod          = c("none", "monolixSuiteRounding", "significantFigures", "significantFiguresPreserved"),
+																		mock                 = FALSE) {
 
 	roundMethod <- match.arg(roundMethod)
 
@@ -1785,6 +1940,8 @@ listingNCAConcentration <- function(projectFile      = NULL,
 
 	# Validate set splitCovariates
 	.validateCovariateSelection(splitCovariates, ratio = FALSE)
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
+	label_covs           <- splitCovariates
 
 	# Get occasion variables from data and add to stratification
 	project_data <- lixoftConnectors::getData()
@@ -1885,7 +2042,7 @@ listingNCAConcentration <- function(projectFile      = NULL,
 				dplyr::left_join(indiv_nom, by = c("id", splitCovariates, "row_id")) %>%
 				dplyr::select(-row_id, -ActualTimeLabel, -NominalTimeLabel, -dummyConc)
 		} else {
-			# User requested nominal time but it's not available ← ADD THIS CASE
+			# User requested nominal time but it's not available â† ADD THIS CASE
 			warning("No nominal time available in project; only actual time will be included.")
 			indiv <- indiv_actual %>% dplyr::select(-row_id, -ActualTimeLabel)
 		}
@@ -1976,6 +2133,18 @@ listingNCAConcentration <- function(projectFile      = NULL,
 		indiv <- .mockDataListing(indiv, colTypes = col_types, digits = roundDigits)
 	}
 
+	if (!is.null(label_covs)) {
+		indiv <- .applyCovariateColumnLabels(
+			df                    = indiv,
+			splitCovariates       = label_covs,
+			splitCovariate_labels = splitCovariateLabels)
+	}
+
+	indiv <- .applyNCAConcentrationColumnLabels(
+		df           = indiv,
+		prettyLabels = prettyLabels,
+		units        = units)
+
 	attr(indiv, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(indiv, "r_source")       <- .getRScriptPath()
 	return(as.data.frame(indiv))
@@ -1991,7 +2160,11 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #' @param splitCovariates Character vector. Categorical covariates (type "catcov")
 #'   to include and sort by. If specified, the table is sorted by these
 #'   splitCovariates in the order provided.
-#' @param ncaParams Character vector. NCA parameters to include. If NULL (default),
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original covariate names are used. When `splitCovariates` is
+#'   set, these labels rename the corresponding covariate columns in the listing.
+#' @param selectParameters Character vector. NCA parameters to include. If NULL (default),
 #'   all computed NCA parameters are included.
 #' @param filterCovariates Named list where names are categorical covariate names
 #'   and values are vectors of allowed values, e.g.
@@ -2002,6 +2175,17 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #' @param roundDigits Numeric. Number of digits for rounding (default: 3).
 #' @param roundMethod Character. Rounding method: "monolixSuiteRounding" (default),
 #'   "significantFigures", "significantFiguresPreserved", or "none".
+#' @param roundByParameter Optional per-parameter rounding overrides on top of the
+#'   global `roundDigits`/`roundMethod`, supplied in one of two forms (mirroring
+#'   `customAliases`/`customUnits`):
+#'   - a named numeric vector of digits, e.g. `c(Cmax = 2, AUClast = 4)` (the
+#'     rounding method then falls back to the global `roundMethod`); or
+#'   - a 3-column data.frame with columns `parameter`, `digits` and `method`, e.g.
+#'     `data.frame(parameter = "Cmax", digits = 2, method = "significantFigures")`.
+#'     `NA`/missing `digits` or `method` entries fall back to the global settings.
+#'
+#'   Parameters not listed keep the global settings. Unknown parameter names are
+#'   ignored with a message. Default `NULL` (global rounding everywhere).
 #' @param units Logical. If TRUE (default), parameter units are added to column names.
 #' @param aliases Logical. If TRUE (default), parameter names are replaced with their aliases.
 #' @param customUnits Named vector or 2-column dataframe mapping parameter names
@@ -2041,7 +2225,7 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #' params <- listingNCAParameters(
 #'   projectFile = "path/to/project.pkx",
 #'   splitCovariates = c("SEX", "DOSE"),
-#'   ncaParams = c("AUC", "Cmax", "Tmax"),
+#'   selectParameters = c("AUC", "Cmax", "Tmax"),
 #'   roundDigits = 2,
 #'   units = TRUE,
 #'   aliases = TRUE
@@ -2056,18 +2240,20 @@ listingNCAConcentration <- function(projectFile      = NULL,
 #' # Masked listing for documentation / example outputs
 #' params <- listingNCAParameters(mock = TRUE)
 #' }
-listingNCAParameters <- function(projectFile      = NULL,
-																 splitCovariates  = NULL,
-																 ncaParams        = NULL,
-																 filterCovariates = NULL,
-																 filterIds        = NULL,
-																 roundDigits      = 3,
-																 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
-																 units            = TRUE,
-																 aliases          = TRUE,
-																 customUnits      = NULL,
-																 customAliases    = NULL,
-																 mock             = FALSE){
+listingNCAParameters <- function(projectFile          = NULL,
+																 splitCovariates      = NULL,
+																 splitCovariateLabels = NULL,
+																 selectParameters     = NULL,
+																 filterCovariates     = NULL,
+																 filterIds            = NULL,
+																 roundDigits          = 3,
+																 roundMethod          = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+																 roundByParameter     = NULL,
+																 units                = TRUE,
+																 aliases              = TRUE,
+																 customUnits          = NULL,
+																 customAliases        = NULL,
+																 mock                 = FALSE){
 
 
 	roundMethod <- match.arg(roundMethod)
@@ -2083,8 +2269,13 @@ listingNCAParameters <- function(projectFile      = NULL,
 
 	# Validate set splitCovariates
 	.validateCovariateSelection(splitCovariates, ratio = FALSE)
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 	# Validate set parameters
-	.validateNCAParametersSelection(ncaParams, ratio = FALSE)
+	available_params <- .validateNCAParametersSelection(selectParameters, ratio = FALSE)
+
+	round_overrides <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
+	round_overrides <- .validateRoundOverrides(round_overrides, available_params,
+																						 context = "listingNCAParameters")
 
 	# Normalize custom alias/unit mappings
 	aliases_df <- .normalizeAliasMapping(customAliases, "aliases")
@@ -2110,21 +2301,22 @@ listingNCAParameters <- function(projectFile      = NULL,
 	# Apply filters
 	indivNCA <- .applyFilters(indivNCA, filterCovariates, filterIds, id_col = "id")
 
-	# Filter to selected parameters if ncaParams is specified
-	if (!is.null(ncaParams)) {
+	# Filter to selected parameters if selectParameters is specified
+	if (!is.null(selectParameters)) {
 		# Keep id, all splitCovariates, merged strat covariates, and selected parameters only
-		cols_to_keep <- c("id", all_splitCovariates, strat_cov_names, ncaParams)
+		cols_to_keep <- c("id", all_splitCovariates, strat_cov_names, selectParameters)
 		# Only keep columns that exist in the data
 		cols_to_keep <- intersect(cols_to_keep, names(indivNCA))
 		indivNCA <- indivNCA %>% dplyr::select(dplyr::all_of(cols_to_keep))
 	}
 
-	# Apply rounding to parameter columns (BEFORE renaming)
-	indivNCA <- .round_num(
-		to_round        = indivNCA,
-		digits          = roundDigits,
-		rounding_method = roundMethod,
-		exclude         = c("id", all_splitCovariates, strat_cov_names))
+	indivNCA <- .applyRounding(
+		df        = indivNCA,
+		digits    = roundDigits,
+		method    = roundMethod,
+		exclude   = c("id", all_splitCovariates, strat_cov_names),
+		overrides = round_overrides,
+		paramAxis = "column")
 
 	# Identify parameter columns (exclude id, all splitCovariates and merged strat covariates)
 	param_cols <- setdiff(names(indivNCA), c("id", all_splitCovariates, strat_cov_names))
@@ -2132,7 +2324,7 @@ listingNCAParameters <- function(projectFile      = NULL,
 	# Create temporary data frame with parameter names
 	temp_df <- data.frame(parameter = param_cols, stringsAsFactors = FALSE)
 
-	# Apply units/aliases formatting
+	temp_df_formatted <- temp_df
 	if (isTRUE(units) || isTRUE(aliases)) {
 		temp_df_formatted <- .addUnitsAliases(
 			temp_df,
@@ -2168,6 +2360,13 @@ listingNCAParameters <- function(projectFile      = NULL,
 		indivNCA <- .mockDataListing(indivNCA, colTypes = col_types, digits = roundDigits)
 	}
 
+	if (!is.null(splitCovariates)) {
+		indivNCA <- .applyCovariateColumnLabels(
+			df                    = indivNCA,
+			splitCovariates       = splitCovariates,
+			splitCovariate_labels = splitCovariateLabels)
+	}
+
 	attr(indivNCA, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(indivNCA, "r_source")       <- .getRScriptPath()
 	return(indivNCA)
@@ -2184,7 +2383,11 @@ listingNCAParameters <- function(projectFile      = NULL,
 #'   splitCovariates in the order provided. Occasion-varying covariates are
 #'   rejected, since ratios are computed across occasions and cannot be
 #'   stratified by a covariate that changes within subject.
-#' @param ratioParams Character vector. Ratio parameters to include. If NULL (default),
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original covariate names are used. When `splitCovariates` is
+#'   set, these labels rename the corresponding covariate columns in the listing.
+#' @param selectParameters Character vector. Ratio parameters to include. If NULL (default),
 #'   all available ratio parameters are included.
 #' @param filterCovariates Named list where names are categorical covariate names
 #'   and values are vectors of allowed values, e.g.
@@ -2195,6 +2398,17 @@ listingNCAParameters <- function(projectFile      = NULL,
 #' @param roundDigits Numeric. Number of digits for rounding (default: 3).
 #' @param roundMethod Character. Rounding method: "monolixSuiteRounding" (default),
 #'   "significantFigures", "significantFiguresPreserved", or "none".
+#' @param roundByParameter Optional per-parameter rounding overrides on top of the
+#'   global `roundDigits`/`roundMethod`, supplied in one of two forms (mirroring
+#'   `customAliases`):
+#'   - a named numeric vector of digits, e.g. `c(Cmax_ratio = 2, AUClast_ratio = 4)`
+#'     (the rounding method then falls back to the global `roundMethod`); or
+#'   - a 3-column data.frame with columns `parameter`, `digits` and `method`, e.g.
+#'     `data.frame(parameter = "Cmax_ratio", digits = 2, method = "significantFigures")`.
+#'     `NA`/missing `digits` or `method` entries fall back to the global settings.
+#'
+#'   Parameters not listed keep the global settings. Unknown parameter names are
+#'   ignored with a message. Default `NULL` (global rounding everywhere).
 #' @param aliases Logical. If TRUE (default), parameter names are replaced with their aliases.
 #' @param customAliases Named vector or 2-column dataframe mapping parameter names
 #'   to custom alias labels. Example: `c(Cmax_ratio = "C[[sub:max]] ratio")`.
@@ -2237,7 +2451,7 @@ listingNCAParameters <- function(projectFile      = NULL,
 #' ratios <- listingNCARatios(
 #'   projectFile = "path/to/project.pkx",
 #'   splitCovariates = c("SEX", "DOSE"),
-#'   ratioParams = c("AUC_ratio", "Cmax_ratio"),
+#'   selectParameters = c("AUC_ratio", "Cmax_ratio"),
 #'   roundDigits = 2
 #' )
 #'
@@ -2252,11 +2466,13 @@ listingNCAParameters <- function(projectFile      = NULL,
 #' }
 listingNCARatios <- function(projectFile      = NULL,
 														 splitCovariates  = NULL,
-														 ratioParams      = NULL,
+														 splitCovariateLabels = NULL,
+														 selectParameters = NULL,
 														 filterCovariates = NULL,
 														 filterIds        = NULL,
 														 roundDigits      = 3,
 														 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+														 roundByParameter = NULL,
 														 aliases          = TRUE,
 														 customAliases   = NULL,
 														 mock             = FALSE){
@@ -2274,8 +2490,13 @@ listingNCARatios <- function(projectFile      = NULL,
 
 	# Validate set splitCovariates (rejects occasion-varying split covariates for ratios)
 	.validateCovariateSelection(splitCovariates, ratio = TRUE)
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 	# Validate set parameters
-	.validateNCAParametersSelection(ratioParams, ratio = TRUE)
+	available_params <- .validateNCAParametersSelection(selectParameters, ratio = TRUE)
+
+	round_overrides <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
+	round_overrides <- .validateRoundOverrides(round_overrides, available_params,
+																						 context = "listingNCARatios")
 
 	# Normalize custom alias mapping
 	aliases_df        <- .normalizeAliasMapping(customAliases, "aliases")
@@ -2312,21 +2533,22 @@ listingNCARatios <- function(projectFile      = NULL,
 	#intersection between all splitCovariates available in data and in ratios listing
 	all_splitCovariates <- intersect(all_splitCovariates, names(indivRatios))
 
-	# Filter to selected parameters if ratioParams is specified
-	if (!is.null(ratioParams)) {
+	# Filter to selected parameters if selectParameters is specified
+	if (!is.null(selectParameters)) {
 		# Keep id, all splitCovariates, merged strat covariates, and selected parameters only
-		cols_to_keep <- c("id", all_splitCovariates, merged_strat_covs, ratioParams)
+		cols_to_keep <- c("id", all_splitCovariates, merged_strat_covs, selectParameters)
 		# Only keep columns that exist in the data
 		cols_to_keep <- intersect(cols_to_keep, names(indivRatios))
 		indivRatios <- indivRatios %>% dplyr::select(dplyr::all_of(cols_to_keep))
 	}
 
-	# Apply rounding to parameter columns (BEFORE renaming)
-	indivRatios <- .round_num(
-		to_round        = indivRatios,
-		digits          = roundDigits,
-		rounding_method = roundMethod,
-		exclude         = c("id", all_splitCovariates, merged_strat_covs))
+	indivRatios <- .applyRounding(
+		df        = indivRatios,
+		digits    = roundDigits,
+		method    = roundMethod,
+		exclude   = c("id", all_splitCovariates, merged_strat_covs),
+		overrides = round_overrides,
+		paramAxis = "column")
 
 	# Identify parameter columns (exclude id, all splitCovariates and merged strat covariates)
 	param_cols <- setdiff(names(indivRatios), c("id", all_splitCovariates, merged_strat_covs))
@@ -2366,6 +2588,13 @@ listingNCARatios <- function(projectFile      = NULL,
 		col_types[merged_strat_covs] <- "catcov"
 
 		indivRatios <- .mockDataListing(indivRatios, colTypes = col_types, digits = roundDigits)
+	}
+
+	if (!is.null(splitCovariates)) {
+		indivRatios <- .applyCovariateColumnLabels(
+			df                    = indivRatios,
+			splitCovariates       = splitCovariates,
+			splitCovariate_labels = splitCovariateLabels)
 	}
 
 	attr(indivRatios, "project_source") <- lixoftConnectors::getProjectSettings()$directory

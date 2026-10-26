@@ -6,10 +6,11 @@
 \usage{
 tableBEResults(
   projectFile = NULL,
-  BEParams = NULL,
+  selectParameters = NULL,
   roundDigits = 3,
   roundMethod = c("monolixSuiteRounding", "significantFigures",
     "significantFiguresPreserved", "none"),
+  roundByParameter = NULL,
   units = TRUE,
   aliases = TRUE,
   customUnits = NULL,
@@ -24,7 +25,7 @@ tableBEResults(
 \item{projectFile}{Character string specifying the path to a PKanalix project file (.pkx).
 If \code{NULL} (default), uses the currently loaded project.}
 
-\item{BEParams}{Character vector of parameter names to include in the output.
+\item{selectParameters}{Character vector of parameter names to include in the output.
 If \code{NULL} (default), all BE parameters are included.}
 
 \item{roundDigits}{Integer specifying the number of decimal places for rounding
@@ -42,6 +43,20 @@ digits before the decimal - once the integer part already has as many digits as 
 the value is simply rounded to the nearest whole number
 \item \code{"none"}: No rounding performed
 }}
+
+\item{roundByParameter}{Optional per-parameter rounding overrides on top of the
+global \code{roundDigits}/\code{roundMethod}, supplied in one of two forms (mirroring
+\code{customAliases}/\code{customUnits}):
+\itemize{
+\item a named numeric vector of digits, e.g. \code{c(Cmax = 2, AUClast = 4)} (the
+rounding method then falls back to the global \code{roundMethod}); or
+\item a 3-column data.frame with columns \code{parameter}, \code{digits} and \code{method}, e.g.
+\code{data.frame(parameter = "Cmax", digits = 2, method = "significantFigures")}.
+\code{NA}/missing \code{digits} or \code{method} entries fall back to the global settings.
+}
+
+Parameters not listed keep the global settings. Unknown parameter names are
+ignored with a message. Default \code{NULL} (global rounding everywhere).}
 
 \item{units}{Logical; if \code{TRUE} (default), appends units to parameter names
 (e.g., "ln(AUClast) (h*ng/mL)"). Units are retrieved from project settings.}

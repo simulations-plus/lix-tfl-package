@@ -64,9 +64,9 @@ omega_ka = {value=1, method=MLE}
 
 [TASKS]
 populationParameters()
-individualParameters(method = conditionalMean)
-fim(method = StochasticApproximation)
-logLikelihood(method = ImportanceSampling)
+individualParameters(method = {conditionalMean, conditionalMode })
+fim(method = Linearization)
+logLikelihood(method = Linearization)
 
 [PLOTS]
 run = false

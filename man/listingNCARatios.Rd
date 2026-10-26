@@ -7,12 +7,13 @@
 listingNCARatios(
   projectFile = NULL,
   splitCovariates = NULL,
-  ratioParams = NULL,
+  selectParameters = NULL,
   filterCovariates = NULL,
   filterIds = NULL,
   roundDigits = 3,
   roundMethod = c("monolixSuiteRounding", "significantFigures",
     "significantFiguresPreserved", "none"),
+  roundByParameter = NULL,
   aliases = TRUE,
   customAliases = NULL,
   mock = FALSE
@@ -28,7 +29,7 @@ splitCovariates in the order provided. Occasion-varying covariates are
 rejected, since ratios are computed across occasions and cannot be
 stratified by a covariate that changes within subject.}
 
-\item{ratioParams}{Character vector. Ratio parameters to include. If NULL (default),
+\item{selectParameters}{Character vector. Ratio parameters to include. If NULL (default),
 all available ratio parameters are included.}
 
 \item{filterCovariates}{Named list where names are categorical covariate names
@@ -43,6 +44,20 @@ If \code{NULL} (default), no covariate filtering is applied.}
 
 \item{roundMethod}{Character. Rounding method: "monolixSuiteRounding" (default),
 "significantFigures", "significantFiguresPreserved", or "none".}
+
+\item{roundByParameter}{Optional per-parameter rounding overrides on top of the
+global \code{roundDigits}/\code{roundMethod}, supplied in one of two forms (mirroring
+\code{customAliases}):
+\itemize{
+\item a named numeric vector of digits, e.g. \code{c(Cmax_ratio = 2, AUClast_ratio = 4)}
+(the rounding method then falls back to the global \code{roundMethod}); or
+\item a 3-column data.frame with columns \code{parameter}, \code{digits} and \code{method}, e.g.
+\code{data.frame(parameter = "Cmax_ratio", digits = 2, method = "significantFigures")}.
+\code{NA}/missing \code{digits} or \code{method} entries fall back to the global settings.
+}
+
+Parameters not listed keep the global settings. Unknown parameter names are
+ignored with a message. Default \code{NULL} (global rounding everywhere).}
 
 \item{aliases}{Logical. If TRUE (default), parameter names are replaced with their aliases.}
 
@@ -92,7 +107,7 @@ ratios <- listingNCARatios(projectFile = "path/to/project.pkx")
 ratios <- listingNCARatios(
   projectFile = "path/to/project.pkx",
   splitCovariates = c("SEX", "DOSE"),
-  ratioParams = c("AUC_ratio", "Cmax_ratio"),
+  selectParameters = c("AUC_ratio", "Cmax_ratio"),
   roundDigits = 2
 )
 

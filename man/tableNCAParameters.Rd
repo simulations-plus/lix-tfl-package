@@ -7,7 +7,7 @@
 tableNCAParameters(
   projectFile = NULL,
   splitCovariates = NULL,
-  ncaParams = NULL,
+  selectParameters = NULL,
   metrics = NULL,
   useWideFormat = TRUE,
   stratifyColumns = FALSE,
@@ -36,7 +36,7 @@ specified project if it differs from the currently active one.}
 (e.g., \code{"TREAT"}, \code{"FOOD"}, or \code{c("TREAT","FOOD")}). If \code{NULL}
 (default), no stratification is applied and overall summaries are returned.}
 
-\item{ncaParams}{Character vector of NCA parameter names to include. If
+\item{selectParameters}{Character vector of NCA parameter names to include. If
 \code{NULL} (default), all parameters currently enabled in the project are used
 (i.e., \code{lixoftConnectors::getNCASettings()$computedncaparameters}).}
 
@@ -83,12 +83,18 @@ the value is simply rounded to the nearest whole number
 }}
 
 \item{roundByParameter}{Optional per-parameter rounding overrides on top of the
-global \code{roundDigits}/\code{roundMethod}. Either a named numeric vector of digits
-(\code{c(Cmax = 2, AUClast = 4)}; method falls back to \code{roundMethod}), or a
-data.frame with columns \code{parameter}, \code{digits} and/or \code{method}
-(\code{NA}/missing entries fall back to the global settings). Parameters not
-listed keep the global settings. Unknown parameter names are ignored with a
-message. Default \code{NULL} (global rounding everywhere).}
+global \code{roundDigits}/\code{roundMethod}, supplied in one of two forms (mirroring
+\code{customAliases}/\code{customUnits}):
+\itemize{
+\item a named numeric vector of digits, e.g. \code{c(Cmax = 2, AUClast = 4)} (the
+rounding method then falls back to the global \code{roundMethod}); or
+\item a 3-column data.frame with columns \code{parameter}, \code{digits} and \code{method}, e.g.
+\code{data.frame(parameter = "Cmax", digits = 2, method = "significantFigures")}.
+\code{NA}/missing \code{digits} or \code{method} entries fall back to the global settings.
+}
+
+Parameters not listed keep the global settings. Unknown parameter names are
+ignored with a message. Default \code{NULL} (global rounding everywhere).}
 
 \item{units}{Logical. If \code{TRUE} (default), units are appended to parameter names.}
 
@@ -132,7 +138,7 @@ Combines individual parameter data with summary statistics for complete reportin
 # Stratified by a categorical covariate, selected parameters, vertical layout
 # tableNCAParameters(
 #   splitCovariates = "FORM",
-#   ncaParams  = c("AUCINF_obs", "AUClast", "Cmax"),
+#   selectParameters  = c("AUCINF_obs", "AUClast", "Cmax"),
 #   roundDigits = 2,
 #   useWideFormat = FALSE
 # )
@@ -141,7 +147,7 @@ Combines individual parameter data with summary statistics for complete reportin
 # tableNCAParameters(
 #   useWideFormat = FALSE,
 #   includeId = TRUE,
-#   ncaParams  = c("Cmax", "AUClast", "Lambda_z")
+#   selectParameters  = c("Cmax", "AUClast", "Lambda_z")
 # )
 
 # Stratified with individual IDs

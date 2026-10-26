@@ -68,7 +68,7 @@ If \code{NULL} (default), no conditional coloring is applied.}
 
 \item{autoHighlight}{Logical; if \code{TRUE}, shades the best-model-per-step rows of
 a covariate model-building table light gray. Default is \code{FALSE}. The rows are
-read from the \code{best_per_step} attribute set by \code{\link[=tableModelBuilding]{tableModelBuilding()}} (the
+read from the \code{best_per_step} attribute set by \code{\link[=tableCovariateModelBuilding]{tableCovariateModelBuilding()}} (the
 accepted winner of each forward/backward step) and matched by their \code{Run}
 label, so the shading survives the section-header rows that are inserted for
 model-building tables. When shading is applied, an explanatory footnote is
@@ -109,7 +109,7 @@ df <- data.frame(Parameter = c("Cl", "V"), Estimate = c(1.5, 20.3), RSE = c(45, 
 style_tfl(df, color = c("RSE"))
 
 # Population table with section headers
-pop_table <- tableParameterEstimates(useWideFormat = TRUE)
+pop_table <- tablePopulationParameterEstimates(useWideFormat = TRUE)
 style_tfl(pop_table, color = c("RSE"), theme_fn = theme_booktabs)
 
 # With grouping columns and custom headers

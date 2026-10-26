@@ -292,7 +292,7 @@ tableRunHistory <- function(sycomoreProjectFile,
 
 
 
-#' tableModelBuilding
+#' tableCovariateModelBuilding
 #'
 #' @description
 #' Creates a summary table of an automatic covariate/statistical model building
@@ -354,7 +354,7 @@ tableRunHistory <- function(sycomoreProjectFile,
 #' @param customDescriptions Named vector or 2-column dataframe mapping model
 #'   labels to descriptive text, added as a separate `Description` column placed
 #'   immediately to the right of the `Tested` relationship column (analogous to
-#'   `customDescriptions` in [tableParameterEstimates()]). Keys must match the
+#'   `customDescriptions` in [tablePopulationParameterEstimates()]). Keys must match the
 #'   `Run` labels of the output table (e.g. `"Model 1"`, `"Model 4"`). Rows whose
 #'   `Run` is not in the mapping receive `NA`; keys that match no row are ignored
 #'   with a message. Example:
@@ -445,12 +445,12 @@ tableRunHistory <- function(sycomoreProjectFile,
 #' @examples
 #' \dontrun{
 #' # Use the currently loaded project (after running model building)
-#' tableModelBuilding()
+#' tableCovariateModelBuilding()
 #'
 #' # From a project file, sorted by BICc, showing only BICc columns
-#' tableModelBuilding("path/to/project.mlxtran", sortBy = "BICc", filterCriteria = "BICc")
+#' tableCovariateModelBuilding("path/to/project.mlxtran", sortBy = "BICc", filterCriteria = "BICc")
 #' }
-tableModelBuilding <- function(projectFile        = NULL,
+tableCovariateModelBuilding <- function(projectFile        = NULL,
 															 customDescriptions = NULL,
 															 filterCriteria     = c("none", "LL", "BICc"),
 															 sortBy             = c("index", "BICc", "LL", "pValue"),
@@ -472,7 +472,7 @@ tableModelBuilding <- function(projectFile        = NULL,
 	res <- suppressMessages(lixoftConnectors::getModelBuildingResults())
 	if (is.null(res) || length(res) == 0 || !is.list(res) ||
 			!all(vapply(res, is.list, logical(1)))) {
-		stop("No model building results found. Run a covariate model-building search (COSSAC, SCM, or SAMBA) in Monolix before calling tableModelBuilding().",
+		stop("No model building results found. Run a covariate model-building search (COSSAC, SCM, or SAMBA) in Monolix before calling tableCovariateModelBuilding().",
 				 call. = FALSE)
 	}
 
@@ -637,7 +637,7 @@ tableModelBuilding <- function(projectFile        = NULL,
 	rownames(df) <- NULL
 
 	# Optional per-model descriptions, keyed on the Run label (mirrors the
-	# customDescriptions feature of tableParameterEstimates()).
+	# customDescriptions feature of tablePopulationParameterEstimates()).
 	descriptions_df <- .normalizeAliasMapping(customDescriptions, "description")
 	if (!is.null(descriptions_df)) {
 		desc_map       <- stats::setNames(descriptions_df$description, descriptions_df$parameter)
@@ -794,6 +794,19 @@ tableModelBuilding <- function(projectFile        = NULL,
 #'     digits before the decimal - once the integer part already has as many digits as
 #'     `digits` requests, the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding applied
+#' @param roundByParameter Optional per-parameter rounding overrides on top of the
+#'   global `roundDigits`/`roundMethod`, supplied in one of two forms (mirroring
+#'   `customAliases`/`customUnits`):
+#'   - a named numeric vector of digits, e.g. `c(V_pop = 2, omega_V = 4)` (the
+#'     rounding method then falls back to the global `roundMethod`); or
+#'   - a 3-column data.frame with columns `parameter`, `digits` and `method`, e.g.
+#'     `data.frame(parameter = "omega_V", digits = 4, method = "significantFigures")`.
+#'     `NA`/missing `digits` or `method` entries fall back to the global settings.
+#'
+#'   Keys use the original parameter names (e.g. `V_pop`, `omega_V`, `gamma_V`),
+#'   not the displayed labels. Parameters not listed keep the global settings.
+#'   Unknown parameter names are ignored with a message. Default `NULL` (global
+#'   rounding everywhere).
 #' @param prettyLabels Logical; if `TRUE` (default), applies pretty formatting to column names with newline characters for better table display (e.g., "Fixed Effect\\nEstimate", "IIV\\nSD").
 #'   If `FALSE`, uses simpler column names without newlines (e.g., "FE_Estimate", "IIV_SD").
 #' @param mock Logical; if `TRUE`, masks the table for documentation / example
@@ -837,30 +850,30 @@ tableModelBuilding <- function(projectFile        = NULL,
 #' @examples
 #' \dontrun{
 #' # Basic usage with default long format
-#' pop_table <- tableParameterEstimates()
+#' pop_table <- tablePopulationParameterEstimates()
 #' style_tfl(pop_table, color = c("RSE"))
 #'
 #' # Wide format with IIV and CV%
-#' pop_table_wide <- tableParameterEstimates(
+#' pop_table_wide <- tablePopulationParameterEstimates(
 #'   useWideFormat = TRUE,
 #'   includeIIV = TRUE,
 #'   includeCV = TRUE)
 #' style_tfl(pop_table_wide, color = c("RSE"), theme_fn = theme_booktabs)
 #'
 #' # With custom aliases and units
-#' pop_table <- tableParameterEstimates(
+#' pop_table <- tablePopulationParameterEstimates(
 #'   customAliases = c(Cl_pop = "Clearance", V_pop = "Volume", ka_pop = "Absorption rate"),
 #'   customUnits = c(Cl_pop = "L/h", V_pop = "L", ka_pop = "1/h"),
 #'   includeCI = TRUE,
 #'   includeRSE = TRUE)
 #'
 #' # Exclude IOV parameters
-#' pop_table_no_iov <- tableParameterEstimates(includeIOV = FALSE)
+#' pop_table_no_iov <- tablePopulationParameterEstimates(includeIOV = FALSE)
 #'
 #' # Simple column names (no pretty formatting)
-#' pop_table_simple <- tableParameterEstimates(prettyLabels = FALSE)
+#' pop_table_simple <- tablePopulationParameterEstimates(prettyLabels = FALSE)
 #' }
-tableParameterEstimates <- function(projectFile        = NULL,
+tablePopulationParameterEstimates <- function(projectFile        = NULL,
 																		customAliases      = NULL,
 																		customUnits        = NULL,
 																		customDescriptions = NULL,
@@ -875,6 +888,7 @@ tableParameterEstimates <- function(projectFile        = NULL,
 																		stdErrMethod       = "",
 																		roundDigits        = 3,
 																		roundMethod        = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+																		roundByParameter   = NULL,
 																		prettyLabels       = TRUE,
 																		mock               = FALSE) {
 
@@ -890,6 +904,25 @@ tableParameterEstimates <- function(projectFile        = NULL,
 																																			 withValuesByGroups      = includeFEcategory))
 	names(pop) <- c("Estimate")
 	pop$Parameter <- rownames(pop)
+
+	# --------------------------------------------------------------------------
+	# Per-parameter rounding overrides, keyed on ORIGINAL param  names
+	# Validated against the params present in the estimates (also contains the *_CV names).
+	available_params <- pop$Parameter
+	user_params      <- available_params[!endsWith(available_params, "_CV")]
+	round_overrides  <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
+	round_overrides  <- .validateRoundOverrides(round_overrides, user_params,
+																							context = "tablePopulationParameterEstimates")
+
+	if (includeCV && !is.null(round_overrides)) {
+		cv_over <- round_overrides
+		cv_over$parameter <- paste0(cv_over$parameter, "_CV")
+		cv_over <- cv_over[cv_over$parameter %in% available_params, , drop = FALSE]
+		if (nrow(cv_over) > 0) {
+			round_overrides <- rbind(round_overrides, cv_over)
+			rownames(round_overrides) <- NULL
+		}
+	}
 
 	err <- NULL
 
@@ -957,17 +990,22 @@ tableParameterEstimates <- function(projectFile        = NULL,
 			if (length(percentile_cols) == 0) {
 				warning("No percentile columns found in CI results, using settings-based names")
 			}
-			CI <- CI %>%
-				dplyr::mutate(
-					Parameter = .data$parameter,
-					lower_rounded = .round_num(.data[[lower_col]], digits = roundDigits, rounding_method = roundMethod),
-					upper_rounded = .round_num(.data[[upper_col]], digits = roundDigits, rounding_method = roundMethod),
-					!!ci_col_name := paste0("(", lower_rounded, "; ", upper_rounded, ")")) %>%
-				dplyr::select(Parameter, !!ci_col_name)
+			# Round interval bounds per param before building "(lower; upper)"
+			ci_bounds <- data.frame(
+				Parameter = CI$parameter,
+				lower     = CI[[lower_col]],
+				upper     = CI[[upper_col]],
+				stringsAsFactors = FALSE)
+			ci_bounds <- .applyRounding(ci_bounds, digits = roundDigits, method = roundMethod,
+																	exclude = "Parameter", overrides = round_overrides,
+																	paramCol = "Parameter", paramAxis = "row")
+			CI <- data.frame(Parameter = CI$parameter, stringsAsFactors = FALSE)
+			CI[[ci_col_name]] <- paste0("(", ci_bounds$lower, "; ", ci_bounds$upper, ")")
 		}
 	}
 
-	bootstrap <- NULL
+	bootstrap        <- NULL
+	boot_ci_col_name <- NULL
 
 	if (includeBootstrap) {
 		# Validate RSE availability with method
@@ -1012,16 +1050,24 @@ tableParameterEstimates <- function(projectFile        = NULL,
 				final_cols     <- c(final_cols, "Boot_RSE")
 			}
 			bootstrap <- bootstrap %>%
-				dplyr::select(dplyr::all_of(cols_to_select)) %>%
+				dplyr::select(dplyr::all_of(cols_to_select))
+			bootstrap$Parameter <- rownames(bootstrap)
+
+			# Round bootstrap columns per param before building CI string, Boot_Median, Boot_RSE
+			boot_round_cols <- c(boot_lower_col, boot_upper_col, "MEDIAN")
+			if (has_rse) boot_round_cols <- c(boot_round_cols, "RSE(%)")
+			bootstrap <- .applyRounding(bootstrap, digits = roundDigits, method = roundMethod,
+																	exclude   = setdiff(names(bootstrap), boot_round_cols),
+																	overrides = round_overrides,
+																	paramCol  = "Parameter", paramAxis = "row")
+
+			bootstrap <- bootstrap %>%
 				dplyr::mutate(
-					Parameter          = rownames(.),
-					boot_lower_rounded = .round_num(.data[[boot_lower_col]], digits = roundDigits, rounding_method = roundMethod),
-					boot_upper_rounded = .round_num(.data[[boot_upper_col]], digits = roundDigits, rounding_method = roundMethod),
-					Boot_Median        = .round_num(MEDIAN,                  digits = roundDigits, rounding_method = roundMethod),
-					!!boot_ci_col_name := paste0("(", boot_lower_rounded, "; ", boot_upper_rounded, ")"))
+					Boot_Median        = .data[["MEDIAN"]],
+					!!boot_ci_col_name := paste0("(", .data[[boot_lower_col]], "; ", .data[[boot_upper_col]], ")"))
 
 			if (has_rse) {
-				bootstrap <- bootstrap %>% dplyr::mutate(Boot_RSE = .round_num(`RSE(%)`, digits = roundDigits, rounding_method = roundMethod))
+				bootstrap <- bootstrap %>% dplyr::mutate(Boot_RSE = .data[["RSE(%)"]])
 			}
 			bootstrap <- bootstrap %>% dplyr::select(dplyr::all_of(final_cols))
 		}
@@ -1033,9 +1079,8 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	FE_category_params <- setdiff(pop$Parameter, params_no_FEcategory)
 
 
-	# IOV variability parameters are discovered dynamically from the individual
-	# parameter model so that user-defined parameters whose names happen to start
-	# with "gamma_" (e.g. a gamma_pop shape parameter) are not misclassified.
+	# IOV variability params discovered dynamically from indiv param model
+	# --> user-defined params (that start with "gamma_") are not misclassified
 	iov_params <- .getIOVParameters()
 
 	pop$Section <- ""
@@ -1045,9 +1090,8 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	pop$Section[grep("^corr1_",    pop$Parameter)]     <- "CORR_IIV"
 	pop$Section[pop$Parameter %in% iov_params]         <- "IOV"
 	pop$Section[grep("^corr2_",    pop$Parameter)]     <- "CORR_IOV"
-	# Residual error parameters are discovered dynamically from the continuous
-	# observation model so that multi-output projects (a1, b1, a2, b2, ...) and
-	# autocorrelated error models (extra r parameter) are classified correctly.
+	# Residual err params are identified dynamically from obs model
+	# for multi-output projects (a1, b1, a2, b2, ...) and autocorr. err models
 	res_err_params <- .getResidualErrorParameters()
 	pop$Section[pop$Parameter %in% res_err_params]     <- "RES_ERR"
 	pop$Section[grep("plcat_",     pop$Parameter)]     <- "LAT"
@@ -1083,6 +1127,13 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	if (includeBootstrap) {
 		pop <- dplyr::left_join(pop, bootstrap, by = "Parameter")
 	}
+
+	# Round all num. cols per param while table is still in long (one row per original parameter)
+	pop <- .applyRounding(pop, digits = roundDigits, method = roundMethod,
+												exclude   = c("Section", "Parameter", ci_col_name, boot_ci_col_name),
+												overrides = round_overrides,
+												paramCol  = "Parameter", paramAxis = "row")
+
 	if (useWideFormat) {
 		# Rename fixed effect columns using hierarchical naming with underscore separator
 		names(pop)[names(pop) == "Estimate"] <- "FE_Estimate"
@@ -1152,9 +1203,9 @@ tableParameterEstimates <- function(projectFile        = NULL,
 			}
 		}
 
-		# Add IOV columns if requested (default TRUE)
-		# Match against iov_params (and their _CV variants) rather than grepping
-		# "gamma_", to avoid catching user-defined parameters with that prefix.
+		# Add IOV columns (default TRUE)
+		# Match against iov_params (and their _CV) rather than grepping "gamma_"
+		# --> avoids catching user-defined params with ame prefix.
 		gamma_idx    <- which(pop$Parameter %in% c(iov_params, paste0(iov_params, "_CV")))
 		gamma_cv_idx <- NULL
 
@@ -1328,7 +1379,6 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	if ("Description" %in% names(pop)) {
 		pop <- dplyr::relocate(pop, "Description", .after = "Parameter")
 	}
-	pop <- .round_num(pop, roundDigits, exclude = c("Section", "Parameter", "Description"), rounding_method = roundMethod)
 
 	if (isTRUE(mock)) {
 		pop <- .mockOutputData(pop, digits = roundDigits,
@@ -1342,10 +1392,10 @@ tableParameterEstimates <- function(projectFile        = NULL,
 	}
 
 	# for later identfication in flextable function
-	attr(pop, "table_type")  <- "pop"
-	attr(pop, "format")      <- if (useWideFormat) "wide" else "long"
-	attr(pop, "includeIIV") <- useWideFormat && includeIIV
-	attr(pop, "includeIOV") <- useWideFormat && includeIOV
+	attr(pop, "table_type")     <- "pop"
+	attr(pop, "format")         <- if (useWideFormat) "wide" else "long"
+	attr(pop, "includeIIV")     <- useWideFormat && includeIIV
+	attr(pop, "includeIOV")     <- useWideFormat && includeIOV
 	attr(pop, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(pop, "r_source")       <- .getRScriptPath()
 	return(pop)

@@ -282,71 +282,6 @@
 	return(df)
 }
 
-
-##################################################################################
-#' RoundNumericCols
-#'
-#' Rounds all numeric columns in a data frame to a specified number of decimal places.
-#' Also attempts to convert character columns that contain numeric values to numeric
-#' before rounding, providing robust handling of mixed data types.
-#'
-#' @param df A data frame containing columns to be rounded.
-#' @param digits An integer specifying the number of decimal places for rounding. Default is 3.
-#'
-#' @return A data frame with all numeric columns rounded to the specified number of decimal places.
-#'
-#' @examples
-#' # Example usage:
-#' # df <- data.frame(param = c("AUC", "Cmax"), value1 = c(123.456, 67.891), value2 = c("234.567", "89.123"))
-#' # RoundNumericCols(df, digits = 2)
-# .roundNumericCols <- function(x,
-#                               digits = 3,
-#                               exclude = NULL,
-#                               rounding_method = c("monolix", "signif")) {
-#     rounding_method <- match.arg(rounding_method)
-#
-#     # Inner function: rounds a single numeric vector
-#     .round_num <- function(number, digits, rounding_method) {
-#         # handle NA/NaN
-#         if (!is.numeric(number)) {
-#             number <- suppressWarnings(as.numeric(as.character(number)))
-#         }
-#
-#         if (!is.numeric(number)) {
-#             return(number)
-#         }
-#
-#         if (rounding_method == "monolix") {
-#             adj_digits <- digits + ifelse(
-#                 abs(number) < 1 & number != 0 & !is.na(number),
-#                 abs(floor(log10(abs(number))) + 1),
-#                 0
-#             )
-#             rounded <- round(number, digits = adj_digits)
-#         } else {
-#             rounded <- signif(number, digits = digits)
-#         }
-#
-#         # keep NaN/NA as-is
-#         rounded[is.nan(number)] <- NaN
-#         rounded[is.na(number)] <- NA
-#         return(rounded)
-#     }
-#
-#     # case 1: data frame apply columnwise
-#     if (is.data.frame(x)) {
-#         for (nm in names(x)) {
-#             if (!is.null(exclude) && nm %in% exclude) next
-#             x[[nm]] <- .round_num(x[[nm]], digits, rounding_method)
-#         }
-#         return(as.data.frame(x))
-#     }
-#
-#     # case 2: atomic vector
-#     return(.round_num(x, digits, rounding_method))
-# }
-
-
 ##################################################################################
 #' .getDelim
 #'
@@ -1347,6 +1282,45 @@
 }
 
 ##################################################################################
+#' Internal helper to relabel split-covariate columns in non-stratified tables
+#'
+#' @description
+#' When `stratifyColumns = FALSE`, the split covariates appear as literal columns
+#' (left-side columns in wide format, leftmost columns in long format). This
+#' helper renames those columns from their raw covariate names to the validated
+#' `splitCovariateLabels`, so the same labels drive both the stratified header
+#' text and the non-stratified column headers. Columns that are absent (e.g.
+#' reshaped away) or whose label equals the raw name are skipped.
+#'
+#' @param df Data frame whose covariate columns should be relabeled.
+#' @param splitCovariates Character vector of raw covariate column names.
+#' @param splitCovariate_labels Character vector of labels aligned to
+#'   `splitCovariates` (as returned by `.validateCovariateLabels`).
+#'
+#' @return `df` with covariate columns renamed where a distinct label is given.
+#'
+#' @keywords internal
+#' @noRd
+.applyCovariateColumnLabels <- function(df, splitCovariates, splitCovariate_labels) {
+	if (is.null(splitCovariates) || is.null(splitCovariate_labels)) {
+		return(df)
+	}
+
+	# dplyr::rename() wants new_name = old_name, so names() are the labels
+	rename_map <- stats::setNames(splitCovariates, splitCovariate_labels)
+
+	# keep only columns still present and whose label actually differs from the raw name
+	rename_map <- rename_map[rename_map %in% names(df) & names(rename_map) != rename_map]
+
+	if (length(rename_map) > 0) {
+		df <- dplyr::rename(df, !!!rename_map)
+	}
+
+	return(df)
+}
+
+
+##################################################################################
 
 #' Internal helper to validate covariate labels against splitCovariates
 #'
@@ -1395,12 +1369,12 @@
 #' a message naming them alongside the remaining available (not-yet-selected)
 #' parameters, then continues with the valid ones.
 #'
-#' @param ncaParams Character vector of NCA parameter names to validate, or NULL
+#' @param selectParameters Character vector of NCA parameter names to validate, or NULL
 #' @param ratio Logical; if TRUE, validates for ratio tables (checks ratio parameters).
 #'   If FALSE (default), validates against computed NCA parameters.
 #'
 #' @return Invisibly returns the character vector of available parameters (always
-#'   computed, even when `ncaParams` is NULL, so callers can reuse it - e.g. to
+#'   computed, even when `selectParameters` is NULL, so callers can reuse it - e.g. to
 #'   validate `roundByParameter`). Stops with an error if none of the requested
 #'   parameters are found; emits a message listing unknown parameters and the
 #'   remaining available ones, then continues if at least one is valid.
@@ -1422,8 +1396,8 @@
 #'     available parameters (continues with valid ones)
 #'
 #' @noRd
-.validateNCAParametersSelection <- function(ncaParams, ratio = FALSE, be = FALSE) {
-	# Always compute the available parameters (even when ncaParams is NULL) so the
+.validateNCAParametersSelection <- function(selectParameters, ratio = FALSE, be = FALSE) {
+	# Always compute the available parameters (even when selectParameters is NULL) so the
 	# list can be returned and reused by callers (e.g. to validate roundByParameter).
 	if (be) {
 		# For BE tables: get computed BE parameters
@@ -1449,10 +1423,10 @@
 	}
 
 	# Only validate a selection when one was provided.
-	if (!is.null(ncaParams)) {
+	if (!is.null(selectParameters)) {
 		# Find intersection of requested and available
-		valid_params   <- intersect(ncaParams, available_params)
-		invalid_params <- setdiff(ncaParams, available_params)
+		valid_params   <- intersect(selectParameters, available_params)
+		invalid_params <- setdiff(selectParameters, available_params)
 
 		# Parameters available in the project that have not been (correctly) selected -> displayed as suggestions
 		remaining_params <- setdiff(available_params, valid_params)
@@ -1462,7 +1436,7 @@
 			stop(sprintf(
 				"None of the requested %s were found.\nRequested: %s\nAvailable: %s",
 				context_msg,
-				paste(ncaParams, collapse = ", "),
+				paste(selectParameters, collapse = ", "),
 				if (length(available_params) > 0) paste(available_params, collapse = ", ") else "none"
 			), call. = FALSE)
 		}
@@ -1705,10 +1679,16 @@
 #'   or in wide format with time columns for concentrations)
 #' @param splitCovariates Character vector of covariate names (optional)
 #' @param resultType Type of result: "ncaParameters", "ncaRatio", or "ncaConcentration"
-#' @param params Parameter names to include (ncaParams for parameters, ratioParams for ratios, NULL for all)
+#' @param params Parameter names to include (the caller's selectParameters for both parameters and ratios, NULL for all)
 #' @param roundDigits Number of decimal places for rounding
 #' @param roundMethod Rounding method ("monolixSuiteRounding", "significantFigures",
 #'   "significantFiguresPreserved", or "none")
+#' @param roundOverrides Optional canonical per-parameter rounding overrides from
+#'   [.normalizeRoundOverrides()] (data.frame with columns parameter/digits/method),
+#'   or NULL. When supplied, the individual values are rounded per parameter via
+#'   [.applyRounding()] so they match the per-parameter rounding applied to the
+#'   summary rows. Keys must use the original (non-aliased) parameter names.
+#'   Only honored for resultType "ncaParameters"/"ncaRatio". Default NULL (global rounding).
 #' @param units Logical; include units for parameter names (only for ncaParameters)
 #' @param aliases Logical; use parameter aliases (only for ncaParameters)
 #' @param useNominalTime Logical; use nominal time (only for ncaConcentration)
@@ -1736,13 +1716,13 @@
 														params         = NULL,
 														roundDigits    = 3,
 														roundMethod    = "monolixSuiteRounding",
+														roundOverrides = NULL,
 														units          = TRUE,
 														units_df       = NULL,
 														aliases        = TRUE,
 														aliases_df     = NULL,
 														useNominalTime = TRUE,
-														indiv_data     = NULL
-														) {
+														indiv_data     = NULL) {
 
 	resultType <- match.arg(resultType)
 
@@ -1824,7 +1804,19 @@
 				names_to  = "Parameter",
 				values_to = "Value")
 
-		# Apply name mapping to Parameter column
+		# round individual values with original param names
+		# .applyRounding falls back to global digits/method when roundOverrides is NULL,
+		# exclude everything but Value --> only value column is rounded (id/covariates/occs rmain untouched)
+		long_df <- .applyRounding(
+			df        = long_df,
+			digits    = roundDigits,
+			method    = roundMethod,
+			exclude   = setdiff(names(long_df), "Value"),
+			overrides = roundOverrides,
+			paramCol  = "Parameter",
+			paramAxis = "row")
+
+		# Apply name mapping to Parameter column (after rounding, so overrides matched)
 		long_df$Parameter <- name_mapping[long_df$Parameter]
 
 		# Check for occasions (duplicate id-covariate-parameter combinations)
@@ -1836,13 +1828,6 @@
 
 		# Determine which ID column to use
 		id_col <- if (use_composite_id) "composite_id" else "id"
-
-		# Round individual values
-		long_df$Value <- .round_num(
-			to_round        = data.frame(val = long_df$Value),
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = NULL)$val
 
 		# ==========================================================================
 		# Pivot to wide format and combine with summary_stats
@@ -1901,11 +1886,14 @@
 		occ_vars <- project_data$header[project_data$headerTypes == "occ"]
 
 		# Use provided indiv_data or fetch individual concentration data
+		# Force raw column names; code below joins/groups on raw names
 		if (is.null(indiv_data)) {
 			indiv_data <- listingNCAConcentration(
 				projectFile    = NULL,  # Already loaded
 				splitCovariates     = splitCovariates,
 				useNominalTime = useNominalTime,
+				prettyLabels   = FALSE,
+				units          = FALSE,
 				roundDigits    = NULL,  # Don't round here, will round below
 				roundMethod    = "none")
 		}
@@ -2194,7 +2182,7 @@
 #' }
 #'
 #' @param project A character string representing the path to the PKanalix project file (.pkx).
-#' @param ncaParams A character vector of NCA parameter names to filter by.
+#' @param selectParameters A character vector of NCA parameter names to filter by.
 #'   If `NULL`, all available parameters are retrieved.
 #'   \emph{Applicable only when `by_time = FALSE`.}
 #' @param splitCovariates A character vector of covariate names to stratify the results by.
@@ -2224,7 +2212,7 @@
 #' @keywords internal
 #'
 .prepareNCASummaryStats <- function(projectFile,
-																		ncaParams = NULL,
+																		selectParameters = NULL,
 																		splitCovariates = NULL,
 																		roundDigits,
 																		roundMethod,
@@ -2309,7 +2297,7 @@
 		}
 
 		# Get Summary Stats (from getNCAParameterStatistics)
-		summary_stats <- lixoftConnectors::getNCAParameterStatistics(parameters = ncaParams)$statistics
+		summary_stats <- lixoftConnectors::getNCAParameterStatistics(parameters = selectParameters)$statistics
 		if (is.null(summary_stats)) {
 			# Return NULL if no stats, parent function will handle
 			return(NULL)
@@ -3169,6 +3157,120 @@
 	# Remove Original_Parameter column
 	df[[orig_col]] <- NULL
 	df
+}
+
+################################################################################
+#' Internal helper to relabel / unit-annotate NCA concentration listing columns
+#'
+#' @description
+#' Applies presentation labels to the fixed columns of a `listingNCAConcentration`
+#' output. `prettyLabels` delegates naming to the shared `.prettyLabels()` helper
+#' (which maps `ActualTime` -> "Actual time", `NominalTime` -> "Nominal time",
+#' `UsedConc` -> "Used concentration"; `Concentration` / `Censoring` are already
+#' their pretty form). `units` appends the project unit in parentheses: the time
+#' columns use `getDataSettings()$units$time` and the concentration columns use
+#' amount-per-volume (`units$dose` / `units$volume`, e.g. "mg/L").
+#'
+#' The two flags are independent and compose freely:
+#' \itemize{
+#'   \item `prettyLabels = FALSE, units = FALSE` -> `ActualTime`
+#'   \item `prettyLabels = TRUE,  units = FALSE` -> `Actual time`
+#'   \item `prettyLabels = FALSE, units = TRUE`  -> `ActualTime (h)`
+#'   \item `prettyLabels = TRUE,  units = TRUE`  -> `Actual time (h)`
+#' }
+#'
+#' The time/concentration columns are captured by their raw names *before* any
+#' rename, so units are appended by position onto whatever the final (raw or
+#' pretty) label is. Units are only added when units are enabled in the project
+#' (`getDataSettings()$enableunits`); otherwise a warning is issued and labels
+#' are applied without units. Only columns present in `df` are touched, so this is
+#' safe whether actual time, nominal time, or both exist.
+#'
+#' @param df Data frame (a `listingNCAConcentration` result).
+#' @param prettyLabels Logical; rename fixed columns to publication form.
+#' @param units Logical; append project units to time and concentration columns.
+#'
+#' @return `df` with the fixed columns renamed where requested.
+#'
+#' @keywords internal
+#' @noRd
+.applyNCAConcentrationColumnLabels <- function(df, prettyLabels = FALSE, units = FALSE) {
+	if (!isTRUE(prettyLabels) && !isTRUE(units)) {
+		return(df)
+	}
+
+	# Resolve project units once (shared by the time and concentration columns)
+	unit_info <- .getNCAConcentrationUnits(enabled = isTRUE(units))
+
+	# Capture the time / concentration columns by raw name BEFORE renaming,
+	# so units can be appended by position regardless of the pretty rename.
+	time_idx <- which(names(df) %in% c("ActualTime", "NominalTime"))
+	conc_idx <- which(names(df) %in% c("Concentration", "UsedConc"))
+
+	# Pretty names via the shared package helper (single source of truth)
+	if (isTRUE(prettyLabels)) {
+		df <- .prettyLabels(df)
+	}
+
+	# Append units onto the (now possibly pretty) labels by captured position
+	if (isTRUE(units)) {
+		if (nzchar(unit_info$time) && length(time_idx) > 0) {
+			names(df)[time_idx] <- paste0(names(df)[time_idx], " (", unit_info$time, ")")
+		}
+		if (nzchar(unit_info$concentration) && length(conc_idx) > 0) {
+			names(df)[conc_idx] <- paste0(names(df)[conc_idx], " (", unit_info$concentration, ")")
+		}
+	}
+
+	return(df)
+}
+
+################################################################################
+#' Internal helper to resolve time and concentration units from the project
+#'
+#' @description
+#' Reads the project unit settings via `lixoftConnectors::getDataSettings()`.
+#' The time unit is taken directly from `$units$time`; the concentration unit is
+#' derived as amount per volume (`$units$dose` / `$units$volume`, e.g. "mg/L").
+#' Each component is passed through `.formatUnits()` for consistent display.
+#'
+#' Units are only returned when `enabled = TRUE` *and* units are enabled in the
+#' project (`$enableunits`); otherwise a warning is issued (when `enabled`) and
+#' empty strings are returned so callers can skip unit annotation.
+#'
+#' @param enabled Logical; whether the caller requested units.
+#'
+#' @return A list with character elements `time` and `concentration` (possibly
+#'   empty strings).
+#'
+#' @keywords internal
+#' @noRd
+.getNCAConcentrationUnits <- function(enabled = FALSE) {
+	empty <- list(time = "", concentration = "")
+	if (!isTRUE(enabled)) {
+		return(empty)
+	}
+
+	data_settings <- lixoftConnectors::getDataSettings()
+	if (!isTRUE(data_settings$enableunits)) {
+		warning("Units were requested (units = TRUE) but are not enabled in the current project. Skipping unit retrieval.")
+		return(empty)
+	}
+
+	u <- data_settings$units
+
+	time_unit <- ""
+	if (!is.null(u$time) && nzchar(u$time)) {
+		time_unit <- .formatUnits(u$time)
+	}
+
+	# Concentration is amount (dose) per volume
+	conc_unit <- ""
+	if (!is.null(u$dose) && !is.null(u$volume) && nzchar(u$dose) && nzchar(u$volume)) {
+		conc_unit <- paste0(.formatUnits(u$dose), "/", .formatUnits(u$volume))
+	}
+
+	list(time = time_unit, concentration = conc_unit)
 }
 
 ################################################################################

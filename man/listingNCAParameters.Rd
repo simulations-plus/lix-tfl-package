@@ -7,12 +7,13 @@
 listingNCAParameters(
   projectFile = NULL,
   splitCovariates = NULL,
-  ncaParams = NULL,
+  selectParameters = NULL,
   filterCovariates = NULL,
   filterIds = NULL,
   roundDigits = 3,
   roundMethod = c("monolixSuiteRounding", "significantFigures",
     "significantFiguresPreserved", "none"),
+  roundByParameter = NULL,
   units = TRUE,
   aliases = TRUE,
   customUnits = NULL,
@@ -28,7 +29,7 @@ If NULL, uses the currently loaded project.}
 to include and sort by. If specified, the table is sorted by these
 splitCovariates in the order provided.}
 
-\item{ncaParams}{Character vector. NCA parameters to include. If NULL (default),
+\item{selectParameters}{Character vector. NCA parameters to include. If NULL (default),
 all computed NCA parameters are included.}
 
 \item{filterCovariates}{Named list where names are categorical covariate names
@@ -43,6 +44,20 @@ If \code{NULL} (default), no covariate filtering is applied.}
 
 \item{roundMethod}{Character. Rounding method: "monolixSuiteRounding" (default),
 "significantFigures", "significantFiguresPreserved", or "none".}
+
+\item{roundByParameter}{Optional per-parameter rounding overrides on top of the
+global \code{roundDigits}/\code{roundMethod}, supplied in one of two forms (mirroring
+\code{customAliases}/\code{customUnits}):
+\itemize{
+\item a named numeric vector of digits, e.g. \code{c(Cmax = 2, AUClast = 4)} (the
+rounding method then falls back to the global \code{roundMethod}); or
+\item a 3-column data.frame with columns \code{parameter}, \code{digits} and \code{method}, e.g.
+\code{data.frame(parameter = "Cmax", digits = 2, method = "significantFigures")}.
+\code{NA}/missing \code{digits} or \code{method} entries fall back to the global settings.
+}
+
+Parameters not listed keep the global settings. Unknown parameter names are
+ignored with a message. Default \code{NULL} (global rounding everywhere).}
 
 \item{units}{Logical. If TRUE (default), parameter units are added to column names.}
 
@@ -89,7 +104,7 @@ params <- listingNCAParameters(projectFile = "path/to/project.pkx")
 params <- listingNCAParameters(
   projectFile = "path/to/project.pkx",
   splitCovariates = c("SEX", "DOSE"),
-  ncaParams = c("AUC", "Cmax", "Tmax"),
+  selectParameters = c("AUC", "Cmax", "Tmax"),
   roundDigits = 2,
   units = TRUE,
   aliases = TRUE

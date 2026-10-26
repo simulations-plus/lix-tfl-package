@@ -512,7 +512,10 @@ utils::globalVariables(c("."))
 		"dBICc"               = "ΔBICc",
 		"Significant"         = "Significant",
 		"Improved"            = "BICc\nImproved",
-		"BestModel"           = "Best\nModel")
+		"BestModel"           = "Best\nModel",
+		"ActualTime"          = "Actual Time",
+		"NominalTime"         = "Nominal Time",
+		"UsedConc"            = "Used Concentration")
 
 	# Process each column name
 	col_names <- names(df)
@@ -736,7 +739,7 @@ utils::globalVariables(c("."))
 
 
 ################################################################################
-# Helpers for tableModelBuilding()
+# Helpers for tableCovariateModelBuilding()
 ################################################################################
 
 #' Compact string describing the covariate model of a single built model

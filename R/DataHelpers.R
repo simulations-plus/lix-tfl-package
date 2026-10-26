@@ -7,20 +7,24 @@
 #' @param customUnits Named vector or 2-column dataframe mapping dataset covariate names to
 #'   custom unit labels. Example: `c(WEIGHT = "kg", HEIGHT = "cm")`.
 #'   Units are appended in parentheses: "Weight (kg)".
-#' @param splitCovariates vector of categorical covariates to stratify by, or NULL
+#' @param splitCovariates vector of categorical covariates or occasion columns
+#'   (e.g. "Period") to stratify by, or NULL
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original covariate names are used. These labels are applied
+#'   in both layouts: they appear in the combined column headers when
+#'   `stratifyColumns = TRUE`, and they rename the split-covariate columns when
+#'   `stratifyColumns = FALSE`.
+#' @param stratifyColumns Logical; if `TRUE`, creates a stratified table layout with
+#'   separate columns for each covariate combination plus an "Overall" column. If `FALSE`
+#'   (default), splitCovariates appear as separate columns on the left side of the table.
+#'   Only applicable when `splitCovariates` is specified.s
 #' @param metrics vector of metrics to display, or NULL to display all available metrics
 #' @param useWideFormat Logical. If `TRUE` (default), returns a "wide" table format where
 #'   statistics appear as columns and covariates appear as rows.
 #'   If `FALSE`, returns a "long" table format where statistics appear as rows
 #'   (useful for vertical reporting layouts).
 #'   Note: `stratifyColumns = TRUE` is only compatible with `useWideFormat = FALSE`.
-#' @param stratifyColumns Logical; if `TRUE`, creates a stratified table layout with
-#'   separate columns for each covariate combination plus an "Overall" column. If `FALSE`
-#'   (default), splitCovariates appear as separate columns on the left side of the table.
-#'   Only applicable when `splitCovariates` is specified.
-#' @param covariateLabels Character vector of custom labels for splitCovariates, must be the
-#'   same length as `splitCovariates`. If `NULL` (default), the original covariate names are
-#'   used. These labels appear in column headers when `stratifyColumns = TRUE`.
 #' @param filterCovariates Named list where names are categorical covariate names
 #'   (type "categorical", "additionalstratificationcategorical" or "stratificationcategorical"
 #'   in `getCovariateInformation()`) and values are vectors of allowed values.
@@ -70,20 +74,20 @@
 #'     customUnits   = c(WEIGHT = "kg", HEIGHT = "cm", AGE = "years")
 #' )
 #' }
-tableContinuousCovariateSummary <- function(projectFile      = NULL,
-																						customAliases    = NULL,
-																						customUnits      = NULL,
-																						splitCovariates  = NULL,
-																						metrics          = NULL,
-																						useWideFormat  = TRUE,
-																						stratifyColumns = FALSE,
-																						covariateLabels = NULL,
-																						filterCovariates = NULL,
-																						filterIds        = NULL,
-																						roundDigits      = 2,
-																						roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
-																						prettyLabels     = TRUE,
-																						mock             = FALSE)
+tableContinuousCovariateSummary <- function(projectFile          = NULL,
+																						customAliases        = NULL,
+																						customUnits          = NULL,
+																						splitCovariates      = NULL,
+																						splitCovariateLabels = NULL,
+																						stratifyColumns      = FALSE,
+																						metrics              = NULL,
+																						useWideFormat        = TRUE,
+																						filterCovariates     = NULL,
+																						filterIds            = NULL,
+																						roundDigits          = 2,
+																						roundMethod          = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+																						prettyLabels         = TRUE,
+																						mock                 = FALSE)
 {
 
 	roundMethod <- match.arg(roundMethod)
@@ -94,14 +98,9 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 	aliases_df <- .normalizeAliasMapping(customAliases, "aliases")
 	units_df   <- .normalizeAliasMapping(customUnits, "units")
 
-	# Validate stratifyColumns and covariateLabels (using same logic as PKanalixHelpers).
-	# allowed_types restricts splitCovariates to categorical-like types from
-	# getCovariateInformation() (incl. PKanalix-derived stratification covariates).
-	cat_types        <- c("categorical",
-												"additionalstratificationcategorical",
-												"stratificationcategorical")
-	stratifyColumns <- .validateStratificationArgs(splitCovariates, stratifyColumns, allowed_types = cat_types)
-	covariateLabels <- .validateCovariateLabels(splitCovariates, covariateLabels)
+	cat_types            <- c("categorical", "additionalstratificationcategorical", "stratificationcategorical")
+	stratifyColumns      <- .validateStratificationArgs(splitCovariates, stratifyColumns, allowed_types = cat_types, allow_occasions = TRUE)
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 
 	# Validate covariate and id filters (categorical-like types as defined above)
 	.validateFilters(filterCovariates, filterIds, resultType = "covariateSummary")
@@ -193,7 +192,7 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 			splitCovariates  = splitCovariates,
 			selected_metrics = selected_metrics,
 			param_col        = "Covariate",
-			covariateLabels = covariateLabels)
+			covariateLabels = splitCovariateLabels)
 
 		# Apply custom aliases and units using covariate names
 		if (!is.null(aliases_df) || !is.null(units_df)) {
@@ -290,6 +289,13 @@ tableContinuousCovariateSummary <- function(projectFile      = NULL,
 			naFillAxis   = if (stratifyColumns || !useWideFormat) "row" else "column")
 	}
 
+	if (!stratifyColumns && !is.null(splitCovariates)) {
+		cov_summary <- .applyCovariateColumnLabels(
+			df                    = cov_summary,
+			splitCovariates       = splitCovariates,
+			splitCovariate_labels = splitCovariateLabels)
+	}
+
 	# ==========================================================================
 	# RETURN
 
@@ -336,14 +342,16 @@ getDescriptiveStatsMetrics <- function() {
 #' @param splitCovariates Character vector of categorical covariates to stratify by.
 #'   Allowed types from `getCovariateInformation()`: "categorical",
 #'   "additionalstratificationcategorical", "stratificationcategorical". Default NULL.
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original covariate names are used. These labels are applied
+#'   in both layouts: they appear in the combined column headers when
+#'   `stratifyColumns = TRUE`, and they rename the split-covariate columns when
+#'   `stratifyColumns = FALSE`.
 #' @param stratifyColumns Logical; if `TRUE`, creates a stratified table layout with
 #'   separate columns for each covariate combination plus an "Overall" column. If
 #'   `FALSE` (default), `splitCovariates` appear as separate columns on the left side
 #'   of the table. Only applicable when `splitCovariates` is specified.
-#' @param covariateLabels Character vector of custom labels for `splitCovariates`,
-#'   must be the same length as `splitCovariates`. If `NULL` (default), the original
-#'   covariate names are used. These labels appear in column headers when
-#'   `stratifyColumns = TRUE`.
 #' @param filterCovariates Named list where names are categorical covariate names
 #'   (type "categorical", "additionalstratificationcategorical" or
 #'   "stratificationcategorical" in `getCovariateInformation()`) and values are
@@ -382,15 +390,15 @@ getDescriptiveStatsMetrics <- function() {
 #' tableCategoricalCovariateSummary(
 #'     splitCovariates  = "ATRTNCA",
 #'     stratifyColumns = TRUE,
-#'     covariateLabels = "Treatment"
+#'     splitCovariateLabels = "Treatment"
 #' )
 #' }
 tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 																						 covDisplayLabels      = NULL,
 																						 categoryDisplayLabels = NULL,
 																						 splitCovariates       = NULL,
-																						 stratifyColumns      = FALSE,
-																						 covariateLabels      = NULL,
+																						 splitCovariateLabels  = NULL,
+																						 stratifyColumns       = FALSE,
 																						 filterCovariates      = NULL,
 																						 filterIds             = NULL,
 																						 roundDigits           = 2,
@@ -445,7 +453,7 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 
 	# Allow_occasions = TRUE so occasion index columns (e.g. AVISIT_OCC) can be passed to splitCovariates to resolve occasion-varying covariates.
 	stratifyColumns <- .validateStratificationArgs(splitCovariates, stratifyColumns, allowed_types = cat_types, allow_occasions = TRUE)
-	final_labels     <- .validateCovariateLabels(splitCovariates, covariateLabels)
+	final_labels     <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 	.validateFilters(filterCovariates, filterIds, resultType = "covariateSummary")
 
 	# ==========================================================================
@@ -561,13 +569,6 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 										`Frequency\nN (%)` = `N (%)`) %>%
 			dplyr::arrange(dplyr::across(dplyr::any_of(splitCovariates)),
 										 `Subject characteristics`, Modalities)
-
-		# Apply covariateLabels to split columns (positional mapping)
-		if (!is.null(splitCovariates)) {
-			col_idx <- match(splitCovariates, names(summary_stats))
-			ok      <- !is.na(col_idx)
-			names(summary_stats)[col_idx[ok]] <- final_labels[ok]
-		}
 	}
 
 	# ==========================================================================
@@ -598,9 +599,7 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 	if (isTRUE(mock)) {
 		modality_cols <- list(Modalities = "Subject characteristics")
 		if (!stratifyColumns && !is.null(splitCovariates)) {
-			for (lbl in final_labels[nzchar(final_labels)]) {
-				modality_cols[[lbl]] <- NA_character_
-			}
+			for (sc in splitCovariates) modality_cols[[sc]] <- NA_character_
 		}
 
 		summary_stats <- .mockOutputData(
@@ -608,6 +607,13 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 			digits       = roundDigits,
 			excludeCols  = "Subject characteristics",
 			modalityCols = modality_cols)
+	}
+
+	if (!stratifyColumns && !is.null(splitCovariates)) {
+		summary_stats <- .applyCovariateColumnLabels(
+			df                    = summary_stats,
+			splitCovariates       = splitCovariates,
+			splitCovariate_labels = final_labels)
 	}
 
 	# ==========================================================================
@@ -633,6 +639,10 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 #'   such as Exclusion_reason); only non-existent names are rejected. A warning is
 #'   emitted if a chosen column has too many modalities per subject (see
 #'   \code{maxSubjectRatio}). If NULL, an overall summary is provided.
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original column names are used. When `splitCovariates` is
+#'   set, these labels rename the corresponding grouping columns in the table.
 #' @param filterCovariates Named list where names are existing dataset columns
 #'   (any column, not only covariates) and values are vectors of allowed values,
 #'   e.g. \code{list(VISIT = c("DAY 1", "DAY 7"))}. If NULL, no covariate filtering.
@@ -670,13 +680,14 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 #' }
 #'
 #' @export
-tableExclusions <- function(projectFile       = NULL,
-														splitCovariates   = NULL,
-														filterCovariates  = NULL,
-														filterIds         = NULL,
-														useWideFormat   = TRUE,
-														maxSubjectRatio = 0.5,
-														mock            = FALSE) {
+tableExclusions <- function(projectFile          = NULL,
+														splitCovariates      = NULL,
+														splitCovariateLabels = NULL,
+														filterCovariates     = NULL,
+														filterIds            = NULL,
+														useWideFormat        = TRUE,
+														maxSubjectRatio      = 0.5,
+														mock                 = FALSE) {
 
 	.checkProjectFile(projectFile, c("pkanalix", "monolix"))
 	.ensureProjectLoaded(projectFile)
@@ -713,6 +724,8 @@ tableExclusions <- function(projectFile       = NULL,
 	} else {
 		splitCovariates <- character(0)
 	}
+
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 
 	# Warn if a chosen grouping variable has too many modalities per subject.
 	.warnUnsuitableGrouping(dataUsed, splitCovariates, id_col = id,
@@ -812,6 +825,13 @@ tableExclusions <- function(projectFile       = NULL,
 			excludeCols  = "Statistic",
 			modalityCols = if (length(modality_cols)) modality_cols else NULL,
 			naFillAxis   = if (useWideFormat) "column" else "row")
+	}
+
+	if (length(splitCovariates) > 0) {
+		summary_tbl <- .applyCovariateColumnLabels(
+			df                    = summary_tbl,
+			splitCovariates       = splitCovariates,
+			splitCovariate_labels = splitCovariateLabels)
 	}
 
 	attr(summary_tbl, "project_source") <- lixoftConnectors::getProjectSettings()$directory
@@ -1067,6 +1087,10 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
 #'   (.mlxtran) project file. If NULL, the currently loaded project is used.
 #' @param splitCovariates Character vector of categorical covariate / occasion
 #'   names to include as columns and sort by. Validated against the project.
+#' @param splitCovariateLabels Character vector of custom labels for
+#'   `splitCovariates`, must be the same length as `splitCovariates`. If `NULL`
+#'   (default), the original covariate names are used. When `splitCovariates` is
+#'   set, these labels rename the corresponding covariate columns in the listing.
 #' @param filterCovariates Named list of categorical covariate filters, e.g.
 #'   `list(SEX = "M", DOSE = c("100", "200"))`. Rows not matching are dropped.
 #' @param filterIds Vector of subject ids to keep. If NULL, no id filtering.
@@ -1094,6 +1118,7 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
 #' @export
 listingDosingRegimen <- function(projectFile      = NULL,
 																 splitCovariates  = NULL,
+																 splitCovariateLabels = NULL,
 																 filterCovariates = NULL,
 																 filterIds        = NULL,
 																 mock             = FALSE) {
@@ -1103,6 +1128,7 @@ listingDosingRegimen <- function(projectFile      = NULL,
 	.ensureProjectLoaded(projectFile)
 
 	.validateCovariateSelection(splitCovariates, ratio = FALSE)
+	splitCovariateLabels <- .validateCovariateLabels(splitCovariates, splitCovariateLabels)
 	.validateFilters(filterCovariates, filterIds, resultType = "covariateSummary")
 
 	# Detect header-typed columns (only used if present in dataset)
@@ -1226,6 +1252,17 @@ listingDosingRegimen <- function(projectFile      = NULL,
 
 		listing <- .mockDataListing(listing, colTypes = col_types)
 	}
+
+	if (!is.null(user_split)) {
+		listing <- .applyCovariateColumnLabels(
+			df                    = listing,
+			splitCovariates       = user_split,
+			splitCovariate_labels = splitCovariateLabels)
+	}
+
+	listing <- listing %>%
+		dplyr::rename(Time   = dplyr::all_of(time_col),
+									Amount = dplyr::all_of(amount_col))
 
 	attr(listing, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(listing, "r_source")       <- .getRScriptPath()
