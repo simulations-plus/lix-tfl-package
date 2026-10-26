@@ -909,17 +909,15 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 	# Per-parameter rounding overrides, keyed on ORIGINAL param  names
 	# Validated against the params present in the estimates (also contains the *_CV names).
 	available_params <- pop$Parameter
+	user_params      <- available_params[!endsWith(available_params, "_CV")]
 	round_overrides  <- .normalizeRoundOverrides(roundByParameter, roundDigits, roundMethod)
-	round_overrides  <- .validateRoundOverrides(round_overrides, available_params,
+	round_overrides  <- .validateRoundOverrides(round_overrides, user_params,
 																							context = "tablePopulationParameterEstimates")
 
-	# Override on omega params also covers corresp. _CV param
-	# coefficient-of-variation companion (omega_V_CV / gamma_V_CV), so SD and CV of the same
 	if (includeCV && !is.null(round_overrides)) {
 		cv_over <- round_overrides
 		cv_over$parameter <- paste0(cv_over$parameter, "_CV")
-		cv_over <- cv_over[cv_over$parameter %in% available_params &
-											 	!cv_over$parameter %in% round_overrides$parameter, , drop = FALSE]
+		cv_over <- cv_over[cv_over$parameter %in% available_params, , drop = FALSE]
 		if (nrow(cv_over) > 0) {
 			round_overrides <- rbind(round_overrides, cv_over)
 			rownames(round_overrides) <- NULL
