@@ -387,14 +387,14 @@
 		dplyr::summarise(
 			N = if (!is.null(id_col)) dplyr::n_distinct(.data[[id_col]]) else dplyr::n(),
 			min = min(.data[[value_col]], na.rm = TRUE),
-			P05 = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE),
-			Q1 = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE),
+			P05 = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE, type = 5),
+			Q1 = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE, type = 5),
 			mean = mean(.data[[value_col]], na.rm = TRUE),
 			SD = stats::sd(.data[[value_col]], na.rm = TRUE),
 			CV = if (is.na(mean) || mean == 0) NA_real_ else 100 * SD / mean,
 			median = stats::median(.data[[value_col]], na.rm = TRUE),
-			Q3 = stats::quantile(.data[[value_col]], 0.75, na.rm = TRUE),
-			P95 = stats::quantile(.data[[value_col]], 0.95, na.rm = TRUE),
+			Q3 = stats::quantile(.data[[value_col]], 0.75, na.rm = TRUE, type = 5),
+			P95 = stats::quantile(.data[[value_col]], 0.95, na.rm = TRUE, type = 5),
 			max = max(.data[[value_col]], na.rm = TRUE),
 
 			# geometric mean / sd / cv
@@ -473,8 +473,8 @@
 			N = if (!is.null(id_col)) dplyr::n_distinct(.data[[id_col]]) else dplyr::n(),
 			Nobs = dplyr::n(),
 			min = { v <- .data[[value_col]]; if (all(is.na(v))) NA_real_ else min(v, na.rm = TRUE) },
-			P05 = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE),
-			Q1 = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE),
+			P05 = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE, type = 5),
+			Q1 = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE, type = 5),
 			mean = mean(.data[[value_col]], na.rm = TRUE),
 			SD = stats::sd(.data[[value_col]], na.rm = TRUE),
 			SE = if (!is.null(id_col)) {
@@ -488,8 +488,8 @@
 				if (!is.na(m) && m != 0 && !is.na(s)) 100 * s / m else NA_real_
 			},
 			median = stats::median(.data[[value_col]], na.rm = TRUE),
-			Q3 = stats::quantile(.data[[value_col]], 0.75, na.rm = TRUE),
-			P95 = stats::quantile(.data[[value_col]], 0.95, na.rm = TRUE),
+			Q3 = stats::quantile(.data[[value_col]], 0.75, na.rm = TRUE, type = 5),
+			P95 = stats::quantile(.data[[value_col]], 0.95, na.rm = TRUE, type = 5),
 			max = { v <- .data[[value_col]]; if (all(is.na(v))) NA_real_ else max(v, na.rm = TRUE) },
 			geoMean = {
 				vals <- .data[[value_col]][.data[[value_col]] > 0 & is.finite(.data[[value_col]])]
