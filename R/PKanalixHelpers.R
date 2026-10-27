@@ -610,6 +610,12 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   Parameters not listed keep the global settings. Unknown parameter names are
 #'   ignored with a message. Default `NULL` (global rounding everywhere).
 #'
+#' @param trailingZeros Logical. If `TRUE` (default), numeric values are shown to the
+#'   full precision implied by `roundDigits`/`roundMethod` (and any `roundByParameter`
+#'   override), padding with trailing zeros (e.g. `1.20`, `0.010`). If `FALSE`, the
+#'   minimal form is shown (`1.2`, `0.01`). Either way each value is displayed at its
+#'   own precision (no uniform-column padding).
+#'
 #' @param units Logical. If `TRUE` (default), units are appended to parameter names.
 #'
 #' @param aliases Logical. If `TRUE` (default), parameter aliases (friendly names) are used
@@ -679,6 +685,7 @@ tableNCAParameters <- function(projectFile          = NULL,
 															 roundDigits          = 3,
 															 roundMethod          = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 															 roundByParameter     = NULL,
+															 trailingZeros        = TRUE,
 															 units                = TRUE,
 															 aliases              = TRUE,
 															 customUnits          = NULL,
@@ -792,7 +799,9 @@ tableNCAParameters <- function(projectFile          = NULL,
 			exclude   = c("parameter", splitCovariates),
 			overrides = round_overrides,
 			paramCol  = "parameter",
-			paramAxis = "row")
+			paramAxis = "row",
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		summary_stats <- .combinedStats(summary_stats)
 
@@ -826,7 +835,9 @@ tableNCAParameters <- function(projectFile          = NULL,
 				exclude   = "parameter",
 				overrides = round_overrides,
 				paramCol  = "parameter",
-				paramAxis = "row")
+				paramAxis = "row",
+				format        = TRUE,
+				trailingZeros = trailingZeros)
 
 			overall_stats <- .combinedStats(overall_stats)
 
@@ -870,7 +881,9 @@ tableNCAParameters <- function(projectFile          = NULL,
 			exclude   = c("parameter", splitCovariates),
 			overrides = round_overrides,
 			paramCol  = "parameter",
-			paramAxis = "row")
+			paramAxis = "row",
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		summary_stats <- .combinedStats(summary_stats)
 
@@ -917,6 +930,8 @@ tableNCAParameters <- function(projectFile          = NULL,
 			roundDigits   = roundDigits,
 			roundMethod   = roundMethod,
 			roundOverrides = round_overrides,
+			format         = TRUE,
+			trailingZeros  = trailingZeros,
 			units         = units,
 			units_df      = units_df,
 			aliases       = aliases,

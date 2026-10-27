@@ -1689,6 +1689,11 @@
 #'   [.applyRounding()] so they match the per-parameter rounding applied to the
 #'   summary rows. Keys must use the original (non-aliased) parameter names.
 #'   Only honored for resultType "ncaParameters"/"ncaRatio". Default NULL (global rounding).
+#' @param format Logical; when TRUE the individual values are rendered as character
+#'   display strings (via [.applyRounding()] `format = TRUE`) instead of numeric, so
+#'   they match the formatted summary rows. Default FALSE (numeric, legacy behavior).
+#' @param trailingZeros Logical; passed through to the display formatting when
+#'   `format = TRUE` (ignored otherwise). Default TRUE.
 #' @param units Logical; include units for parameter names (only for ncaParameters)
 #' @param aliases Logical; use parameter aliases (only for ncaParameters)
 #' @param useNominalTime Logical; use nominal time (only for ncaConcentration)
@@ -1717,6 +1722,8 @@
 														roundDigits    = 3,
 														roundMethod    = "monolixSuiteRounding",
 														roundOverrides = NULL,
+														format         = FALSE,
+														trailingZeros  = TRUE,
 														units          = TRUE,
 														units_df       = NULL,
 														aliases        = TRUE,
@@ -1808,13 +1815,15 @@
 		# .applyRounding falls back to global digits/method when roundOverrides is NULL,
 		# exclude everything but Value --> only value column is rounded (id/covariates/occs rmain untouched)
 		long_df <- .applyRounding(
-			df        = long_df,
-			digits    = roundDigits,
-			method    = roundMethod,
-			exclude   = setdiff(names(long_df), "Value"),
-			overrides = roundOverrides,
-			paramCol  = "Parameter",
-			paramAxis = "row")
+			df            = long_df,
+			digits        = roundDigits,
+			method        = roundMethod,
+			exclude       = setdiff(names(long_df), "Value"),
+			overrides     = roundOverrides,
+			paramCol      = "Parameter",
+			paramAxis     = "row",
+			format        = format,
+			trailingZeros = trailingZeros)
 
 		# Apply name mapping to Parameter column (after rounding, so overrides matched)
 		long_df$Parameter <- name_mapping[long_df$Parameter]
@@ -2903,7 +2912,8 @@
 		)
 	} else {
 		# No splitCovariates - just Overall with N
-		max_n <- max(summary_stats$Nobs, na.rm = TRUE)
+		# Nobs may be character here (display formatting upstream); coerce for max().
+		max_n <- max(as.numeric(summary_stats$Nobs), na.rm = TRUE)
 
 		if (length(selected_metrics) > 1) {
 			result <- summary_stats %>%
