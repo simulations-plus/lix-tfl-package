@@ -80,6 +80,11 @@
 #'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding performed
 #'
+#' @param trailingZeros Logical. If `TRUE` (default), values are shown to the full
+#'   precision implied by `roundDigits`/`roundMethod`, padding with trailing zeros
+#'   (e.g. `1.20`, `0.010`). If `FALSE`, the minimal form is shown (`1.2`, `0.01`).
+#'   Either way each value is displayed at its own precision (no uniform-column padding).
+#'
 #' @param prettyLabels Logical; if `TRUE` (default), converts column names to
 #'   human-readable labels (e.g., "CV" becomes "CV (%)", "geoMean" becomes "Geometric Mean").
 #'   If `FALSE`, uses raw column names.
@@ -152,6 +157,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 																	filterIds        = NULL,
 																	roundDigits      = 3,
 																	roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+																	trailingZeros    = TRUE,
 																	prettyLabels     = TRUE,
 																	units            = TRUE,
 																	mock             = FALSE) {
@@ -261,11 +267,13 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			group_by  = group_by_vars)
 
 		# Apply rounding to summary_stats
-		summary_stats <- .round_num(
-			to_round        = summary_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = c(time_col, splitCovariates))
+		summary_stats <- .applyRounding(
+			df            = summary_stats,
+			digits        = roundDigits,
+			method        = roundMethod,
+			exclude       = c(time_col, splitCovariates),
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		# Add combined metrics to summary_stats
 		summary_stats <- .combinedStats(summary_stats)
@@ -278,11 +286,13 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			group_by  = time_col)  # Only group by time
 
 		# Apply rounding to overall_stats
-		overall_stats <- .round_num(
-			to_round        = overall_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = time_col)
+		overall_stats <- .applyRounding(
+			df            = overall_stats,
+			digits        = roundDigits,
+			method        = roundMethod,
+			exclude       = time_col,
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		# Add combined metrics to overall_stats
 		overall_stats <- .combinedStats(overall_stats)
@@ -341,11 +351,13 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			group_by  = group_by_vars)
 
 		# Apply rounding to numeric columns (exclude time and splitCovariates)
-		summary_stats <- .round_num(
-			to_round        = summary_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = c(time_col, splitCovariates))
+		summary_stats <- .applyRounding(
+			df            = summary_stats,
+			digits        = roundDigits,
+			method        = roundMethod,
+			exclude       = c(time_col, splitCovariates),
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		# Add MeanSD, GeomCV, GeomSD columns
 		summary_stats <- .combinedStats(summary_stats)
@@ -400,6 +412,8 @@ tableNCAConcentration <- function(projectFile      = NULL,
 					params         = NULL,
 					roundDigits    = roundDigits,
 					roundMethod    = roundMethod,
+					format         = TRUE,
+					trailingZeros  = trailingZeros,
 					useNominalTime = useNominalTime,
 					indiv_data     = raw_data_full)  # Pass existing indiv conc data to avoid redundant fetch (full dataset (before potential filtering))
 			}
