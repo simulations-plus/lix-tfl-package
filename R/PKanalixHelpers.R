@@ -2476,6 +2476,10 @@ listingNCAParameters <- function(projectFile          = NULL,
 #'
 #'   Parameters not listed keep the global settings. Unknown parameter names are
 #'   ignored with a message. Default `NULL` (global rounding everywhere).
+#' @param trailingZeros Logical. Only applies when `roundMethod != "none"`. If `TRUE`
+#'   (default), values are shown to the full precision implied by
+#'   `roundDigits`/`roundMethod` (and any `roundByParameter` override), padding with
+#'   trailing zeros (e.g. `1.20`, `0.010`); if `FALSE`, the minimal form is shown.
 #' @param aliases Logical. If TRUE (default), parameter names are replaced with their aliases.
 #' @param customAliases Named vector or 2-column dataframe mapping parameter names
 #'   to custom alias labels. Example: `c(Cmax_ratio = "C[[sub:max]] ratio")`.
@@ -2540,6 +2544,7 @@ listingNCARatios <- function(projectFile      = NULL,
 														 roundDigits      = 3,
 														 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 														 roundByParameter = NULL,
+														 trailingZeros    = TRUE,
 														 aliases          = TRUE,
 														 customAliases   = NULL,
 														 mock             = FALSE){
@@ -2615,7 +2620,9 @@ listingNCARatios <- function(projectFile      = NULL,
 		method    = roundMethod,
 		exclude   = c("id", all_splitCovariates, merged_strat_covs),
 		overrides = round_overrides,
-		paramAxis = "column")
+		paramAxis = "column",
+		format        = TRUE,
+		trailingZeros = trailingZeros)
 
 	# Identify parameter columns (exclude id, all splitCovariates and merged strat covariates)
 	param_cols <- setdiff(names(indivRatios), c("id", all_splitCovariates, merged_strat_covs))
