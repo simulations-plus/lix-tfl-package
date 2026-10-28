@@ -1540,6 +1540,12 @@ tableNCARatios <- function(projectFile           = NULL,
 #'   Parameters not listed keep the global settings. Unknown parameter names are
 #'   ignored with a message. Default `NULL` (global rounding everywhere).
 #'
+#' @param trailingZeros Logical. If `TRUE` (default), the ratio and confidence-interval
+#'   values are shown to the full precision implied by `roundDigits`/`roundMethod`
+#'   (and any `roundByParameter` override), padding with trailing zeros (e.g. `1.20`,
+#'   `(0.80; 1.25)`). If `FALSE`, the minimal form is shown. Each value is displayed
+#'   at its own precision.
+#'
 #' @param units Logical; if `TRUE` (default), appends units to parameter names
 #'   (e.g., "ln(AUClast) (h*ng/mL)"). Units are retrieved from project settings.
 #'
@@ -1590,6 +1596,7 @@ tableBEResults <- function(projectFile      = NULL,
 													 roundDigits      = 3,
 													 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 													 roundByParameter = NULL,
+													 trailingZeros    = TRUE,
 													 units            = TRUE,
 													 aliases          = TRUE,
 													 customUnits      = NULL,
@@ -1658,10 +1665,10 @@ tableBEResults <- function(projectFile      = NULL,
 		result <- result %>% dplyr::filter(Original_Parameter %in% selectParameters)
 	}
 
-	# Apply rounding BEFORE aliasing/ln()-wrapping, while Original_Parameter still holds
-	# the raw BE names so per-parameter overrides key correctly. Falls back to the global
-	# digits/method when round_overrides is NULL. Only the numeric columns (Ratio,
-	# CILower, CIUpper) are rounded; BE is a 0/1 flag and must stay untouched.
+	# Round/format BEFORE aliasing/ln()-wrapping, while Original_Parameter still holds
+	# the raw BE names so per-parameter overrides key correctly. format = TRUE renders
+	# Ratio/CILower/CIUpper as display strings (trailing zeros) that are pasted into the
+	# CI column below; BE is excluded so it stays a 0/1 flag for the conclusion logic.
 	result <- .applyRounding(
 		df        = result,
 		digits    = roundDigits,
@@ -1669,7 +1676,9 @@ tableBEResults <- function(projectFile      = NULL,
 		exclude   = c("Original_Parameter", "parameter", "Comparison", "BE"),
 		overrides = round_overrides,
 		paramCol  = "Original_Parameter",
-		paramAxis = "row")
+		paramAxis = "row",
+		format        = TRUE,
+		trailingZeros = trailingZeros)
 
 	# Apply aliases only (no units)
 	result <- .addUnitsAliases(
@@ -1885,15 +1894,20 @@ listingAbbreviation <- function(projectFile   = NULL,
 #'   numeric values. Default is `3`.
 #'
 #' @param roundMethod Character string specifying the rounding method. Options are:
-#'   - `"none"` (default): No rounding performed
-#'   - `"monolixSuiteRounding"`: Adaptive rounding that keeps all digits before the
-#'     decimal untouched and rounds only the fractional part to the specified number of
-#'     significant digits (adds extra digits for values < 1)
+#'   - `"monolixSuiteRounding"` (default): values with |x| >= 1 are rounded to `roundDigits`
+#'     decimal places, values with |x| < 1 to `roundDigits` significant figures (matching MonolixSuite)
 #'   - `"significantFigures"`: Standard significant figures rounding - zeroes non-significant
 #'     digits before the decimal for large numbers
 #'   - `"significantFiguresPreserved"`: Modified significant figures rounding that never zeroes
 #'     digits before the decimal - once the integer part already has as many digits as requested,
 #'     the value is simply rounded to the nearest whole number
+#'   - `"none"`: No rounding performed (raw values shown)
+#'
+#' @param trailingZeros Logical. Only applies when `roundMethod != "none"`. If `TRUE`
+#'   (default), rounded concentration values are shown to the full precision implied by
+#'   `roundDigits`/`roundMethod`, padding with trailing zeros (e.g. `1.20`, `0.010`);
+#'   if `FALSE`, the minimal form is shown. With `roundMethod = "none"` raw values are
+#'   shown unchanged.
 #'
 #' @param mock Logical; if `TRUE`, masks the listing for documentation / example
 #'   outputs: id -> `"id1"`, categorical covariates / occasions -> `"Category 1"`
@@ -1966,7 +1980,8 @@ listingNCAConcentration <- function(projectFile          = NULL,
 																		prettyLabels         = TRUE,
 																		units                = TRUE,
 																		roundDigits          = 3,
-																		roundMethod          = c("none", "monolixSuiteRounding", "significantFigures", "significantFiguresPreserved"),
+																		roundMethod          = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+																		trailingZeros        = TRUE,
 																		mock                 = FALSE) {
 
 	roundMethod <- match.arg(roundMethod)
@@ -2127,10 +2142,9 @@ listingNCAConcentration <- function(projectFile          = NULL,
 		indiv <- indiv %>% dplyr::rename(ActualTime = Time)
 	}
 
-	# Continue cleanup
-	# Primary sort by user-specified split covariates (so modalities are grouped),
-	# then the original id / occ / time ordering. occ_vars are excluded here because
-	# they were appended to splitCovariates above and are already sorted below.
+	# Primary sort by user-specified split covariates --> modalities are grouped,
+	# then original id / occ / time ordering. occ_vars are excluded here
+	# --> they were appended to splitCovariates above and are already sorted below.
 	split_sort <- intersect(setdiff(splitCovariates, occ_vars), names(indiv))
 	indiv <- indiv %>%
 		dplyr::relocate(dplyr::any_of(c("ActualTime", "NominalTime")), .before = Concentration) %>%
@@ -2160,13 +2174,16 @@ listingNCAConcentration <- function(projectFile          = NULL,
 		dplyr::mutate(
 			.conc_numeric = suppressWarnings(as.numeric(Concentration)), # Pre-compute numeric conversion (with warning suppression)
 			Concentration = dplyr::case_when(
-				is.na(.conc_numeric) ~ Concentration,
-				TRUE ~ as.character(.round_num(.conc_numeric,
-																			 digits = roundDigits,
-																			 rounding_method = roundMethod))),
-			UsedConc = .round_num(UsedConc,
-														digits = roundDigits,
-														rounding_method = roundMethod)) %>%
+				is.na(.conc_numeric) ~ Concentration,  # keep non-numeric flags (BLQ, ...)
+				TRUE ~ .formatRounded(.conc_numeric,
+															digits = roundDigits,
+															method = roundMethod,
+															trailingZeros = trailingZeros)),
+			# Keep UsedConc numeric for roundMethod = "none" (tableNCAConcentration uses
+			# this as its numeric data source); otherwise render as a display string.
+			UsedConc = if (roundMethod == "none") UsedConc else .formatRounded(
+				UsedConc, digits = roundDigits, method = roundMethod,
+				trailingZeros = trailingZeros)) %>%
 		dplyr::select(-.conc_numeric)
 
 	if (isTRUE(mock)) {
