@@ -1084,6 +1084,11 @@ tableNCAParameters <- function(projectFile          = NULL,
 #'
 #'   Parameters not listed keep the global settings. Unknown parameter names are
 #'   ignored with a message. Default `NULL` (global rounding everywhere).
+#' @param trailingZeros Logical. If `TRUE` (default), values are shown to the full
+#'   precision implied by `roundDigits`/`roundMethod` (and any `roundByParameter`
+#'   override), padding with trailing zeros (e.g. `1.20`, `0.010`). If `FALSE`, the
+#'   minimal form is shown (`1.2`, `0.01`). Either way each value is displayed at its
+#'   own precision (no uniform-column padding).
 #' @param prettyLabels Logical; if `TRUE` (default), converts column names to
 #'   human-readable labels.
 #' @param customAliases Named vector or 2-column dataframe mapping parameter names
@@ -1130,6 +1135,7 @@ tableNCARatios <- function(projectFile           = NULL,
 													 roundDigits           = 3,
 													 roundMethod           = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 													 roundByParameter      = NULL,
+													 trailingZeros         = TRUE,
 													 prettyLabels          = TRUE,
 													 customAliases         = NULL,
 													 mock                  = FALSE) {
@@ -1255,7 +1261,9 @@ tableNCARatios <- function(projectFile           = NULL,
 			exclude   = c("Parameter", splitCovariates),
 			overrides = round_overrides,
 			paramCol  = "Parameter",
-			paramAxis = "row")
+			paramAxis = "row",
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		# Add combined metrics
 		summary_stats <- .combinedStats(summary_stats)
@@ -1294,7 +1302,9 @@ tableNCARatios <- function(projectFile           = NULL,
 			exclude   = "Parameter",
 			overrides = round_overrides,
 			paramCol  = "Parameter",
-			paramAxis = "row")
+			paramAxis = "row",
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		# Add combined metrics to overall
 		overall_stats <- .combinedStats(overall_stats)
@@ -1348,7 +1358,9 @@ tableNCARatios <- function(projectFile           = NULL,
 			exclude   = c("Parameter", splitCovariates),
 			overrides = round_overrides,
 			paramCol  = "Parameter",
-			paramAxis = "row")
+			paramAxis = "row",
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		# Add combined metrics
 		summary_tbl <- .combinedStats(summary_tbl)
@@ -1396,6 +1408,8 @@ tableNCARatios <- function(projectFile           = NULL,
 			roundDigits     = roundDigits,
 			roundMethod     = roundMethod,
 			roundOverrides  = round_overrides,
+			format          = TRUE,
+			trailingZeros   = trailingZeros,
 			units           = FALSE,
 			units_df        = NULL,
 			aliases         = FALSE,

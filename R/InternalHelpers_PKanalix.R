@@ -1910,12 +1910,19 @@
 		# Determine time column
 		time_col <- if ("NominalTime" %in% names(indiv_data)) "NominalTime" else "ActualTime"
 
-		# Round concentration values (raw_data from tableNCAConcentration is unrounded)
-		indiv_data$UsedConc <- .round_num(
-			to_round        = data.frame(val = indiv_data$UsedConc),
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = NULL)$val
+		# Round concentration values (raw_data from tableNCAConcentration is unrounded).
+		# In format mode render them as display strings so they match the summary rows.
+		if (isTRUE(format)) {
+			indiv_data$UsedConc <- .formatRounded(
+				indiv_data$UsedConc, digits = roundDigits,
+				method = roundMethod, trailingZeros = trailingZeros)
+		} else {
+			indiv_data$UsedConc <- .round_num(
+				to_round        = data.frame(val = indiv_data$UsedConc),
+				digits          = roundDigits,
+				rounding_method = roundMethod,
+				exclude         = NULL)$val
+		}
 
 		# *** CHECK FOR OCCASIONS BEFORE PIVOTING TO WIDE ***
 		# Pass full indiv_data with all columns (including occasions) to detect duplicates correctly
