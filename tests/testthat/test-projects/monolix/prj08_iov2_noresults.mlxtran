@@ -82,3 +82,6 @@ GLOBAL:
 exportpath = 'prj08_iov2_noresults'
 dataandmodelnexttoproject = yes
 
+POPULATION:
+burniniterations = 10
+
