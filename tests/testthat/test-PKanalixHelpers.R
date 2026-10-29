@@ -31,8 +31,9 @@ test_that("tableNCAConcentration basic wide format (default)", {
 test_that("tableNCAConcentration basic long format (useWideFormat = FALSE)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	# Test long format
-	table <- tableNCAConcentration(projectFile = pkx_project_1, useWideFormat = FALSE)
+	# Test long format (raw column names for the time-column assertion below)
+	table <- tableNCAConcentration(projectFile = pkx_project_1, useWideFormat = FALSE,
+																 prettyLabels = FALSE, units = FALSE)
 
 	# Verify structure
 	expect_true(is.data.frame(table))
@@ -54,7 +55,8 @@ test_that("tableNCAConcentration with covariates (stratifyColumns = FALSE)", {
 		projectFile      = pkx_project_1,
 		splitCovariates  = "TINFCAT",
 		stratifyColumns = FALSE,
-		useWideFormat  = FALSE)
+		useWideFormat  = FALSE,
+		prettyLabels = FALSE, units = FALSE)
 
 	# Verify covariate column exists
 	expect_true("TINFCAT" %in% names(table))
@@ -74,7 +76,8 @@ test_that("tableNCAConcentration with column stratification (stratifyColumns = T
 		projectFile      = pkx_project_1,
 		splitCovariates  = "TINFCAT",
 		stratifyColumns = TRUE,
-		useWideFormat  = FALSE)
+		useWideFormat  = FALSE,
+		prettyLabels = FALSE, units = FALSE)
 
 	# Verify structure
 	expect_true(is.data.frame(table))
@@ -123,7 +126,8 @@ test_that("tableNCAConcentration with specific metrics (single metric)", {
 		splitCovariates  = "TINFCAT",
 		stratifyColumns = TRUE,
 		useWideFormat  = FALSE,
-		metrics          = "MeanSD")
+		metrics          = "MeanSD",
+		prettyLabels = FALSE, units = FALSE)
 
 	# Verify "Statistic" column does NOT exist for single metric
 	expect_false("Statistic" %in% names(table))
@@ -140,7 +144,8 @@ test_that("tableNCAConcentration with specific metrics (multiple metrics)", {
 		splitCovariates  = "TINFCAT",
 		stratifyColumns = TRUE,
 		useWideFormat  = FALSE,
-		metrics          = c("MeanSD", "GeomCV"))
+		metrics          = c("MeanSD", "GeomCV"),
+		prettyLabels = FALSE, units = FALSE)
 
 	# Verify "Statistic" column EXISTS for multiple metrics
 	expect_true("Statistic" %in% names(table))
@@ -159,7 +164,8 @@ test_that("tableNCAConcentration with useNominalTime", {
 	table <- tableNCAConcentration(
 		projectFile     = pkx_project_2,
 		useNominalTime  = TRUE,
-		useWideFormat = FALSE)
+		useWideFormat = FALSE,
+		prettyLabels = FALSE, units = FALSE)
 
 	# Verify structure
 	expect_true(is.data.frame(table))
@@ -385,7 +391,8 @@ test_that("tableNCAConcentration with multiple splitCovariates", {
 		projectFile     = pkx_project_2,
 		splitCovariates = c("FOOD", "TREAT"),
 		useWideFormat   = FALSE,
-		stratifyColumns = FALSE)
+		stratifyColumns = FALSE,
+		prettyLabels = FALSE, units = FALSE)
 
 	expect_true(is.data.frame(table))
 	expect_true(all(c("FOOD", "TREAT") %in% names(table)))
@@ -1956,7 +1963,8 @@ test_that("listingNCAConcentration works with useNominalTime", {
 
 	result <- listingNCAConcentration(
 		projectFile = pkx_project_4,
-		useNominalTime = TRUE
+		useNominalTime = TRUE,
+		prettyLabels = FALSE, units = FALSE
 	)
 
 	expect_s3_class(result, "data.frame")
@@ -2114,7 +2122,8 @@ test_that("listingNCAConcentration includes covariates in correct order", {
 
 	result <- listingNCAConcentration(
 		projectFile = pkx_project_2,
-		splitCovariates = c("FOOD", "TREAT")
+		splitCovariates = c("FOOD", "TREAT"),
+		prettyLabels = FALSE, units = FALSE
 	)
 
 	expect_s3_class(result, "data.frame")
@@ -2144,12 +2153,12 @@ test_that("listingNCAConcentration works across different project types", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
-	result1 <- listingNCAConcentration(projectFile = pkx_project_1)
-	result5 <- listingNCAConcentration(projectFile = pkx_project_5)
+	result1 <- listingNCAConcentration(projectFile = pkx_project_1, prettyLabels = FALSE, units = FALSE)
+	result5 <- listingNCAConcentration(projectFile = pkx_project_5, prettyLabels = FALSE, units = FALSE)
 
 	expect_s3_class(result1, "data.frame")
 	expect_s3_class(result5, "data.frame")
-	# Both should have required columns
+	# Both should have required columns (raw names)
 	expect_true(all(c("id", "ActualTime", "Concentration") %in% names(result1)))
 	expect_true(all(c("id", "ActualTime", "Concentration") %in% names(result5)))
 })
@@ -2163,7 +2172,8 @@ test_that("listingNCAConcentration handles a project without actual time (nomina
 	# Project has only nominal time -> nominal is used as the time axis
 	result <- suppressMessages(listingNCAConcentration(
 		projectFile    = pkx_project_notime,
-		useNominalTime = TRUE))
+		useNominalTime = TRUE,
+		prettyLabels = FALSE, units = FALSE))
 
 	expect_s3_class(result, "data.frame")
 	expect_true("NominalTime" %in% names(result))
@@ -2178,7 +2188,8 @@ test_that("listingNCAConcentration warns when useNominalTime = TRUE but no nomin
 	expect_warning(
 		result <- listingNCAConcentration(
 			projectFile    = pkx_project_3,
-			useNominalTime = TRUE),
+			useNominalTime = TRUE,
+			prettyLabels = FALSE, units = FALSE),
 		"No nominal time available")
 
 	expect_true("ActualTime"   %in% names(result))
@@ -4570,6 +4581,158 @@ test_that("tableBEResults applies customAliases and customUnits", {
 	vals <- table$parameter
 	expect_true(any(grepl("[[sub:max]]", vals, fixed = TRUE)))
 	expect_true(any(grepl("ng/mL",       vals, fixed = TRUE)))
+})
+
+################################################################################
+# trailingZeros + character-output contract
+#
+# When a rounding method is active, metric/value columns are rendered as
+# character display strings. trailingZeros = TRUE pads to the precision implied
+# by digits/method; FALSE shows the minimal form. Both carry the SAME underlying
+# numeric value, so: columns are character, as.numeric() agrees, and the padded
+# string is never shorter than the minimal one.
+################################################################################
+
+# Helper assertions reused across the functions below
+.expect_trailing_contract <- function(pad, minimal) {
+	expect_type(pad, "character")
+	expect_type(minimal, "character")
+	# same underlying numeric value (trailing zeros don't change it)
+	expect_equal(suppressWarnings(as.numeric(pad)),
+							 suppressWarnings(as.numeric(minimal)))
+	# padded form is never shorter than the minimal form (NA cells ignored)
+	expect_true(all(nchar(pad) >= nchar(minimal), na.rm = TRUE))
+}
+
+test_that("tableNCAParameters trailingZeros toggles padding; metric columns are character", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	args <- list(projectFile = pkx_project_1, selectParameters = c("Cmax", "AUClast"),
+							 metrics = "mean", useWideFormat = TRUE, roundDigits = 3,
+							 roundMethod = "monolixSuiteRounding",
+							 prettyLabels = FALSE, units = FALSE, aliases = FALSE)
+	pad <- do.call(tableNCAParameters, c(args, list(trailingZeros = TRUE)))
+	mn  <- do.call(tableNCAParameters, c(args, list(trailingZeros = FALSE)))
+	.expect_trailing_contract(pad$mean, mn$mean)
+})
+
+test_that("tableNCAConcentration trailingZeros toggles padding; metric columns are character", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	args <- list(projectFile = pkx_project_1, useWideFormat = FALSE, metrics = "mean",
+							 roundDigits = 3, roundMethod = "monolixSuiteRounding",
+							 prettyLabels = FALSE, units = FALSE)
+	pad <- suppressWarnings(do.call(tableNCAConcentration, c(args, list(trailingZeros = TRUE))))
+	mn  <- suppressWarnings(do.call(tableNCAConcentration, c(args, list(trailingZeros = FALSE))))
+	.expect_trailing_contract(pad$mean, mn$mean)
+})
+
+test_that("tableNCARatios trailingZeros toggles padding; metric columns are character", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	args <- list(projectFile = pkx_project_5, metrics = "mean", useWideFormat = TRUE,
+							 roundDigits = 3, roundMethod = "monolixSuiteRounding", prettyLabels = FALSE)
+	pad <- do.call(tableNCARatios, c(args, list(trailingZeros = TRUE)))
+	mn  <- do.call(tableNCARatios, c(args, list(trailingZeros = FALSE)))
+	.expect_trailing_contract(pad$mean, mn$mean)
+})
+
+test_that("tableBEResults trailingZeros toggles padding; Ratio column is character", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_3), "Test project not available")
+
+	args <- list(projectFile = pkx_project_3, roundDigits = 3,
+							 roundMethod = "monolixSuiteRounding",
+							 units = FALSE, aliases = FALSE, prettyLabels = FALSE)
+	pad <- do.call(tableBEResults, c(args, list(trailingZeros = TRUE)))
+	mn  <- do.call(tableBEResults, c(args, list(trailingZeros = FALSE)))
+	.expect_trailing_contract(pad$Ratio, mn$Ratio)
+})
+
+test_that("listingNCAParameters trailingZeros toggles padding; parameter columns are character", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	args <- list(projectFile = pkx_project_1, selectParameters = c("Cmax"),
+							 roundDigits = 3, roundMethod = "monolixSuiteRounding",
+							 units = FALSE, aliases = FALSE)
+	pad <- do.call(listingNCAParameters, c(args, list(trailingZeros = TRUE)))
+	mn  <- do.call(listingNCAParameters, c(args, list(trailingZeros = FALSE)))
+	.expect_trailing_contract(pad$Cmax, mn$Cmax)
+})
+
+test_that("listingNCARatios trailingZeros toggles padding; ratio columns are character", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	args <- list(projectFile = pkx_project_5, roundDigits = 3,
+							 roundMethod = "monolixSuiteRounding", aliases = FALSE)
+	pad <- do.call(listingNCARatios, c(args, list(trailingZeros = TRUE)))
+	mn  <- do.call(listingNCARatios, c(args, list(trailingZeros = FALSE)))
+	ratio_cols <- setdiff(names(pad), c("id", "SEQ", "TRT", "OCC"))
+	skip_if(length(ratio_cols) == 0, "No ratio columns found")
+	.expect_trailing_contract(pad[[ratio_cols[1]]], mn[[ratio_cols[1]]])
+})
+
+test_that("listingNCAConcentration trailingZeros toggles padding; UsedConc is character", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_1), "Test project not available")
+
+	args <- list(projectFile = pkx_project_1, roundDigits = 3,
+							 roundMethod = "monolixSuiteRounding",
+							 prettyLabels = FALSE, units = FALSE)
+	pad <- suppressWarnings(do.call(listingNCAConcentration, c(args, list(trailingZeros = TRUE))))
+	mn  <- suppressWarnings(do.call(listingNCAConcentration, c(args, list(trailingZeros = FALSE))))
+	.expect_trailing_contract(pad$UsedConc, mn$UsedConc)
+})
+
+################################################################################
+# prettyLabels / units arguments (exercised with both enabled, since the raw-name
+# assertions elsewhere disable them)
+################################################################################
+
+test_that("listingNCAConcentration prettyLabels and units take effect (actual time)", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_5), "Test project not available")
+
+	nm <- function(...) names(suppressWarnings(
+		listingNCAConcentration(projectFile = pkx_project_5, ...)))
+	raw        <- nm(prettyLabels = FALSE, units = FALSE)
+	pretty     <- nm(prettyLabels = TRUE,  units = FALSE)
+	with_units <- nm(prettyLabels = FALSE, units = TRUE)
+	both       <- nm(prettyLabels = TRUE,  units = TRUE)
+
+	# raw stems present only without prettyLabels/units
+	expect_true(all(c("ActualTime", "Concentration", "UsedConc") %in% raw))
+	# prettyLabels renames the raw stems (humanized, no unit suffix)
+	expect_false("ActualTime" %in% pretty)
+	expect_false(any(grepl("\\(", pretty)))
+	# units alone appends a "(unit)" suffix to the raw stems
+	expect_true(any(grepl("\\(", with_units)))
+	# each argument has an independent effect on the headers
+	expect_false(identical(pretty, raw))
+	expect_false(identical(with_units, raw))
+	expect_false(identical(both, pretty))
+	expect_false(identical(both, with_units))
+})
+
+test_that("listingNCAConcentration prettyLabels renames the nominal time column", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	skip_if_not(file.exists(pkx_project_complex), "Test project not available")
+
+	raw    <- names(suppressMessages(listingNCAConcentration(
+		projectFile = pkx_project_complex, useNominalTime = TRUE,
+		prettyLabels = FALSE, units = FALSE)))
+	pretty <- names(suppressMessages(listingNCAConcentration(
+		projectFile = pkx_project_complex, useNominalTime = TRUE,
+		prettyLabels = TRUE, units = FALSE)))
+
+	expect_true("NominalTime" %in% raw)
+	expect_false("NominalTime" %in% pretty)   # prettyLabels renamed it
+	expect_false(identical(pretty, raw))
 })
 
 ################################################################################
