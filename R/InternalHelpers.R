@@ -401,10 +401,12 @@ utils::globalVariables(c("."))
 		x <- xn
 	}
 
-	# "none": no rounding, minimal stringification.
+	# "none": no rounding, minimal stringification. Preserve the NA/NaN
+	# distinction (is.na() is TRUE for NaN, so restore NaN after blanking NA).
 	if (method == "none") {
 		out <- as.character(x)
-		out[is.na(x)] <- NA_character_
+		out[is.na(x)]  <- NA_character_
+		out[is.nan(x)] <- "NaN"
 		return(out)
 	}
 
