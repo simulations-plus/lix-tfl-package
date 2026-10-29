@@ -4186,7 +4186,7 @@ test_that("tableNCAConcentration with includeId = FALSE (default behavior)", {
 	summary_stats <- c("mean", "SD", "CV", "SE", "geoMean", "geoCV", "geoSD", "geoSE",
 	                   "median", "min", "max", "Q1", "Q3", "N", "Nobs", "Ntot", "Nmiss",
 	                   "P05", "P95", "MeanSD", "MeanSE", "MeanCV", "GeomCV", "GeomSD", "GeomSE",
-	                   "harmMean", "Arithmetric\nMean (SD)", "Arithmetric\nMean (CV %)", "Geometric\nCV%")
+	                   "harmMean", "Arithmetic\nMean (SD)", "Arithmetic\nMean (CV %)", "Geometric\nCV%")
 
 	# All statistic values should be recognized summary statistics
 	expect_true(all(statistic_values %in% summary_stats),

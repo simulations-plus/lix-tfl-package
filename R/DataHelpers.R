@@ -40,6 +40,11 @@
 #'   numbers), or "significantFiguresPreserved" for the same but never zeroing digits before the
 #'   decimal - once the integer part already has as many digits as requested, the value is simply
 #'   rounded to the nearest whole number
+#' @param trailingZeros Logical. If `TRUE` (default), values are shown to the full
+#'   precision implied by `roundDigits`/`roundMethod`, padding with trailing zeros
+#'   (e.g. `1.20`, `0.010`). If `FALSE`, the minimal form is shown (`1.2`, `0.01`).
+#'   Either way each value is displayed at its own precision (no uniform-column
+#'   padding), and combined metrics such as `MeanSD` read as `"70.00 (12.30)"`.
 #' @param prettyLabels Logical; if `TRUE` (default), converts column names to
 #'   human-readable labels (e.g., "CV" becomes "CV (%)", "geoMean" becomes "Geometric Mean").
 #' @param mock Logical; if `TRUE`, masks the table for documentation / example
@@ -86,6 +91,7 @@ tableContinuousCovariateSummary <- function(projectFile          = NULL,
 																						filterIds            = NULL,
 																						roundDigits          = 2,
 																						roundMethod          = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+																						trailingZeros        = TRUE,
 																						prettyLabels         = TRUE,
 																						mock                 = FALSE)
 {
@@ -151,12 +157,15 @@ tableContinuousCovariateSummary <- function(projectFile          = NULL,
 			id_col    = if (has_id) "id" else NULL,
 			group_by  = group_by_vars)
 
-		# Apply rounding
-		summary_stats <- .round_num(
-			to_round        = summary_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = c("Covariate", splitCovariates))
+		# Apply rounding (format = TRUE renders numeric stats as character display
+		# strings so .combinedStats pastes them at their own precision, e.g. "70.00 (12.30)")
+		summary_stats <- .applyRounding(
+			df            = summary_stats,
+			digits        = roundDigits,
+			method        = roundMethod,
+			exclude       = c("Covariate", splitCovariates),
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		# Add combined metrics (MeanSD, GeomCV, GeomSD)
 		summary_stats <- .combinedStats(summary_stats)
@@ -169,11 +178,13 @@ tableContinuousCovariateSummary <- function(projectFile          = NULL,
 			group_by  = "Covariate")
 
 		# Apply rounding to overall_stats
-		overall_stats <- .round_num(
-			to_round        = overall_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = "Covariate")
+		overall_stats <- .applyRounding(
+			df            = overall_stats,
+			digits        = roundDigits,
+			method        = roundMethod,
+			exclude       = "Covariate",
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		# Add combined metrics
 		overall_stats <- .combinedStats(overall_stats)
@@ -213,12 +224,14 @@ tableContinuousCovariateSummary <- function(projectFile          = NULL,
 			id_col    = if (has_id) "id" else NULL,
 			group_by  = group_by_vars)
 
-		# Apply rounding
-		cov_summary <- .round_num(
-			to_round        = cov_summary,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = c("Covariate", splitCovariates))
+		# Apply rounding (format = TRUE -> character display strings, see stratified case)
+		cov_summary <- .applyRounding(
+			df            = cov_summary,
+			digits        = roundDigits,
+			method        = roundMethod,
+			exclude       = c("Covariate", splitCovariates),
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		# Add combined metrics
 		cov_summary <- .combinedStats(cov_summary)
