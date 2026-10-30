@@ -66,6 +66,14 @@
 #'   stratified by splitCovariates, individual IDs are grouped by their covariate values.
 #'   Default is `FALSE`. Only applicable when `stratifyColumns = FALSE`.
 #'
+#' @param filterCovariates Named list where names are categorical covariate names
+#'   and values are vectors of allowed values, e.g.
+#'   `list(SEX = "Male", DOSE = c("100", "200"))`. Rows not matching are dropped.
+#'   If `NULL` (default), no covariate filtering is applied.
+#'
+#' @param filterIds Character or numeric vector of subject IDs to include. If
+#'   `NULL` (default), no ID filtering is applied.
+#'
 #' @param roundDigits Integer specifying the number of decimal places for rounding
 #'   numeric values. Default is `3`.
 #'
@@ -597,6 +605,14 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   "Statistic" column. When stratified by splitCovariates, individual IDs are grouped
 #'   by their covariate values and listed after the corresponding summary metrics.
 #'   Default is `FALSE`. Only works when `useWideFormat = FALSE`.
+#'
+#' @param filterCovariates Named list where names are categorical covariate names
+#'   and values are vectors of allowed values, e.g.
+#'   `list(SEX = "Male", DOSE = c("100", "200"))`. Rows not matching are dropped.
+#'   If `NULL` (default), no covariate filtering is applied.
+#'
+#' @param filterIds Character or numeric vector of subject IDs to include. If
+#'   `NULL` (default), no ID filtering is applied.
 #'
 #' @param roundDigits Integer specifying the number of decimal places for rounding
 #'   numeric values. Default is `3`.
