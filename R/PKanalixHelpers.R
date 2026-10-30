@@ -765,22 +765,27 @@ tableNCAParameters <- function(projectFile          = NULL,
 	indiv_params <- lixoftConnectors::getNCAIndividualParameters()$parameters
 
 
+	project_data        <- lixoftConnectors::getData()
+	all_splitCovariates <- project_data$header[project_data$headerTypes %in% c("catcov", "contcov", "occ")]
+	occ_vars            <- project_data$header[project_data$headerTypes == "occ"]
+
 	# getNCAIndividualParameters() does not carry stratificationcategorical or additionalstratificationcategorical columns.
-	# Get them from getCovariateInformation() + merge by id before filtering
+	# Get them from getCovariateInformation() + merge before filtering.
 	cov_info        <- lixoftConnectors::getCovariateInformation()
 	strat_cov_names <- cov_info$name[cov_info$type %in% c("stratificationcategorical", "additionalstratificationcategorical")]
 
 	if (length(strat_cov_names) > 0) {
-		strat_cov_df <- cov_info$covariate[, c("id", strat_cov_names), drop = FALSE]
-		indiv_params <- merge(indiv_params, strat_cov_df, by = "id", all.x = TRUE, sort = FALSE)
+		# cov_info$covariate is occasion-level, so merge on id + occasion; merging by "id" alone
+		# matches every occasion row and duplicates the individual parameter rows.
+		occ_in_cov   <- intersect(names(cov_info$covariate), occ_vars)
+		merge_keys   <- c("id", occ_in_cov)
+		strat_cov_df <- cov_info$covariate[, c(merge_keys, strat_cov_names), drop = FALSE]
+		indiv_params <- merge(indiv_params, strat_cov_df, by = merge_keys, all.x = TRUE, sort = FALSE)
 	}
 	# --------------------------------------------------------------------------
 
 	indiv_params <- .applyFilters(indiv_params, filterCovariates, filterIds, id_col = "id")
 
-	project_data        <- lixoftConnectors::getData()
-	all_splitCovariates <- project_data$header[project_data$headerTypes %in% c("catcov", "contcov", "occ")]
-	occ_vars            <- project_data$header[project_data$headerTypes == "occ"]
 	param_cols          <- setdiff(names(indiv_params), c("id", all_splitCovariates, strat_cov_names))
 
 	if (!is.null(selectParameters)) {

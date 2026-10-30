@@ -1808,10 +1808,17 @@
 		all_splitCovariates <- project_data$header[project_data$headerTypes %in% c("catcov", "contcov", "occ")]
 		occ_vars <- project_data$header[project_data$headerTypes == "occ"]
 
+		# Derived strat covariates (e.g. "covariateSequence_FOOD") are merged into indiv_data but
+		# absent from project_data$header, so subtract them explicitly to keep them out of param_cols.
+		cov_info        <- lixoftConnectors::getCovariateInformation()
+		strat_cov_names <- cov_info$name[cov_info$type %in% c("stratificationcategorical", "additionalstratificationcategorical")]
+
 		# Get individual data based on type
 		if (resultType == "ncaParameters") {
 			# Get parameter columns (exclude id and ALL splitCovariates including occasions)
-			param_cols <- setdiff(names(indiv_data), c("id", all_splitCovariates))
+			param_cols <- setdiff(names(indiv_data), c("id", all_splitCovariates, strat_cov_names))
+			# Numeric-only backstop: NCA parameters are always numeric.
+			param_cols <- param_cols[vapply(indiv_data[param_cols], is.numeric, logical(1))]
 
 		} else {  # ncaRatio
 			ratio_info <- lixoftConnectors::getNCARatios()
