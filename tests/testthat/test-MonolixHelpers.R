@@ -4,6 +4,7 @@ mono_project_3 = "test-projects/monolix/prj08_iov2.mlxtran"
 mono_project_4 = "test-projects/monolix/prj9_iov2_bootstrap.mlxtran"
 mono_project_5 = "test-projects/monolix/prj08_iov2_noresults.mlxtran"
 mono_project_6 = "test-projects/monolix/prj10_iov2_bootstrap.mlxtran"
+mono_project_7 = "test-projects/monolix/warfarin_covariate3_project_COSSAC.mlxtran"
 
 syc_project = "test-projects/monolix/PK_models.syc"
 ################################################################################
