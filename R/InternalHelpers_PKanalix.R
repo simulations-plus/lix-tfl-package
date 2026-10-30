@@ -436,7 +436,8 @@
 #' @param data Data frame in long format containing at minimum an ID column and a value column.
 #' @param value_col Character string specifying the name of the value column to summarize.
 #' @param id_col Character string specifying the name of the ID/subject column.
-#'   Used to calculate N (number of unique subjects) and SE (standard error).
+#'   Used for the occasion-aware N (see [.effectiveSampleSize()]) and SE, which
+#'   is derived from that N.
 #' @param group_by Character vector or NULL specifying column names to group by.
 #'   Examples: `c("Time", "SEX")`, `c("Parameter")`, `NULL` for no grouping.
 #'
@@ -466,22 +467,16 @@
 		}
 	}
 
-	# Group and calculate all metrics
-	data %>%
+	# All metrics except N/SE (both depend on the occasion-aware effective N).
+	stats <- data %>%
 		dplyr::group_by(dplyr::across(dplyr::all_of(group_by))) %>%
 		dplyr::summarise(
-			N = if (!is.null(id_col)) dplyr::n_distinct(.data[[id_col]]) else dplyr::n(),
 			Nobs = dplyr::n(),
 			min = { v <- .data[[value_col]]; if (all(is.na(v))) NA_real_ else min(v, na.rm = TRUE) },
 			P05 = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE, type = 5),
 			Q1 = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE, type = 5),
 			mean = mean(.data[[value_col]], na.rm = TRUE),
 			SD = stats::sd(.data[[value_col]], na.rm = TRUE),
-			SE = if (!is.null(id_col)) {
-				sd_val <- stats::sd(.data[[value_col]], na.rm = TRUE)
-				n_subj <- dplyr::n_distinct(.data[[id_col]])
-				if (n_subj > 0 && !is.na(sd_val)) sd_val / sqrt(n_subj) else NA_real_
-			} else NA_real_,
 			CV = {
 				m <- mean(.data[[value_col]], na.rm = TRUE)
 				s <- stats::sd(.data[[value_col]], na.rm = TRUE)
@@ -508,6 +503,75 @@
 				vals <- .data[[value_col]][.data[[value_col]] > 0 & is.finite(.data[[value_col]])]
 				if (length(vals) > 0) length(vals) / sum(1 / vals) else NA_real_
 			},
+			.groups = "drop"
+		) %>%
+		as.data.frame()
+
+	# Occasion-aware N (see .effectiveSampleSize()).
+	n_tbl <- .effectiveSampleSize(data, value_col, id_col, group_by)
+
+	out <- if (length(group_by) == 0) {
+		cbind(n_tbl, stats)
+	} else {
+		dplyr::left_join(n_tbl, stats, by = group_by)
+	}
+
+	# SE from the effective N (NA when no ID column is given).
+	out$SE <- if (is.null(id_col)) {
+		NA_real_
+	} else {
+		ifelse(!is.na(out$SD) & out$N > 0, out$SD / sqrt(out$N), NA_real_)
+	}
+
+	out %>%
+		dplyr::relocate("SE", .after = "SD") %>%
+		as.data.frame()
+}
+
+##################################################################################
+#' Occasion-aware effective sample size for descriptive statistics
+#'
+#' @description
+#' Computes the `N` for [.calculateDescriptiveStats()]. Per group: if the value
+#' varies across any subject's occasions (occasion-varying, e.g. NCA parameters),
+#' every non-missing record is counted; otherwise (occasion-invariant, e.g.
+#' height, or no occasions) each subject is counted once.
+#'
+#' @param data Long-format data frame (same input as [.calculateDescriptiveStats()]).
+#' @param value_col Character; name of the value column being summarized.
+#' @param id_col Character or NULL; subject/ID column. When NULL, `N` is the
+#'   number of rows per group.
+#' @param group_by Character vector or NULL; grouping columns.
+#'
+#' @return A data frame with the grouping columns (if any) and an `N` column.
+#'
+#' @keywords internal
+#'
+.effectiveSampleSize <- function(data, value_col, id_col, group_by) {
+	# No ID column: N is just the number of observations per group.
+	if (is.null(id_col)) {
+		return(
+			data %>%
+				dplyr::group_by(dplyr::across(dplyr::all_of(group_by))) %>%
+				dplyr::summarise(N = dplyr::n(), .groups = "drop") %>%
+				as.data.frame()
+		)
+	}
+
+	# Per (group, subject): distinct non-missing values and non-missing records.
+	per_id <- data %>%
+		dplyr::group_by(dplyr::across(dplyr::all_of(c(group_by, id_col)))) %>%
+		dplyr::summarise(
+			n_val = dplyr::n_distinct(.data[[value_col]][!is.na(.data[[value_col]])]),
+			n_rec = sum(!is.na(.data[[value_col]])),
+			.groups = "drop"
+		)
+
+	# dplyr::n() counts subjects (one row per subject in per_id).
+	per_id %>%
+		dplyr::group_by(dplyr::across(dplyr::all_of(group_by))) %>%
+		dplyr::summarise(
+			N = if (any(n_val > 1)) sum(n_rec) else dplyr::n(),
 			.groups = "drop"
 		) %>%
 		as.data.frame()
