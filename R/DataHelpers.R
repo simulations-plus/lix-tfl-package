@@ -143,17 +143,19 @@ tableContinuousCovariateSummary <- function(projectFile          = NULL,
 			names_to = "Covariate",
 			values_to = "Value")
 
-	# Collapse occasion-replicated rows of subject-invariant covariates to one per
-	# subject; occasion-varying covariates keep every record. Split uses occasion
-	# metadata, not value equality; has_id guard avoids merging subjects.
-	if (has_id) {
-		invariant_covs <- .getOccasionInvariantCovariates(
-			cov_info, covariates = cont_covs, group_by = splitCovariates)$invariant
-		if (length(invariant_covs) > 0) {
-			inv      <- cov_data %>% dplyr::filter(.data$Covariate %in% invariant_covs) %>% dplyr::distinct()
-			rest     <- cov_data %>% dplyr::filter(!.data$Covariate %in% invariant_covs)
-			cov_data <- dplyr::bind_rows(inv, rest)
-		}
+	# Collapse occasion-replicated rows of covariates that are invariant at `group_by`
+	# to one per subject (occasion-varying ones keep every record). Assessed at each
+	# summary's own grouping level so the overall column uses global invariance.
+	collapse_invariant <- function(data, group_by) {
+		if (!has_id) return(data)
+		inv_names <- .getOccasionInvariantCovariates(
+			cov_info, covariates = cont_covs, group_by = group_by)$invariant
+		if (length(inv_names) == 0) return(data)
+		keys <- c("id", group_by, "Covariate", "Value")
+		inv  <- data %>% dplyr::filter(.data$Covariate %in% inv_names) %>%
+			dplyr::distinct(dplyr::across(dplyr::all_of(keys)), .keep_all = TRUE)
+		rest <- data %>% dplyr::filter(!.data$Covariate %in% inv_names)
+		dplyr::bind_rows(inv, rest)
 	}
 
 	# ==========================================================================
@@ -165,7 +167,7 @@ tableContinuousCovariateSummary <- function(projectFile          = NULL,
 		group_by_vars <- c("Covariate", splitCovariates)
 
 		summary_stats <- .calculateDescriptiveStats(
-			data      = cov_data,
+			data      = collapse_invariant(cov_data, splitCovariates),
 			value_col = "Value",
 			id_col    = if (has_id) "id" else NULL,
 			group_by  = group_by_vars)
@@ -183,9 +185,9 @@ tableContinuousCovariateSummary <- function(projectFile          = NULL,
 		# Add combined metrics (MeanSD, GeomCV, GeomSD)
 		summary_stats <- .combinedStats(summary_stats)
 
-		# Also calculate overall stats (no covariate grouping)
+		# Also calculate overall stats (ignores strata -> global invariance)
 		overall_stats <- .calculateDescriptiveStats(
-			data      = cov_data,
+			data      = collapse_invariant(cov_data, NULL),
 			value_col = "Value",
 			id_col    = if (has_id) "id" else NULL,
 			group_by  = "Covariate")
@@ -232,7 +234,7 @@ tableContinuousCovariateSummary <- function(projectFile          = NULL,
 		group_by_vars <- c("Covariate", splitCovariates)
 
 		cov_summary <- .calculateDescriptiveStats(
-			data      = cov_data,
+			data      = collapse_invariant(cov_data, splitCovariates),
 			value_col = "Value",
 			id_col    = if (has_id) "id" else NULL,
 			group_by  = group_by_vars)
