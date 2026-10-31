@@ -143,11 +143,17 @@ tableContinuousCovariateSummary <- function(projectFile          = NULL,
 			names_to = "Covariate",
 			values_to = "Value")
 
-	# Collapse occasion-replicated rows so each subject's covariate value is counted
-	# once (keeps mean/SD/N/SE on the same footing). has_id guard avoids merging
-	# distinct subjects that share value
+	# Collapse occasion-replicated rows of subject-invariant covariates to one per
+	# subject; occasion-varying covariates keep every record. Split uses occasion
+	# metadata, not value equality; has_id guard avoids merging subjects.
 	if (has_id) {
-		cov_data <- dplyr::distinct(cov_data)
+		invariant_covs <- .getOccasionInvariantCovariates(
+			cov_info, covariates = cont_covs, group_by = splitCovariates)$invariant
+		if (length(invariant_covs) > 0) {
+			inv      <- cov_data %>% dplyr::filter(.data$Covariate %in% invariant_covs) %>% dplyr::distinct()
+			rest     <- cov_data %>% dplyr::filter(!.data$Covariate %in% invariant_covs)
+			cov_data <- dplyr::bind_rows(inv, rest)
+		}
 	}
 
 	# ==========================================================================
