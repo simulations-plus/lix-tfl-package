@@ -143,6 +143,13 @@ tableContinuousCovariateSummary <- function(projectFile          = NULL,
 			names_to = "Covariate",
 			values_to = "Value")
 
+	# Collapse occasion-replicated rows so each subject's covariate value is counted
+	# once (keeps mean/SD/N/SE on the same footing). has_id guard avoids merging
+	# distinct subjects that share value
+	if (has_id) {
+		cov_data <- dplyr::distinct(cov_data)
+	}
+
 	# ==========================================================================
 	# CALCULATE DESCRIPTIVE STATISTICS
 
