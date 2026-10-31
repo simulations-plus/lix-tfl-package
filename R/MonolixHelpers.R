@@ -807,6 +807,11 @@ tableCovariateModelBuilding <- function(projectFile        = NULL,
 #'   not the displayed labels. Parameters not listed keep the global settings.
 #'   Unknown parameter names are ignored with a message. Default `NULL` (global
 #'   rounding everywhere).
+#' @param trailingZeros Logical. If `TRUE` (default), values are shown to the full
+#'   precision implied by `roundDigits`/`roundMethod` (and any `roundByParameter`
+#'   override), padding with trailing zeros (e.g. `1.20`, `0.010`); if `FALSE`, the
+#'   minimal form is shown. Either way estimate/uncertainty columns are returned as
+#'   character display strings at each value's own precision.
 #' @param prettyLabels Logical; if `TRUE` (default), applies pretty formatting to column names with newline characters for better table display (e.g., "Fixed Effect\\nEstimate", "IIV\\nSD").
 #'   If `FALSE`, uses simpler column names without newlines (e.g., "FE_Estimate", "IIV_SD").
 #' @param mock Logical; if `TRUE`, masks the table for documentation / example
@@ -880,8 +885,8 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 																		includeRSE         = TRUE,
 																		includeIIV         = TRUE,
 																		includeIOV         = TRUE,
-																		includeCI          = FALSE,
-																		includeCV          = FALSE,
+																		includeCI          = TRUE,
+																		includeCV          = TRUE,
 																		includeFEcategory  = FALSE,
 																		includeBootstrap   = FALSE,
 																		useWideFormat      = FALSE,
@@ -889,6 +894,7 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 																		roundDigits        = 3,
 																		roundMethod        = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 																		roundByParameter   = NULL,
+																		trailingZeros      = TRUE,
 																		prettyLabels       = TRUE,
 																		mock               = FALSE) {
 
@@ -998,7 +1004,8 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 				stringsAsFactors = FALSE)
 			ci_bounds <- .applyRounding(ci_bounds, digits = roundDigits, method = roundMethod,
 																	exclude = "Parameter", overrides = round_overrides,
-																	paramCol = "Parameter", paramAxis = "row")
+																	paramCol = "Parameter", paramAxis = "row",
+																	format = TRUE, trailingZeros = trailingZeros)
 			CI <- data.frame(Parameter = CI$parameter, stringsAsFactors = FALSE)
 			CI[[ci_col_name]] <- paste0("(", ci_bounds$lower, "; ", ci_bounds$upper, ")")
 		}
@@ -1059,7 +1066,8 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 			bootstrap <- .applyRounding(bootstrap, digits = roundDigits, method = roundMethod,
 																	exclude   = setdiff(names(bootstrap), boot_round_cols),
 																	overrides = round_overrides,
-																	paramCol  = "Parameter", paramAxis = "row")
+																	paramCol  = "Parameter", paramAxis = "row",
+																	format = TRUE, trailingZeros = trailingZeros)
 
 			bootstrap <- bootstrap %>%
 				dplyr::mutate(
@@ -1128,11 +1136,14 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 		pop <- dplyr::left_join(pop, bootstrap, by = "Parameter")
 	}
 
-	# Round all num. cols per param while table is still in long (one row per original parameter)
+	# Round/format all num. cols per param while table is still in long (one row per original parameter).
+	# format = TRUE renders them as character display strings; in wide format the reshape below copies
+	# these into the IIV_*/IOV_*/Boot_* columns, which are therefore initialised as NA_character_.
 	pop <- .applyRounding(pop, digits = roundDigits, method = roundMethod,
 												exclude   = c("Section", "Parameter", ci_col_name, boot_ci_col_name),
 												overrides = round_overrides,
-												paramCol  = "Parameter", paramAxis = "row")
+												paramCol  = "Parameter", paramAxis = "row",
+												format = TRUE, trailingZeros = trailingZeros)
 
 	if (useWideFormat) {
 		# Rename fixed effect columns using hierarchical naming with underscore separator
@@ -1162,12 +1173,12 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 
 		# Add IIV columns if requested (default TRUE)
 		if (includeIIV && length(omega_idx) > 0) {
-			pop[["IIV_SD"]] <- NA_real_
+			pop[["IIV_SD"]] <- NA_character_
 			pop[pop_idx, "IIV_SD"] <- pop[omega_idx[match(pop_root, omega_root)], "FE_Estimate"]
 
 			# Add IIV CV column right after SD
 			if (includeCV && length(omega_cv_idx) > 0) {
-				pop[["IIV_CV"]] <- NA_real_
+				pop[["IIV_CV"]] <- NA_character_
 				pop[pop_idx, "IIV_CV"] <- pop[omega_cv_idx[match(pop_root, omega_root)], "FE_Estimate"]
 			}
 
@@ -1176,14 +1187,14 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 				pop[pop_idx, paste0("IIV_",ci_col_name)] <- pop[omega_idx[match(pop_root, omega_root)], paste0("FE_",ci_col_name)]
 			}
 			if (includeRSE && "FE_RSE" %in% names(pop)) {
-				pop[["IIV_RSE"]] <- NA_real_
+				pop[["IIV_RSE"]] <- NA_character_
 				pop[pop_idx, "IIV_RSE"] <- pop[omega_idx[match(pop_root, omega_root)], "FE_RSE"]
 			}
 
 			# Bootstrap IIV columns (same pattern/logic as regular IIV)
 			if (includeBootstrap) {
 				if ("Boot_Median" %in% names(pop)) {
-					pop[["Boot_IIV_Median"]] <- NA_real_
+					pop[["Boot_IIV_Median"]] <- NA_character_
 					pop[pop_idx, "Boot_IIV_Median"] <- pop[omega_idx[match(pop_root, omega_root)], "Boot_Median"]
 				}
 
@@ -1197,7 +1208,7 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 				}
 
 				if ("Boot_RSE" %in% names(pop)) {
-					pop[["Boot_IIV_RSE"]] <- NA_real_
+					pop[["Boot_IIV_RSE"]] <- NA_character_
 					pop[pop_idx, "Boot_IIV_RSE"] <- pop[omega_idx[match(pop_root, omega_root)], "Boot_RSE"]
 				}
 			}
@@ -1218,17 +1229,17 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 				gamma_root   <- sub("^gamma_", "", pop$Parameter[gamma_idx]) # to not duplicate
 			}
 
-			pop[["IOV_SD"]] <- NA_real_
+			pop[["IOV_SD"]] <- NA_character_
 			pop[pop_idx, "IOV_SD"] <- pop[gamma_idx[match(pop_root, gamma_root)], "FE_Estimate"]
 
 			# Add IOV CV column right after SD
 			if (includeCV && length(gamma_cv_idx) > 0) {
-				pop[["IOV_CV"]] <- NA_real_
+				pop[["IOV_CV"]] <- NA_character_
 				pop[pop_idx, "IOV_CV"] <- pop[gamma_cv_idx[match(pop_root, gamma_root)], "FE_Estimate"]
 			}
 
 			if (includeRSE && "FE_RSE" %in% names(pop)) {
-				pop[["IOV_RSE"]] <- NA_real_
+				pop[["IOV_RSE"]] <- NA_character_
 				pop[pop_idx, "IOV_RSE"] <- pop[gamma_idx[match(pop_root, gamma_root)], "FE_RSE"]
 			}
 
@@ -1239,7 +1250,7 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 			# Bootstrap IOV columns (same as in bootstrap IIV)
 			if (includeBootstrap) {
 				if ("Boot_Median" %in% names(pop)) {
-					pop[["Boot_IOV_Median"]] <- NA_real_
+					pop[["Boot_IOV_Median"]] <- NA_character_
 					pop[pop_idx, "Boot_IOV_Median"] <- pop[gamma_idx[match(pop_root, gamma_root)], "Boot_Median"]
 				}
 
@@ -1253,7 +1264,7 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 				}
 
 				if ("Boot_RSE" %in% names(pop)) {
-					pop[["Boot_IOV_RSE"]] <- NA_real_
+					pop[["Boot_IOV_RSE"]] <- NA_character_
 					pop[pop_idx, "Boot_IOV_RSE"] <- pop[gamma_idx[match(pop_root, gamma_root)], "Boot_RSE"]
 				}
 			}

@@ -387,14 +387,14 @@
 		dplyr::summarise(
 			N = if (!is.null(id_col)) dplyr::n_distinct(.data[[id_col]]) else dplyr::n(),
 			min = min(.data[[value_col]], na.rm = TRUE),
-			P05 = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE),
-			Q1 = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE),
+			P05 = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE, type = 5),
+			Q1 = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE, type = 5),
 			mean = mean(.data[[value_col]], na.rm = TRUE),
 			SD = stats::sd(.data[[value_col]], na.rm = TRUE),
 			CV = if (is.na(mean) || mean == 0) NA_real_ else 100 * SD / mean,
 			median = stats::median(.data[[value_col]], na.rm = TRUE),
-			Q3 = stats::quantile(.data[[value_col]], 0.75, na.rm = TRUE),
-			P95 = stats::quantile(.data[[value_col]], 0.95, na.rm = TRUE),
+			Q3 = stats::quantile(.data[[value_col]], 0.75, na.rm = TRUE, type = 5),
+			P95 = stats::quantile(.data[[value_col]], 0.95, na.rm = TRUE, type = 5),
 			max = max(.data[[value_col]], na.rm = TRUE),
 
 			# geometric mean / sd / cv
@@ -436,7 +436,8 @@
 #' @param data Data frame in long format containing at minimum an ID column and a value column.
 #' @param value_col Character string specifying the name of the value column to summarize.
 #' @param id_col Character string specifying the name of the ID/subject column.
-#'   Used to calculate N (number of unique subjects) and SE (standard error).
+#'   Used for the occasion-aware N (see [.effectiveSampleSize()]) and SE, which
+#'   is derived from that N.
 #' @param group_by Character vector or NULL specifying column names to group by.
 #'   Examples: `c("Time", "SEX")`, `c("Parameter")`, `NULL` for no grouping.
 #'
@@ -466,30 +467,24 @@
 		}
 	}
 
-	# Group and calculate all metrics
-	data %>%
+	# All metrics except N/SE (both depend on the occasion-aware effective N).
+	stats <- data %>%
 		dplyr::group_by(dplyr::across(dplyr::all_of(group_by))) %>%
 		dplyr::summarise(
-			N = if (!is.null(id_col)) dplyr::n_distinct(.data[[id_col]]) else dplyr::n(),
 			Nobs = dplyr::n(),
 			min = { v <- .data[[value_col]]; if (all(is.na(v))) NA_real_ else min(v, na.rm = TRUE) },
-			P05 = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE),
-			Q1 = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE),
+			P05 = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE, type = 5),
+			Q1 = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE, type = 5),
 			mean = mean(.data[[value_col]], na.rm = TRUE),
 			SD = stats::sd(.data[[value_col]], na.rm = TRUE),
-			SE = if (!is.null(id_col)) {
-				sd_val <- stats::sd(.data[[value_col]], na.rm = TRUE)
-				n_subj <- dplyr::n_distinct(.data[[id_col]])
-				if (n_subj > 0 && !is.na(sd_val)) sd_val / sqrt(n_subj) else NA_real_
-			} else NA_real_,
 			CV = {
 				m <- mean(.data[[value_col]], na.rm = TRUE)
 				s <- stats::sd(.data[[value_col]], na.rm = TRUE)
 				if (!is.na(m) && m != 0 && !is.na(s)) 100 * s / m else NA_real_
 			},
 			median = stats::median(.data[[value_col]], na.rm = TRUE),
-			Q3 = stats::quantile(.data[[value_col]], 0.75, na.rm = TRUE),
-			P95 = stats::quantile(.data[[value_col]], 0.95, na.rm = TRUE),
+			Q3 = stats::quantile(.data[[value_col]], 0.75, na.rm = TRUE, type = 5),
+			P95 = stats::quantile(.data[[value_col]], 0.95, na.rm = TRUE, type = 5),
 			max = { v <- .data[[value_col]]; if (all(is.na(v))) NA_real_ else max(v, na.rm = TRUE) },
 			geoMean = {
 				vals <- .data[[value_col]][.data[[value_col]] > 0 & is.finite(.data[[value_col]])]
@@ -508,6 +503,75 @@
 				vals <- .data[[value_col]][.data[[value_col]] > 0 & is.finite(.data[[value_col]])]
 				if (length(vals) > 0) length(vals) / sum(1 / vals) else NA_real_
 			},
+			.groups = "drop"
+		) %>%
+		as.data.frame()
+
+	# Occasion-aware N (see .effectiveSampleSize()).
+	n_tbl <- .effectiveSampleSize(data, value_col, id_col, group_by)
+
+	out <- if (length(group_by) == 0) {
+		cbind(n_tbl, stats)
+	} else {
+		dplyr::left_join(n_tbl, stats, by = group_by)
+	}
+
+	# SE from the effective N (NA when no ID column is given).
+	out$SE <- if (is.null(id_col)) {
+		NA_real_
+	} else {
+		ifelse(!is.na(out$SD) & out$N > 0, out$SD / sqrt(out$N), NA_real_)
+	}
+
+	out %>%
+		dplyr::relocate("SE", .after = "SD") %>%
+		as.data.frame()
+}
+
+##################################################################################
+#' Occasion-aware effective sample size for descriptive statistics
+#'
+#' @description
+#' Computes the `N` for [.calculateDescriptiveStats()]. Per group: if the value
+#' varies across any subject's occasions (occasion-varying, e.g. NCA parameters),
+#' every non-missing record is counted; otherwise (occasion-invariant, e.g.
+#' height, or no occasions) each subject is counted once.
+#'
+#' @param data Long-format data frame (same input as [.calculateDescriptiveStats()]).
+#' @param value_col Character; name of the value column being summarized.
+#' @param id_col Character or NULL; subject/ID column. When NULL, `N` is the
+#'   number of rows per group.
+#' @param group_by Character vector or NULL; grouping columns.
+#'
+#' @return A data frame with the grouping columns (if any) and an `N` column.
+#'
+#' @keywords internal
+#'
+.effectiveSampleSize <- function(data, value_col, id_col, group_by) {
+	# No ID column: N is just the number of observations per group.
+	if (is.null(id_col)) {
+		return(
+			data %>%
+				dplyr::group_by(dplyr::across(dplyr::all_of(group_by))) %>%
+				dplyr::summarise(N = dplyr::n(), .groups = "drop") %>%
+				as.data.frame()
+		)
+	}
+
+	# Per (group, subject): distinct non-missing values and non-missing records.
+	per_id <- data %>%
+		dplyr::group_by(dplyr::across(dplyr::all_of(c(group_by, id_col)))) %>%
+		dplyr::summarise(
+			n_val = dplyr::n_distinct(.data[[value_col]][!is.na(.data[[value_col]])]),
+			n_rec = sum(!is.na(.data[[value_col]])),
+			.groups = "drop"
+		)
+
+	# dplyr::n() counts subjects (one row per subject in per_id).
+	per_id %>%
+		dplyr::group_by(dplyr::across(dplyr::all_of(group_by))) %>%
+		dplyr::summarise(
+			N = if (any(n_val > 1)) sum(n_rec) else dplyr::n(),
 			.groups = "drop"
 		) %>%
 		as.data.frame()
@@ -1689,6 +1753,11 @@
 #'   [.applyRounding()] so they match the per-parameter rounding applied to the
 #'   summary rows. Keys must use the original (non-aliased) parameter names.
 #'   Only honored for resultType "ncaParameters"/"ncaRatio". Default NULL (global rounding).
+#' @param format Logical; when TRUE the individual values are rendered as character
+#'   display strings (via [.applyRounding()] `format = TRUE`) instead of numeric, so
+#'   they match the formatted summary rows. Default FALSE (numeric, legacy behavior).
+#' @param trailingZeros Logical; passed through to the display formatting when
+#'   `format = TRUE` (ignored otherwise). Default TRUE.
 #' @param units Logical; include units for parameter names (only for ncaParameters)
 #' @param aliases Logical; use parameter aliases (only for ncaParameters)
 #' @param useNominalTime Logical; use nominal time (only for ncaConcentration)
@@ -1717,6 +1786,8 @@
 														roundDigits    = 3,
 														roundMethod    = "monolixSuiteRounding",
 														roundOverrides = NULL,
+														format         = FALSE,
+														trailingZeros  = TRUE,
 														units          = TRUE,
 														units_df       = NULL,
 														aliases        = TRUE,
@@ -1737,10 +1808,17 @@
 		all_splitCovariates <- project_data$header[project_data$headerTypes %in% c("catcov", "contcov", "occ")]
 		occ_vars <- project_data$header[project_data$headerTypes == "occ"]
 
+		# Derived strat covariates (e.g. "covariateSequence_FOOD") are merged into indiv_data but
+		# absent from project_data$header, so subtract them explicitly to keep them out of param_cols.
+		cov_info        <- lixoftConnectors::getCovariateInformation()
+		strat_cov_names <- cov_info$name[cov_info$type %in% c("stratificationcategorical", "additionalstratificationcategorical")]
+
 		# Get individual data based on type
 		if (resultType == "ncaParameters") {
 			# Get parameter columns (exclude id and ALL splitCovariates including occasions)
-			param_cols <- setdiff(names(indiv_data), c("id", all_splitCovariates))
+			param_cols <- setdiff(names(indiv_data), c("id", all_splitCovariates, strat_cov_names))
+			# Numeric-only backstop: NCA parameters are always numeric.
+			param_cols <- param_cols[vapply(indiv_data[param_cols], is.numeric, logical(1))]
 
 		} else {  # ncaRatio
 			ratio_info <- lixoftConnectors::getNCARatios()
@@ -1808,13 +1886,15 @@
 		# .applyRounding falls back to global digits/method when roundOverrides is NULL,
 		# exclude everything but Value --> only value column is rounded (id/covariates/occs rmain untouched)
 		long_df <- .applyRounding(
-			df        = long_df,
-			digits    = roundDigits,
-			method    = roundMethod,
-			exclude   = setdiff(names(long_df), "Value"),
-			overrides = roundOverrides,
-			paramCol  = "Parameter",
-			paramAxis = "row")
+			df            = long_df,
+			digits        = roundDigits,
+			method        = roundMethod,
+			exclude       = setdiff(names(long_df), "Value"),
+			overrides     = roundOverrides,
+			paramCol      = "Parameter",
+			paramAxis     = "row",
+			format        = format,
+			trailingZeros = trailingZeros)
 
 		# Apply name mapping to Parameter column (after rounding, so overrides matched)
 		long_df$Parameter <- name_mapping[long_df$Parameter]
@@ -1901,12 +1981,19 @@
 		# Determine time column
 		time_col <- if ("NominalTime" %in% names(indiv_data)) "NominalTime" else "ActualTime"
 
-		# Round concentration values (raw_data from tableNCAConcentration is unrounded)
-		indiv_data$UsedConc <- .round_num(
-			to_round        = data.frame(val = indiv_data$UsedConc),
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = NULL)$val
+		# Round concentration values (raw_data from tableNCAConcentration is unrounded).
+		# In format mode render them as display strings so they match the summary rows.
+		if (isTRUE(format)) {
+			indiv_data$UsedConc <- .formatRounded(
+				indiv_data$UsedConc, digits = roundDigits,
+				method = roundMethod, trailingZeros = trailingZeros)
+		} else {
+			indiv_data$UsedConc <- .round_num(
+				to_round        = data.frame(val = indiv_data$UsedConc),
+				digits          = roundDigits,
+				rounding_method = roundMethod,
+				exclude         = NULL)$val
+		}
 
 		# *** CHECK FOR OCCASIONS BEFORE PIVOTING TO WIDE ***
 		# Pass full indiv_data with all columns (including occasions) to detect duplicates correctly
@@ -2903,7 +2990,8 @@
 		)
 	} else {
 		# No splitCovariates - just Overall with N
-		max_n <- max(summary_stats$Nobs, na.rm = TRUE)
+		# Nobs may be character here (display formatting upstream); coerce for max().
+		max_n <- max(as.numeric(summary_stats$Nobs), na.rm = TRUE)
 
 		if (length(selected_metrics) > 1) {
 			result <- summary_stats %>%

@@ -138,21 +138,22 @@ test_that("round_num data.frame", {
 									c = c(TRUE, FALSE),
 									d = c("1.2345", "2.3456"))
 
+	# character columns that parse as numeric are coerced and rounded (unless excluded)
 	expect_equal(.round_num(df, 3, rounding_method = "monolixSuiteRounding"),
 							 data.frame(a = c(123.457, 0.00123),
 							 					 b = c(-3.457, -0.000123),
 							 					 c = c(TRUE, FALSE),
-							 					 d = c("1.2345", "2.3456")))
+							 					 d = c(1.234, 2.346)))
 	expect_equal(.round_num(df, 3, rounding_method = "significantFigures"),
 							 data.frame(a = c(123, 0.00123),
 							 					 b = c(-3.46, -0.000123),
 							 					 c = c(TRUE, FALSE),
-							 					 d = c("1.2345", "2.3456")))
+							 					 d = c(1.23, 2.35)))
 	expect_equal(.round_num(df, 3, exclude = "b", rounding_method = "significantFigures"),
 							 data.frame(a = c(123, 0.00123),
 							 					 b = c(-3.4567, -0.0001234),
 							 					 c = c(TRUE, FALSE),
-							 					 d = c("1.2345", "2.3456")))
+							 					 d = c(1.23, 2.35)))
 	expect_equal(.round_num(df, 3, exclude = c("a", "c", "d"), rounding_method = "significantFigures"),
 							 data.frame(a = c(123.45678, 0.00123456),
 							 					 b = c(-3.46, -0.000123),
@@ -249,6 +250,67 @@ test_that("modelBuildingStepGroups separates rounds by (step, reference)", {
 	# single group when step and reference never change
 	expect_equal(.modelBuildingStepGroups(rep("Forward", 3), rep("Model 1", 3)),
 							 c(1, 1, 1))
+})
+
+################################################################################
+# .formatRounded() - display-layer formatter shared by every table/listing helper
+################################################################################
+
+test_that("formatRounded returns character and keeps the NA vs NaN distinction (all methods)", {
+	# This is the global contract every helper relies on: NA -> NA_character_
+	# (renders blank), NaN -> "NaN" (renders literally), never confused.
+	for (m in c("monolixSuiteRounding", "significantFigures",
+							"significantFiguresPreserved", "none")) {
+		out <- .formatRounded(c(1.2, NA, NaN), digits = 3, method = m, trailingZeros = TRUE)
+		expect_type(out, "character")
+		expect_true(is.na(out[2]))        # genuine NA stays NA
+		expect_false(is.nan(suppressWarnings(as.numeric(out[2]))) && !is.na(out[2]))
+		expect_identical(out[2], NA_character_)
+		expect_identical(out[3], "NaN")   # NaN is preserved as a literal string
+	}
+})
+
+test_that("formatRounded trailingZeros pads vs strips but keeps the same value", {
+	pad <- .formatRounded(c(1.2, 0.01), digits = 3, method = "monolixSuiteRounding",
+												trailingZeros = TRUE)
+	mn  <- .formatRounded(c(1.2, 0.01), digits = 3, method = "monolixSuiteRounding",
+												trailingZeros = FALSE)
+	expect_equal(pad, c("1.200", "0.0100"))
+	expect_equal(mn,  c("1.2", "0.01"))
+	expect_equal(as.numeric(pad), as.numeric(mn))
+})
+
+test_that("formatRounded monolixSuiteRounding is decimal-places for >=1, sig-figs for <1", {
+	out <- .formatRounded(c(123.456, 0.012345), digits = 2,
+												method = "monolixSuiteRounding", trailingZeros = TRUE)
+	expect_equal(out, c("123.46", "0.012"))  # >=1: 2 decimals; <1: 2 significant figures
+})
+
+test_that("formatRounded significantFigures counts significant digits and re-derives precision after rounding", {
+	out <- .formatRounded(c(123.456, 9.96, 0.012345), digits = 3,
+												method = "significantFigures", trailingZeros = TRUE)
+	expect_equal(out, c("123", "9.96", "0.0123"))
+	# rounding that bumps the magnitude drops the now-spurious decimals (9.96 -> 10, not 10.0)
+	expect_equal(.formatRounded(9.96, digits = 2, method = "significantFigures",
+															trailingZeros = TRUE), "10")
+})
+
+test_that("formatRounded significantFiguresPreserved keeps integer digits (no decimals once int digits >= digits)", {
+	out <- .formatRounded(c(123.456, 1234.4), digits = 3,
+												method = "significantFiguresPreserved", trailingZeros = TRUE)
+	expect_equal(out, c("123", "1234"))
+})
+
+test_that("formatRounded none passes values through without rounding", {
+	out <- .formatRounded(c(1.23456, 0.01, NA, NaN), digits = 3, method = "none")
+	expect_equal(out[1], "1.23456")   # untouched
+	expect_identical(out[3], NA_character_)
+	expect_identical(out[4], "NaN")
+})
+
+test_that("formatRounded leaves genuinely non-numeric input untouched", {
+	expect_equal(.formatRounded(c("a", "b"), digits = 3, method = "monolixSuiteRounding"),
+							 c("a", "b"))
 })
 
 ################################################################################

@@ -66,6 +66,14 @@
 #'   stratified by splitCovariates, individual IDs are grouped by their covariate values.
 #'   Default is `FALSE`. Only applicable when `stratifyColumns = FALSE`.
 #'
+#' @param filterCovariates Named list where names are categorical covariate names
+#'   and values are vectors of allowed values, e.g.
+#'   `list(SEX = "Male", DOSE = c("100", "200"))`. Rows not matching are dropped.
+#'   If `NULL` (default), no covariate filtering is applied.
+#'
+#' @param filterIds Character or numeric vector of subject IDs to include. If
+#'   `NULL` (default), no ID filtering is applied.
+#'
 #' @param roundDigits Integer specifying the number of decimal places for rounding
 #'   numeric values. Default is `3`.
 #'
@@ -79,6 +87,11 @@
 #'     digits before the decimal - once the integer part already has as many digits as requested,
 #'     the value is simply rounded to the nearest whole number
 #'   - `"none"`: No rounding performed
+#'
+#' @param trailingZeros Logical. If `TRUE` (default), values are shown to the full
+#'   precision implied by `roundDigits`/`roundMethod`, padding with trailing zeros
+#'   (e.g. `1.20`, `0.010`). If `FALSE`, the minimal form is shown (`1.2`, `0.01`).
+#'   Either way each value is displayed at its own precision (no uniform-column padding).
 #'
 #' @param prettyLabels Logical; if `TRUE` (default), converts column names to
 #'   human-readable labels (e.g., "CV" becomes "CV (%)", "geoMean" becomes "Geometric Mean").
@@ -152,6 +165,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 																	filterIds        = NULL,
 																	roundDigits      = 3,
 																	roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+																	trailingZeros    = TRUE,
 																	prettyLabels     = TRUE,
 																	units            = TRUE,
 																	mock             = FALSE) {
@@ -261,11 +275,13 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			group_by  = group_by_vars)
 
 		# Apply rounding to summary_stats
-		summary_stats <- .round_num(
-			to_round        = summary_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = c(time_col, splitCovariates))
+		summary_stats <- .applyRounding(
+			df            = summary_stats,
+			digits        = roundDigits,
+			method        = roundMethod,
+			exclude       = c(time_col, splitCovariates),
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		# Add combined metrics to summary_stats
 		summary_stats <- .combinedStats(summary_stats)
@@ -278,11 +294,13 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			group_by  = time_col)  # Only group by time
 
 		# Apply rounding to overall_stats
-		overall_stats <- .round_num(
-			to_round        = overall_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = time_col)
+		overall_stats <- .applyRounding(
+			df            = overall_stats,
+			digits        = roundDigits,
+			method        = roundMethod,
+			exclude       = time_col,
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		# Add combined metrics to overall_stats
 		overall_stats <- .combinedStats(overall_stats)
@@ -341,11 +359,13 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			group_by  = group_by_vars)
 
 		# Apply rounding to numeric columns (exclude time and splitCovariates)
-		summary_stats <- .round_num(
-			to_round        = summary_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = c(time_col, splitCovariates))
+		summary_stats <- .applyRounding(
+			df            = summary_stats,
+			digits        = roundDigits,
+			method        = roundMethod,
+			exclude       = c(time_col, splitCovariates),
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		# Add MeanSD, GeomCV, GeomSD columns
 		summary_stats <- .combinedStats(summary_stats)
@@ -400,6 +420,8 @@ tableNCAConcentration <- function(projectFile      = NULL,
 					params         = NULL,
 					roundDigits    = roundDigits,
 					roundMethod    = roundMethod,
+					format         = TRUE,
+					trailingZeros  = trailingZeros,
 					useNominalTime = useNominalTime,
 					indiv_data     = raw_data_full)  # Pass existing indiv conc data to avoid redundant fetch (full dataset (before potential filtering))
 			}
@@ -584,6 +606,14 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   by their covariate values and listed after the corresponding summary metrics.
 #'   Default is `FALSE`. Only works when `useWideFormat = FALSE`.
 #'
+#' @param filterCovariates Named list where names are categorical covariate names
+#'   and values are vectors of allowed values, e.g.
+#'   `list(SEX = "Male", DOSE = c("100", "200"))`. Rows not matching are dropped.
+#'   If `NULL` (default), no covariate filtering is applied.
+#'
+#' @param filterIds Character or numeric vector of subject IDs to include. If
+#'   `NULL` (default), no ID filtering is applied.
+#'
 #' @param roundDigits Integer specifying the number of decimal places for rounding
 #'   numeric values. Default is `3`.
 #'
@@ -609,6 +639,12 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'
 #'   Parameters not listed keep the global settings. Unknown parameter names are
 #'   ignored with a message. Default `NULL` (global rounding everywhere).
+#'
+#' @param trailingZeros Logical. If `TRUE` (default), numeric values are shown to the
+#'   full precision implied by `roundDigits`/`roundMethod` (and any `roundByParameter`
+#'   override), padding with trailing zeros (e.g. `1.20`, `0.010`). If `FALSE`, the
+#'   minimal form is shown (`1.2`, `0.01`). Either way each value is displayed at its
+#'   own precision (no uniform-column padding).
 #'
 #' @param units Logical. If `TRUE` (default), units are appended to parameter names.
 #'
@@ -679,6 +715,7 @@ tableNCAParameters <- function(projectFile          = NULL,
 															 roundDigits          = 3,
 															 roundMethod          = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 															 roundByParameter     = NULL,
+															 trailingZeros        = TRUE,
 															 units                = TRUE,
 															 aliases              = TRUE,
 															 customUnits          = NULL,
@@ -728,22 +765,27 @@ tableNCAParameters <- function(projectFile          = NULL,
 	indiv_params <- lixoftConnectors::getNCAIndividualParameters()$parameters
 
 
+	project_data        <- lixoftConnectors::getData()
+	all_splitCovariates <- project_data$header[project_data$headerTypes %in% c("catcov", "contcov", "occ")]
+	occ_vars            <- project_data$header[project_data$headerTypes == "occ"]
+
 	# getNCAIndividualParameters() does not carry stratificationcategorical or additionalstratificationcategorical columns.
-	# Get them from getCovariateInformation() + merge by id before filtering
+	# Get them from getCovariateInformation() + merge before filtering.
 	cov_info        <- lixoftConnectors::getCovariateInformation()
 	strat_cov_names <- cov_info$name[cov_info$type %in% c("stratificationcategorical", "additionalstratificationcategorical")]
 
 	if (length(strat_cov_names) > 0) {
-		strat_cov_df <- cov_info$covariate[, c("id", strat_cov_names), drop = FALSE]
-		indiv_params <- merge(indiv_params, strat_cov_df, by = "id", all.x = TRUE, sort = FALSE)
+		# cov_info$covariate is occasion-level, so merge on id + occasion; merging by "id" alone
+		# matches every occasion row and duplicates the individual parameter rows.
+		occ_in_cov   <- intersect(names(cov_info$covariate), occ_vars)
+		merge_keys   <- c("id", occ_in_cov)
+		strat_cov_df <- cov_info$covariate[, c(merge_keys, strat_cov_names), drop = FALSE]
+		indiv_params <- merge(indiv_params, strat_cov_df, by = merge_keys, all.x = TRUE, sort = FALSE)
 	}
 	# --------------------------------------------------------------------------
 
 	indiv_params <- .applyFilters(indiv_params, filterCovariates, filterIds, id_col = "id")
 
-	project_data        <- lixoftConnectors::getData()
-	all_splitCovariates <- project_data$header[project_data$headerTypes %in% c("catcov", "contcov", "occ")]
-	occ_vars            <- project_data$header[project_data$headerTypes == "occ"]
 	param_cols          <- setdiff(names(indiv_params), c("id", all_splitCovariates, strat_cov_names))
 
 	if (!is.null(selectParameters)) {
@@ -792,7 +834,9 @@ tableNCAParameters <- function(projectFile          = NULL,
 			exclude   = c("parameter", splitCovariates),
 			overrides = round_overrides,
 			paramCol  = "parameter",
-			paramAxis = "row")
+			paramAxis = "row",
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		summary_stats <- .combinedStats(summary_stats)
 
@@ -826,7 +870,9 @@ tableNCAParameters <- function(projectFile          = NULL,
 				exclude   = "parameter",
 				overrides = round_overrides,
 				paramCol  = "parameter",
-				paramAxis = "row")
+				paramAxis = "row",
+				format        = TRUE,
+				trailingZeros = trailingZeros)
 
 			overall_stats <- .combinedStats(overall_stats)
 
@@ -870,7 +916,9 @@ tableNCAParameters <- function(projectFile          = NULL,
 			exclude   = c("parameter", splitCovariates),
 			overrides = round_overrides,
 			paramCol  = "parameter",
-			paramAxis = "row")
+			paramAxis = "row",
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		summary_stats <- .combinedStats(summary_stats)
 
@@ -917,6 +965,8 @@ tableNCAParameters <- function(projectFile          = NULL,
 			roundDigits   = roundDigits,
 			roundMethod   = roundMethod,
 			roundOverrides = round_overrides,
+			format         = TRUE,
+			trailingZeros  = trailingZeros,
 			units         = units,
 			units_df      = units_df,
 			aliases       = aliases,
@@ -1055,6 +1105,11 @@ tableNCAParameters <- function(projectFile          = NULL,
 #'
 #'   Parameters not listed keep the global settings. Unknown parameter names are
 #'   ignored with a message. Default `NULL` (global rounding everywhere).
+#' @param trailingZeros Logical. If `TRUE` (default), values are shown to the full
+#'   precision implied by `roundDigits`/`roundMethod` (and any `roundByParameter`
+#'   override), padding with trailing zeros (e.g. `1.20`, `0.010`). If `FALSE`, the
+#'   minimal form is shown (`1.2`, `0.01`). Either way each value is displayed at its
+#'   own precision (no uniform-column padding).
 #' @param prettyLabels Logical; if `TRUE` (default), converts column names to
 #'   human-readable labels.
 #' @param customAliases Named vector or 2-column dataframe mapping parameter names
@@ -1101,6 +1156,7 @@ tableNCARatios <- function(projectFile           = NULL,
 													 roundDigits           = 3,
 													 roundMethod           = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 													 roundByParameter      = NULL,
+													 trailingZeros         = TRUE,
 													 prettyLabels          = TRUE,
 													 customAliases         = NULL,
 													 mock                  = FALSE) {
@@ -1226,7 +1282,9 @@ tableNCARatios <- function(projectFile           = NULL,
 			exclude   = c("Parameter", splitCovariates),
 			overrides = round_overrides,
 			paramCol  = "Parameter",
-			paramAxis = "row")
+			paramAxis = "row",
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		# Add combined metrics
 		summary_stats <- .combinedStats(summary_stats)
@@ -1265,7 +1323,9 @@ tableNCARatios <- function(projectFile           = NULL,
 			exclude   = "Parameter",
 			overrides = round_overrides,
 			paramCol  = "Parameter",
-			paramAxis = "row")
+			paramAxis = "row",
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		# Add combined metrics to overall
 		overall_stats <- .combinedStats(overall_stats)
@@ -1319,7 +1379,9 @@ tableNCARatios <- function(projectFile           = NULL,
 			exclude   = c("Parameter", splitCovariates),
 			overrides = round_overrides,
 			paramCol  = "Parameter",
-			paramAxis = "row")
+			paramAxis = "row",
+			format        = TRUE,
+			trailingZeros = trailingZeros)
 
 		# Add combined metrics
 		summary_tbl <- .combinedStats(summary_tbl)
@@ -1367,6 +1429,8 @@ tableNCARatios <- function(projectFile           = NULL,
 			roundDigits     = roundDigits,
 			roundMethod     = roundMethod,
 			roundOverrides  = round_overrides,
+			format          = TRUE,
+			trailingZeros   = trailingZeros,
 			units           = FALSE,
 			units_df        = NULL,
 			aliases         = FALSE,
@@ -1497,6 +1561,12 @@ tableNCARatios <- function(projectFile           = NULL,
 #'   Parameters not listed keep the global settings. Unknown parameter names are
 #'   ignored with a message. Default `NULL` (global rounding everywhere).
 #'
+#' @param trailingZeros Logical. If `TRUE` (default), the ratio and confidence-interval
+#'   values are shown to the full precision implied by `roundDigits`/`roundMethod`
+#'   (and any `roundByParameter` override), padding with trailing zeros (e.g. `1.20`,
+#'   `(0.80; 1.25)`). If `FALSE`, the minimal form is shown. Each value is displayed
+#'   at its own precision.
+#'
 #' @param units Logical; if `TRUE` (default), appends units to parameter names
 #'   (e.g., "ln(AUClast) (h*ng/mL)"). Units are retrieved from project settings.
 #'
@@ -1547,6 +1617,7 @@ tableBEResults <- function(projectFile      = NULL,
 													 roundDigits      = 3,
 													 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 													 roundByParameter = NULL,
+													 trailingZeros    = TRUE,
 													 units            = TRUE,
 													 aliases          = TRUE,
 													 customUnits      = NULL,
@@ -1615,10 +1686,10 @@ tableBEResults <- function(projectFile      = NULL,
 		result <- result %>% dplyr::filter(Original_Parameter %in% selectParameters)
 	}
 
-	# Apply rounding BEFORE aliasing/ln()-wrapping, while Original_Parameter still holds
-	# the raw BE names so per-parameter overrides key correctly. Falls back to the global
-	# digits/method when round_overrides is NULL. Only the numeric columns (Ratio,
-	# CILower, CIUpper) are rounded; BE is a 0/1 flag and must stay untouched.
+	# Round/format BEFORE aliasing/ln()-wrapping, while Original_Parameter still holds
+	# the raw BE names so per-parameter overrides key correctly. format = TRUE renders
+	# Ratio/CILower/CIUpper as display strings (trailing zeros) that are pasted into the
+	# CI column below; BE is excluded so it stays a 0/1 flag for the conclusion logic.
 	result <- .applyRounding(
 		df        = result,
 		digits    = roundDigits,
@@ -1626,7 +1697,9 @@ tableBEResults <- function(projectFile      = NULL,
 		exclude   = c("Original_Parameter", "parameter", "Comparison", "BE"),
 		overrides = round_overrides,
 		paramCol  = "Original_Parameter",
-		paramAxis = "row")
+		paramAxis = "row",
+		format        = TRUE,
+		trailingZeros = trailingZeros)
 
 	# Apply aliases only (no units)
 	result <- .addUnitsAliases(
@@ -1842,15 +1915,20 @@ listingAbbreviation <- function(projectFile   = NULL,
 #'   numeric values. Default is `3`.
 #'
 #' @param roundMethod Character string specifying the rounding method. Options are:
-#'   - `"none"` (default): No rounding performed
-#'   - `"monolixSuiteRounding"`: Adaptive rounding that keeps all digits before the
-#'     decimal untouched and rounds only the fractional part to the specified number of
-#'     significant digits (adds extra digits for values < 1)
+#'   - `"monolixSuiteRounding"` (default): values with |x| >= 1 are rounded to `roundDigits`
+#'     decimal places, values with |x| < 1 to `roundDigits` significant figures (matching MonolixSuite)
 #'   - `"significantFigures"`: Standard significant figures rounding - zeroes non-significant
 #'     digits before the decimal for large numbers
 #'   - `"significantFiguresPreserved"`: Modified significant figures rounding that never zeroes
 #'     digits before the decimal - once the integer part already has as many digits as requested,
 #'     the value is simply rounded to the nearest whole number
+#'   - `"none"`: No rounding performed (raw values shown)
+#'
+#' @param trailingZeros Logical. Only applies when `roundMethod != "none"`. If `TRUE`
+#'   (default), rounded concentration values are shown to the full precision implied by
+#'   `roundDigits`/`roundMethod`, padding with trailing zeros (e.g. `1.20`, `0.010`);
+#'   if `FALSE`, the minimal form is shown. With `roundMethod = "none"` raw values are
+#'   shown unchanged.
 #'
 #' @param mock Logical; if `TRUE`, masks the listing for documentation / example
 #'   outputs: id -> `"id1"`, categorical covariates / occasions -> `"Category 1"`
@@ -1923,7 +2001,8 @@ listingNCAConcentration <- function(projectFile          = NULL,
 																		prettyLabels         = TRUE,
 																		units                = TRUE,
 																		roundDigits          = 3,
-																		roundMethod          = c("none", "monolixSuiteRounding", "significantFigures", "significantFiguresPreserved"),
+																		roundMethod          = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
+																		trailingZeros        = TRUE,
 																		mock                 = FALSE) {
 
 	roundMethod <- match.arg(roundMethod)
@@ -2084,10 +2163,9 @@ listingNCAConcentration <- function(projectFile          = NULL,
 		indiv <- indiv %>% dplyr::rename(ActualTime = Time)
 	}
 
-	# Continue cleanup
-	# Primary sort by user-specified split covariates (so modalities are grouped),
-	# then the original id / occ / time ordering. occ_vars are excluded here because
-	# they were appended to splitCovariates above and are already sorted below.
+	# Primary sort by user-specified split covariates --> modalities are grouped,
+	# then original id / occ / time ordering. occ_vars are excluded here
+	# --> they were appended to splitCovariates above and are already sorted below.
 	split_sort <- intersect(setdiff(splitCovariates, occ_vars), names(indiv))
 	indiv <- indiv %>%
 		dplyr::relocate(dplyr::any_of(c("ActualTime", "NominalTime")), .before = Concentration) %>%
@@ -2117,13 +2195,16 @@ listingNCAConcentration <- function(projectFile          = NULL,
 		dplyr::mutate(
 			.conc_numeric = suppressWarnings(as.numeric(Concentration)), # Pre-compute numeric conversion (with warning suppression)
 			Concentration = dplyr::case_when(
-				is.na(.conc_numeric) ~ Concentration,
-				TRUE ~ as.character(.round_num(.conc_numeric,
-																			 digits = roundDigits,
-																			 rounding_method = roundMethod))),
-			UsedConc = .round_num(UsedConc,
-														digits = roundDigits,
-														rounding_method = roundMethod)) %>%
+				is.na(.conc_numeric) ~ Concentration,  # keep non-numeric flags (BLQ, ...)
+				TRUE ~ .formatRounded(.conc_numeric,
+															digits = roundDigits,
+															method = roundMethod,
+															trailingZeros = trailingZeros)),
+			# Keep UsedConc numeric for roundMethod = "none" (tableNCAConcentration uses
+			# this as its numeric data source); otherwise render as a display string.
+			UsedConc = if (roundMethod == "none") UsedConc else .formatRounded(
+				UsedConc, digits = roundDigits, method = roundMethod,
+				trailingZeros = trailingZeros)) %>%
 		dplyr::select(-.conc_numeric)
 
 	if (isTRUE(mock)) {
@@ -2186,6 +2267,10 @@ listingNCAConcentration <- function(projectFile          = NULL,
 #'
 #'   Parameters not listed keep the global settings. Unknown parameter names are
 #'   ignored with a message. Default `NULL` (global rounding everywhere).
+#' @param trailingZeros Logical. Only applies when `roundMethod != "none"`. If `TRUE`
+#'   (default), values are shown to the full precision implied by
+#'   `roundDigits`/`roundMethod` (and any `roundByParameter` override), padding with
+#'   trailing zeros (e.g. `1.20`, `0.010`); if `FALSE`, the minimal form is shown.
 #' @param units Logical. If TRUE (default), parameter units are added to column names.
 #' @param aliases Logical. If TRUE (default), parameter names are replaced with their aliases.
 #' @param customUnits Named vector or 2-column dataframe mapping parameter names
@@ -2249,6 +2334,7 @@ listingNCAParameters <- function(projectFile          = NULL,
 																 roundDigits          = 3,
 																 roundMethod          = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 																 roundByParameter     = NULL,
+																 trailingZeros        = TRUE,
 																 units                = TRUE,
 																 aliases              = TRUE,
 																 customUnits          = NULL,
@@ -2316,7 +2402,9 @@ listingNCAParameters <- function(projectFile          = NULL,
 		method    = roundMethod,
 		exclude   = c("id", all_splitCovariates, strat_cov_names),
 		overrides = round_overrides,
-		paramAxis = "column")
+		paramAxis = "column",
+		format        = TRUE,
+		trailingZeros = trailingZeros)
 
 	# Identify parameter columns (exclude id, all splitCovariates and merged strat covariates)
 	param_cols <- setdiff(names(indivNCA), c("id", all_splitCovariates, strat_cov_names))
@@ -2409,6 +2497,10 @@ listingNCAParameters <- function(projectFile          = NULL,
 #'
 #'   Parameters not listed keep the global settings. Unknown parameter names are
 #'   ignored with a message. Default `NULL` (global rounding everywhere).
+#' @param trailingZeros Logical. Only applies when `roundMethod != "none"`. If `TRUE`
+#'   (default), values are shown to the full precision implied by
+#'   `roundDigits`/`roundMethod` (and any `roundByParameter` override), padding with
+#'   trailing zeros (e.g. `1.20`, `0.010`); if `FALSE`, the minimal form is shown.
 #' @param aliases Logical. If TRUE (default), parameter names are replaced with their aliases.
 #' @param customAliases Named vector or 2-column dataframe mapping parameter names
 #'   to custom alias labels. Example: `c(Cmax_ratio = "C[[sub:max]] ratio")`.
@@ -2473,6 +2565,7 @@ listingNCARatios <- function(projectFile      = NULL,
 														 roundDigits      = 3,
 														 roundMethod      = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 														 roundByParameter = NULL,
+														 trailingZeros    = TRUE,
 														 aliases          = TRUE,
 														 customAliases   = NULL,
 														 mock             = FALSE){
@@ -2548,7 +2641,9 @@ listingNCARatios <- function(projectFile      = NULL,
 		method    = roundMethod,
 		exclude   = c("id", all_splitCovariates, merged_strat_covs),
 		overrides = round_overrides,
-		paramAxis = "column")
+		paramAxis = "column",
+		format        = TRUE,
+		trailingZeros = trailingZeros)
 
 	# Identify parameter columns (exclude id, all splitCovariates and merged strat covariates)
 	param_cols <- setdiff(names(indivRatios), c("id", all_splitCovariates, merged_strat_covs))

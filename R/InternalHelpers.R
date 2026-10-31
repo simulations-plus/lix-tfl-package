@@ -275,8 +275,8 @@ utils::globalVariables(c("."))
 #' Rounds numbers to specified number of digits
 #'
 #' Three rounding methods are supported: "monolixSuiteRounding" which mirrors the behavior of
-#' MonolixSuite applications where all digits before the decimal are considered significant, and
-#' only digits after the decimal are rounded; "significantFigures" where the number of significant
+#' MonolixSuite applications - values with |x| >= 1 are rounded to `digits` decimal places and
+#' values with |x| < 1 to `digits` significant figures; "significantFigures" where the number of significant
 #' digits are specified using the standard/textbook definition (zeroes non-significant digits
 #' before the decimal for large numbers); and "significantFiguresPreserved" which is a modified
 #' significant-figures definition that never zeroes digits before the decimal - once the integer
@@ -320,10 +320,11 @@ utils::globalVariables(c("."))
 		nan_positions <- is.nan(to_round)
 
 		if (rounding_method == "monolixSuiteRounding") {
-			# integer_part <- trunc(to_round)
-			# decimal <- to_round - integer_part
-			decimal <- to_round - as.integer(to_round)
-			rr <- as.integer(to_round) + signif(decimal, digits = digits)
+			# MonolixSuite behavior: |x| >= 1 -> round to `digits` decimal places;
+			# |x| < 1 -> round to `digits` significant figures.
+			rr <- ifelse(abs(to_round) >= 1,
+									 round(to_round, digits = digits),
+									 signif(to_round, digits = digits))
 		} else if (rounding_method == "significantFigures") {
 			rr <- signif(to_round, digits = digits)
 		} else if (rounding_method == "significantFiguresPreserved") {
@@ -347,6 +348,106 @@ utils::globalVariables(c("."))
 	return(rr)
 }
 #-------------------------------------------------------------------------------
+#' Round a numeric vector and format it as a display string
+#'
+#' Display-layer companion to [.round_num()]. Rounds `x` with the given
+#' `digits`/`method` (so the result is canonical and matches [.round_num()]),
+#' then renders each value as a character string at the precision that
+#' `digits`/`method` imply. This is where trailing-zero display is handled: a
+#' numeric cannot carry trailing zeros, so the padded form (`1.20`, `0.010`) only
+#' exists as a string.
+#'
+#' Keep this separate from [.round_num()] / [.applyRounding()], which must stay
+#' numeric for mid-pipeline work (ordering, merging, combined metrics). Apply
+#' `.formatRounded()` only at the display boundary, once per (digits, method)
+#' group — for per-parameter overrides, call it with each parameter's own config.
+#'
+#' @param x Numeric vector (character-numeric is coerced; genuinely non-numeric
+#'   input is returned via `as.character()` unchanged).
+#' @param digits Number of digits (n). Interpreted per `method`.
+#' @param method One of "monolixSuiteRounding", "significantFigures",
+#'   "significantFiguresPreserved", "none".
+#' @param trailingZeros Logical. If `TRUE`, pad each value to the precision
+#'   implied by `digits`/`method` (`1.2 -> "1.20"` for n = 3 sig figs). If
+#'   `FALSE` (default), show the minimal faithful form with no padding
+#'   (`"1.2"`), which also avoids the uniform-decimal padding that a numeric
+#'   column would otherwise get when rendered.
+#'
+#' @details
+#' The number of decimals `d` is derived per value from the rounded magnitude:
+#' \itemize{
+#'   \item significantFigures: `d = max(0, n - floor(log10(|x|)) - 1)`
+#'   \item significantFiguresPreserved: as above, but `d = 0` once the integer
+#'     part already has >= n digits
+#'   \item monolixSuiteRounding: `d = n` for |x| >= 1 (n decimal places), else
+#'     `n - floor(log10(|x|)) - 1` (n significant figures)
+#' }
+#' `NA` is preserved as `NA_character_` and `NaN` as `"NaN"` so flextable's
+#' `na_str`/`nan_str` defaults still apply downstream.
+#'
+#' @returns Character vector the same length as `x`.
+#' @noRd
+.formatRounded <- function(x,
+													 digits,
+													 method = c("monolixSuiteRounding", "significantFigures",
+																			"significantFiguresPreserved", "none"),
+													 trailingZeros = FALSE) {
+	method <- match.arg(method)
+
+	# Coerce character-numeric; return genuinely non-numeric input untouched.
+	if (!is.numeric(x)) {
+		xn <- suppressWarnings(as.numeric(x))
+		if (!any(!is.na(xn))) return(as.character(x))
+		x <- xn
+	}
+
+	# "none": no rounding, minimal stringification. Preserve the NA/NaN
+	# distinction (is.na() is TRUE for NaN, so restore NaN after blanking NA).
+	if (method == "none") {
+		out <- as.character(x)
+		out[is.na(x)]  <- NA_character_
+		out[is.nan(x)] <- "NaN"
+		return(out)
+	}
+
+	# Round to the canonical value first so d is computed from the rounded
+	# magnitude (e.g. 9.96 -> 10 -> "10", not "10.0").
+	xr <- .round_num(x, digits = digits, rounding_method = method)
+
+	ax   <- abs(xr)
+	mag  <- floor(log10(ax))            # position of the first significant digit
+
+	d <- switch(method,
+		"significantFigures" = pmax(0, digits - mag - 1),
+		"significantFiguresPreserved" = {
+			int_digits <- ifelse(ax < 1, 0, mag + 1)
+			ifelse(int_digits >= digits, 0, pmax(0, digits - mag - 1))
+		},
+		# |x| >= 1: `digits` decimal places; |x| < 1: `digits` significant figures
+		"monolixSuiteRounding" = ifelse(ax >= 1, digits, pmax(0, digits - mag - 1))
+	)
+
+	# Guard non-finite magnitudes (zeros, NA, Inf).
+	d[!is.finite(d)]          <- 0
+	d[ax == 0 | !is.finite(ax)] <- 0
+	d <- as.integer(d)
+
+	# sprintf vectorises over both the precision (.*) and the value.
+	out <- sprintf("%.*f", d, xr)
+
+	# Minimal form: strip trailing zeros and any dangling decimal point.
+	if (!isTRUE(trailingZeros)) {
+		has_dot        <- grepl(".", out, fixed = TRUE)
+		out[has_dot]   <- sub("0+$", "", out[has_dot])
+		out[has_dot]   <- sub("\\.$", "", out[has_dot])
+	}
+
+	# Preserve missing/NaN for downstream na_str / nan_str handling.
+	out[is.na(xr)]  <- NA_character_
+	out[is.nan(xr)] <- "NaN"
+	out
+}
+#-------------------------------------------------------------------------------
 #' Round a data frame with optional per-parameter overrides
 #'
 #' Wraps [.round_num()]. When `overrides` is NULL it is identical to
@@ -362,54 +463,87 @@ utils::globalVariables(c("."))
 #' @param paramCol for `paramAxis = "row"`, the column holding the parameter id
 #' @param paramAxis "row" (parameter is a value in `paramCol`; summary/pop/ratio/
 #'   BE tables) or "column" (parameter is a column name; listings)
+#' @param format Logical. If `FALSE` (default) the non-excluded numeric columns
+#'   are rounded and returned **numeric** (original behaviour, for mid-pipeline
+#'   use). If `TRUE` they are rounded and rendered as **character** display
+#'   strings via [.formatRounded()] - use only at the display boundary.
+#' @param trailingZeros Logical, passed to [.formatRounded()] when
+#'   `format = TRUE` (ignored otherwise). `TRUE` (default) pads each value to the
+#'   precision its `digits`/`method` imply; `FALSE` shows the minimal form.
 #'
-#' @returns the rounded data frame, row order preserved
+#' @returns the data frame with the non-excluded numeric columns rounded, row
+#'   order preserved. Those columns are numeric when `format = FALSE` and
+#'   character when `format = TRUE`.
 #' @noRd
-.applyRounding <- function(df, digits, method, exclude = character(0),
-													 overrides = NULL, paramCol = NULL,
-													 paramAxis = c("row", "column")) {
+.applyRounding <- function(df, digits, method,
+													 exclude       = character(0),
+													 overrides     = NULL,
+													 paramCol      = NULL,
+													 paramAxis     = c("row", "column"),
+													 format        = FALSE,
+													 trailingZeros = TRUE) {
 
-	# No overrides -> identical to the original behaviour
+	# Round (numeric, default) or format (character) the non-excluded columns for a
+	# single (digits, method). In format mode all numeric columns return character
+	# (doubles via .formatRounded(); integer counts via as.character()), so value
+	# columns never mix types.
+	.apply <- function(d, digits, method, exclude) {
+		if (!isTRUE(format)) {
+			return(.round_num(d, digits = digits, exclude = exclude,
+												rounding_method = method))
+		}
+		dplyr::mutate(d, dplyr::across(
+			tidyselect::where(is.numeric) & !dplyr::any_of(exclude),
+			.fns = ~ if (is.double(.x)) {
+				.formatRounded(.x, digits = digits, method = method, trailingZeros = trailingZeros)
+			} else {
+				as.character(.x)
+			}))
+	}
+	# No overrides -> single global pass.
 	if (is.null(overrides) || !nrow(overrides)) {
-		return(.round_num(df, digits = digits, exclude = exclude,
-											rounding_method = method))
+		return(.apply(df, digits = digits, method = method, exclude = exclude))
 	}
 	paramAxis <- match.arg(paramAxis)
 
 	if (paramAxis == "column") {
-		# Parameters are columns: round everything globally EXCEPT the overridden
-		# columns, then round each overridden column with its own config.
+		# Parameters are columns: process everything globally EXCEPT the overridden
+		# columns, then each overridden column with its own config.
 		over_cols <- intersect(overrides$parameter, names(df))
-		df <- .round_num(df, digits = digits,
-										 exclude = union(exclude, over_cols),
-										 rounding_method = method)
+		df <- .apply(df, digits = digits, method = method,
+								 exclude = union(exclude, over_cols))
 		for (col in over_cols) {
 			cfg <- overrides[overrides$parameter == col, , drop = FALSE][1, ]
-			df[[col]] <- .round_num(df[[col]], digits = cfg$digits,
-															rounding_method = cfg$method)
+			if (isTRUE(format)) {
+				df[[col]] <- .formatRounded(df[[col]], digits = cfg$digits,
+																		method = cfg$method, trailingZeros = trailingZeros)
+			} else {
+				df[[col]] <- .round_num(df[[col]], digits = cfg$digits,
+																rounding_method = cfg$method)
+			}
 		}
 		return(df)
 	}
 
 	# paramAxis == "row": parameter identity lives in a key column.
 	if (is.null(paramCol) || !paramCol %in% names(df)) {
-		return(.round_num(df, digits = digits, exclude = exclude,
-											rounding_method = method))
+		return(.apply(df, digits = digits, method = method, exclude = exclude))
 	}
 	df$.orig_order <- seq_len(nrow(df))
+	# Protect the ordering key in both modes: in format mode it must NOT become a
+	# character, or order() below would sort it lexicographically (1,10,11,...,2).
+	excl     <- union(exclude, ".orig_order")
 	is_over  <- df[[paramCol]] %in% overrides$parameter
 
 	glob_rows <- df[!is_over, , drop = FALSE]
 	if (nrow(glob_rows)) {
-		glob_rows <- .round_num(glob_rows, digits = digits, exclude = exclude,
-														rounding_method = method)
+		glob_rows <- .apply(glob_rows, digits = digits, method = method, exclude = excl)
 	}
 	over_rows <- df[is_over, , drop = FALSE]
 	if (nrow(over_rows)) {
 		parts <- lapply(split(over_rows, over_rows[[paramCol]]), function(g) {
 			cfg <- overrides[overrides$parameter == g[[paramCol]][1], , drop = FALSE][1, ]
-			.round_num(g, digits = cfg$digits, exclude = exclude,
-								 rounding_method = cfg$method)
+			.apply(g, digits = cfg$digits, method = cfg$method, exclude = excl)
 		})
 		over_rows <- do.call(rbind, parts)
 	}
@@ -467,8 +601,8 @@ utils::globalVariables(c("."))
 		"geoCV"               = "Geometric\nCV (%)",
 		"GeomCV"              = "Geometric\nMean (CV %)",
 		"GeomSD"              = "Geometric\nMean (SD)",
-		"MeanSD"              = "Arithmetric\nMean (SD)",
-		"MeanCV"              = "Arithmetric\nMean (CV %)",
+		"MeanSD"              = "Arithmetic\nMean (SD)",
+		"MeanCV"              = "Arithmetic\nMean (CV %)",
 		"harmMean"            = "Harmonic\nMean",
 		"P05"                 = "5th Percentile",
 		"P95"                 = "95th Percentile",
