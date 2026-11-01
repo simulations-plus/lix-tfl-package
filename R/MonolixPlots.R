@@ -1165,8 +1165,8 @@ plotAbsIWRESScatterPlot <- function(
 		empPercentiles   = FALSE,
 		predPercentiles  = FALSE,
 		predInterval     = FALSE,
-		outlierDots      = TRUE,
-		outlierAreas     = TRUE,
+		outlierDots      = FALSE,
+		outlierAreas     = FALSE,
 		spline           = FALSE,
 		binLimits        = FALSE,
 		linearInterpolation = TRUE,      # TRUE: interpolate bands between bins; FALSE: steps
@@ -1467,6 +1467,8 @@ plotAbsIWRESScatterPlot <- function(
 		theme(legend.position  = if (settings$legend) "bottom" else "none",
 					legend.box       = "vertical",     # stack the guides vertically
 					legend.direction = "vertical",     # stack keys within each guide
+					axis.line        = element_line(color = "black"),  # theme_minimal omits axes
+					axis.ticks       = element_line(color = "black"),
 					strip.placement  = "outside",      # xaxis strip sits below the axis
 					strip.background  = element_blank())
 
