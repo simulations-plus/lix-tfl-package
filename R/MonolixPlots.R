@@ -1,19 +1,25 @@
-#' Internal helper: Derive omega population-parameter name from an eta column
+#' Internal helper: Derive the variability-SD population-parameter name from an
+#' eta column
 #'
 #' Strips the leading "eta_" and, for simulated estimates with a specific
-#' variabilityLevel, the trailing "_<level>" suffix, then prepends "omega_".
+#' variabilityLevel, the trailing "_<level>" suffix, then prepends the
+#' variability-parameter prefix: "omega_" for the ID / combined level, or the
+#' IOV prefix ("gamma_", "gamma2_", ...) for an occasion level.
 #'
-#' @param param Single eta column name (e.g. "eta_V", "eta_Cl_ID")
+#' @param param Single eta column name (e.g. "eta_V", "eta_Cl_ID", "eta_V_OCC")
 #' @param settings List with indivEstimate and variabilityLevel
-#' @return Character scalar omega name (e.g. "omega_V")
+#' @param sd_prefix Variability-parameter prefix: "omega_" (default) for the
+#'   ID / combined level, or an IOV "gamma*_" prefix for an occasion level
+#'   (computed by the caller).
+#' @return Character scalar SD parameter name (e.g. "omega_V", "gamma_V")
 #' @keywords internal
-.omegaNameForEta <- function(param, settings) {
+.sdNameForEta <- function(param, settings, sd_prefix = "omega_") {
 	param_suffix <- sub("^eta_", "", param)
 	if (settings$indivEstimate == "simulated" && !is.null(settings$variabilityLevel)) {
 		suffix_pattern <- paste0("_", settings$variabilityLevel, "$")
 		param_suffix <- sub(suffix_pattern, "", param_suffix)
 	}
-	paste0("omega_", param_suffix)
+	paste0(sd_prefix, param_suffix)
 }
 
 #' Internal helper: Prepare QQ plot data for standardized random effects
@@ -29,6 +35,18 @@
 	available_levels <- lixoftConnectors::getVariabilityLevels()
 	occ_vars <- setdiff(available_levels, "ID")
 	has_occasions <- length(occ_vars) > 0
+
+	# Variability-parameter prefix used to standardize the random effects:
+	#   ID / combined level -> "omega_"
+	#   occasion level       -> IOV prefix "gamma_" (1st occasion level),
+	#                           "gamma2_" (2nd), ... matching .getIOVParameters().
+	sd_prefix <- "omega_"
+	if (settings$indivEstimate == "simulated" &&
+			!is.null(settings$variabilityLevel) &&
+			settings$variabilityLevel %in% occ_vars) {
+		occ_idx   <- match(settings$variabilityLevel, occ_vars)
+		sd_prefix <- if (occ_idx == 1L) "gamma_" else paste0("gamma", occ_idx, "_")
+	}
 
 	#-----------------------------------------------------------------------------
 	# Retrieve random effects based on indivEstimate type
@@ -192,16 +210,16 @@
 	# Skip parameters whose omega is absent (no between-subject variability on
 	# that parameter). Keeps the plot useful for models where only a subset of
 	# parameters has random effects.
-	omega_names <- vapply(parameters, .omegaNameForEta, character(1),
-												settings = settings)
-	has_omega <- omega_names %in% names(pop_params) &
-		!is.na(pop_params[omega_names])
-	if (any(!has_omega)) {
-		skipped <- sub("^eta_", "", parameters[!has_omega])
+	sd_names <- vapply(parameters, .sdNameForEta, character(1),
+										 settings = settings, sd_prefix = sd_prefix)
+	has_sd <- sd_names %in% names(pop_params) &
+		!is.na(pop_params[sd_names])
+	if (any(!has_sd)) {
+		skipped <- sub("^eta_", "", parameters[!has_sd])
 		message(sprintf(
 			"QQ plot unavailable for parameter(s) without random effects: %s.",
 			paste(skipped, collapse = ", ")))
-		parameters <- parameters[has_omega]
+		parameters <- parameters[has_sd]
 	}
 	if (length(parameters) == 0) {
 		stop("No random effects with an estimated omega were found; nothing to plot.")
@@ -225,8 +243,10 @@
 	# Build data list (one data frame per parameter x split group)
 	plot_data_list <- lapply(parameters, function(param) {
 
-		omega  <- pop_params[.omegaNameForEta(param, settings)]
-		std_re <- rand_eff_df[[param]] / sqrt(omega)
+		# omega_*/gamma_* are standard deviations (models declare `sd=omega_*`), so
+		# the standardized random effect is eta / SD (not eta / sqrt(SD)).
+		sd_val <- pop_params[.sdNameForEta(param, settings, sd_prefix)]
+		std_re <- rand_eff_df[[param]] / sd_val
 
 		# Compute QQ statistics per group (split or color when mergedSplits)
 		per_group <- lapply(qq_group_levels, function(g) {
@@ -284,12 +304,22 @@
 #' @param parameters Character vector of base parameter names (e.g., "ka", "Cl").
 #'   If NULL, all available parameters are used.
 #' @param settings List of plot settings:
-#'   - indivEstimate: "mean" (default), "mode", or "simulated"
+#'   - indivEstimate: which individual random-effect estimates to use:
+#'     `"mean"` (default) or `"mode"` (conditional-distribution EBEs), or
+#'     `"simulated"` (draws from the conditional distribution). Only
+#'     `"simulated"` exposes per-level (ID / occasion) random effects; `"mean"`
+#'     and `"mode"` provide only the combined ID + occasion random effects.
 #'   - identityLine: logical, show identity line (default TRUE)
 #'   - confidenceInterval: logical, show CI band (default TRUE)
 #'   - level: CI level, e.g. 0.90 (default)
-#'   - variabilityLevel: In case of IOV, specifies which level to plot
-#'     (default NULL = ID + Occasions)
+#'   - variabilityLevel: for models with inter-occasion variability (IOV),
+#'     selects which variability level to plot. Only used when
+#'     `indivEstimate = "simulated"` (otherwise ignored with a warning, since
+#'     mean/mode give only the combined level). Valid values are `"ID"` or an
+#'     occasion-level name as returned by
+#'     `lixoftConnectors::getVariabilityLevels()` (e.g. `"OCC"`); run that
+#'     function on the loaded project to discover the available names.
+#'     `NULL` (default) plots the combined ID + occasion random effects.
 #'   - footnote: logical, add a footnote below the plot (and legend) with the
 #'     Monolix project directory and R script path, styled like the table
 #'     footers (small, italic, left-aligned) (default FALSE)
