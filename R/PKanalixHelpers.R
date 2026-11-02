@@ -57,11 +57,11 @@
 #'   `abs((ActualTime - NominalTime) / NominalTime) * 100` exceeds this threshold
 #'   are excluded from summary statistics. Only applies when `useNominalTime = TRUE`.
 #'   Observations at `NominalTime = 0` are always retained. Individual data (when
-#'   `includeId = TRUE`) is not affected by this filter. When observations are
+#'   `includeIds = TRUE`) is not affected by this filter. When observations are
 #'   excluded, attributes are attached to the output for footnote generation:
 #'   `timeDeviationFiltered`, `timeDeviationThreshold`, and `timeDeviationExcluded`.
 #'
-#' @param includeId Logical. If `TRUE`, adds individual subject IDs and their
+#' @param includeIds Logical. If `TRUE`, adds individual subject IDs and their
 #'   concentration values at each time point below the summary statistics. When
 #'   stratified by splitCovariates, individual IDs are grouped by their covariate values.
 #'   Default is `FALSE`. Only applicable when `stratifyColumns = FALSE`.
@@ -106,7 +106,7 @@
 #'   outputs: concentration statistic values become placeholders (e.g.
 #'   `"xx.xx"`), and `splitCovariates` values become generic labels
 #'   (`"Category 1"`, ...). The time column/headers and `Statistic`/`Section`
-#'   labels are kept, except that with `includeId = TRUE` the individual
+#'   labels are kept, except that with `includeIds = TRUE` the individual
 #'   subject IDs listed under `Statistic` are relabeled (`"id1"`, `"id2"`,
 #'   ...), since those are real identifiers. Default `FALSE`.
 #'
@@ -146,7 +146,7 @@
 #'
 #' # With individual concentrations included
 #' # tableNCAConcentration(
-#' #   includeId = TRUE,
+#' #   includeIds = TRUE,
 #' #   metrics = c("mean", "SD"),
 #' #   useWideFormat = FALSE
 #' # )
@@ -160,7 +160,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 																	metrics          = NULL,
 																	useWideFormat    = TRUE,
 																	maxTimeDeviation = NULL,
-																	includeId        = FALSE,
+																	includeIds        = FALSE,
 																	filterCovariates = NULL,
 																	filterIds        = NULL,
 																	roundDigits      = 3,
@@ -200,15 +200,15 @@ tableNCAConcentration <- function(projectFile      = NULL,
 		message("stratifyColumns = TRUE requires long format, but useWideFormat = TRUE was set; ignoring stratifyColumns. To stratify, set useWideFormat = FALSE.")
 		stratifyColumns <- FALSE
 	}
-	# Validate combination of includeId and useWideFormat setting
-	if (includeId && !useWideFormat) {
-		warning("includeId = TRUE only works with useWideFormat = TRUE. Setting includeId to FALSE.")
-		includeId <- FALSE
+	# Validate combination of includeIds and useWideFormat setting
+	if (includeIds && !useWideFormat) {
+		warning("includeIds = TRUE only works with useWideFormat = TRUE. Setting includeIds to FALSE.")
+		includeIds <- FALSE
 	}
-	# Validate includeId and stratifyColumns setting
-	if (includeId && stratifyColumns) {
-		warning("includeId = TRUE is not compatible with stratifyColumns = TRUE. Setting includeId to FALSE.")
-		includeId <- FALSE
+	# Validate includeIds and stratifyColumns setting
+	if (includeIds && stratifyColumns) {
+		warning("includeIds = TRUE is not compatible with stratifyColumns = TRUE. Setting includeIds to FALSE.")
+		includeIds <- FALSE
 	}
 
 	# ==========================================================================
@@ -412,7 +412,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			# ----------------------------------------------------------------------
 			# Add individual IDs if requested
 			# ----------------------------------------------------------------------
-			if (includeId) {
+			if (includeIds) {
 				final_df <- .addIndividuals(
 					summary_stats  = final_df,
 					splitCovariates     = splitCovariates,
@@ -546,9 +546,9 @@ tableNCAConcentration <- function(projectFile      = NULL,
 
 	# ==========================================================================
 	# SET ATTRIBUTES for style_tfl --> to identify NCA concentration table with sections
-	if (includeId && "Section" %in% names(final_df)) {
+	if (includeIds && "Section" %in% names(final_df)) {
 		attr(final_df, "table_type") <- "nca_concentration"
-		attr(final_df, "format")     <- "long"  # Always long when includeId=TRUE
+		attr(final_df, "format")     <- "long"  # Always long when includeIds=TRUE
 	}
 	attr(final_df, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(final_df, "r_source")       <- .getRScriptPath()
@@ -600,7 +600,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   "vertical" table where \code{Statistic} forms the first column and the
 #'   parameters form the subsequent columns (useful for reporting).
 #'
-#' @param includeId Logical. If `TRUE` and `useWideFormat = FALSE`, adds individual
+#' @param includeIds Logical. If `TRUE` and `useWideFormat = FALSE`, adds individual
 #'   subject IDs and their parameter values below the summary statistics in the
 #'   "Statistic" column. When stratified by splitCovariates, individual IDs are grouped
 #'   by their covariate values and listed after the corresponding summary metrics.
@@ -667,12 +667,12 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #'   outputs: metric values become placeholders (e.g. `"xx.xx"`), and
 #'   `splitCovariates` values become generic labels (`"Category 1"`, ...). The
 #'   parameter name and `Statistic`/`Section` labels are kept, except that with
-#'   `includeId = TRUE` the individual subject IDs listed under `Statistic`
+#'   `includeIds = TRUE` the individual subject IDs listed under `Statistic`
 #'   are relabeled (`"id1"`, `"id2"`, ...), since those are real identifiers.
 #'   Default `FALSE`.
 #'
 #' @return A data frame combining standard NCA statistics with additional descriptive statistics
-#'         (Q1, Q3, median, max) for the specified parameters. If `includeId = TRUE`,
+#'         (Q1, Q3, median, max) for the specified parameters. If `includeIds = TRUE`,
 #'         also includes individual parameter values for each subject.
 #'
 #' @examples
@@ -690,7 +690,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #' # Vertical layout with individual IDs included
 #' # tableNCAParameters(
 #' #   useWideFormat = FALSE,
-#' #   includeId = TRUE,
+#' #   includeIds = TRUE,
 #' #   selectParameters = c("Cmax", "AUClast", "Lambda_z")
 #' # )
 #'
@@ -698,7 +698,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 #' # tableNCAParameters(
 #' #   splitCovariates = "TREAT",
 #' #   useWideFormat = FALSE,
-#' #   includeId = TRUE
+#' #   includeIds = TRUE
 #' # )
 #'
 #' @export
@@ -709,7 +709,7 @@ tableNCAParameters <- function(projectFile          = NULL,
 															 selectParameters     = NULL,
 															 metrics              = NULL,
 															 useWideFormat        = TRUE,
-															 includeId            = FALSE,
+															 includeIds            = FALSE,
 															 filterCovariates     = NULL,
 															 filterIds            = NULL,
 															 roundDigits          = 3,
@@ -746,13 +746,13 @@ tableNCAParameters <- function(projectFile          = NULL,
 		message("stratifyColumns = TRUE requires long format, but useWideFormat = TRUE was set; ignoring stratifyColumns. To stratify, set useWideFormat = FALSE.")
 		stratifyColumns <- FALSE
 	}
-	if (includeId && useWideFormat) {
-		warning("includeId = TRUE only works with useWideFormat = FALSE. Setting includeId to FALSE.")
-		includeId <- FALSE
+	if (includeIds && useWideFormat) {
+		warning("includeIds = TRUE only works with useWideFormat = FALSE. Setting includeIds to FALSE.")
+		includeIds <- FALSE
 	}
-	if (includeId && stratifyColumns) {
-		warning("includeId = TRUE is not compatible with stratifyColumns = TRUE. Setting includeId to FALSE.")
-		includeId <- FALSE
+	if (includeIds && stratifyColumns) {
+		warning("includeIds = TRUE is not compatible with stratifyColumns = TRUE. Setting includeIds to FALSE.")
+		includeIds <- FALSE
 	}
 
 	# Normalize custom alias/unit mappings
@@ -956,7 +956,7 @@ tableNCAParameters <- function(projectFile          = NULL,
 	# ==========================================================================
 	# ADD INDIVIDUAL IDs
 
-	if (!useWideFormat && includeId) {
+	if (!useWideFormat && includeIds) {
 		summary_stats <- .addIndividuals(
 			summary_stats = summary_stats,
 			splitCovariates    = splitCovariates,
@@ -1031,7 +1031,7 @@ tableNCAParameters <- function(projectFile          = NULL,
 			splitCovariate_labels = splitCovariateLabels)
 	}
 
-	if (includeId && "Section" %in% names(summary_stats)) {
+	if (includeIds && "Section" %in% names(summary_stats)) {
 		attr(summary_stats, "table_type") <- "nca_parameters"
 		attr(summary_stats, "format")     <- "long"
 	}
@@ -1074,7 +1074,7 @@ tableNCAParameters <- function(projectFile          = NULL,
 #' @param metrics Character vector specifying which summary statistics to include in the
 #'   output table. If `NULL` (default), all available metrics are included.
 #' @param useWideFormat logical; if TRUE (default) results are wide; if FALSE, results are pivoted to long format.
-#' @param includeId Logical. If `TRUE` and `useWideFormat = FALSE`, adds individual
+#' @param includeIds Logical. If `TRUE` and `useWideFormat = FALSE`, adds individual
 #'   subject ratio values below the summary statistics in the "Statistic" column.
 #'   Default is `FALSE`. Only works when `useWideFormat = FALSE` and
 #'   `stratifyColumns = FALSE`.
@@ -1118,7 +1118,7 @@ tableNCAParameters <- function(projectFile          = NULL,
 #'   outputs: metric values become placeholders (e.g. `"xx.xx"`), and
 #'   `splitCovariates` values become generic labels (`"Category 1"`, ...). The
 #'   parameter name and `Statistic`/`Section` labels are kept, except that with
-#'   `includeId = TRUE` the individual subject IDs listed under `Statistic`
+#'   `includeIds = TRUE` the individual subject IDs listed under `Statistic`
 #'   are relabeled (`"id1"`, `"id2"`, ...), since those are real identifiers.
 #'   Default `FALSE`.
 #'
@@ -1150,7 +1150,7 @@ tableNCARatios <- function(projectFile           = NULL,
 													 selectParameters      = NULL,
 													 metrics               = NULL,
 													 useWideFormat         = TRUE,
-													 includeId             = FALSE,
+													 includeIds             = FALSE,
 													 filterCovariates      = NULL,
 													 filterIds             = NULL,
 													 roundDigits           = 3,
@@ -1194,15 +1194,15 @@ tableNCARatios <- function(projectFile           = NULL,
 		message("stratifyColumns = TRUE requires long format, but useWideFormat = TRUE was set; ignoring stratifyColumns. To stratify, set useWideFormat = FALSE.")
 		stratifyColumns <- FALSE
 	}
-	# Validate combination of includeId and useWideFormat setting
-	if (includeId && useWideFormat) {
-		warning("includeId = TRUE only works with useWideFormat = FALSE. Setting includeId to FALSE.")
-		includeId <- FALSE
+	# Validate combination of includeIds and useWideFormat setting
+	if (includeIds && useWideFormat) {
+		warning("includeIds = TRUE only works with useWideFormat = FALSE. Setting includeIds to FALSE.")
+		includeIds <- FALSE
 	}
-	# Validate includeId and stratifyColumns setting
-	if (includeId && stratifyColumns) {
-		warning("includeId = TRUE is not compatible with stratifyColumns = TRUE. Setting includeId to FALSE.")
-		includeId <- FALSE
+	# Validate includeIds and stratifyColumns setting
+	if (includeIds && stratifyColumns) {
+		warning("includeIds = TRUE is not compatible with stratifyColumns = TRUE. Setting includeIds to FALSE.")
+		includeIds <- FALSE
 	}
 
 	ratio_info <- lixoftConnectors::getNCARatios()
@@ -1420,7 +1420,7 @@ tableNCARatios <- function(projectFile           = NULL,
 	# ==========================================================================
 	# ADD INDIVIDUAL IDs (if requested and useWideFormat = FALSE)
 
-	if (!useWideFormat && includeId && !stratifyColumns) {
+	if (!useWideFormat && includeIds && !stratifyColumns) {
 		summary_tbl <- .addIndividuals(
 			summary_stats   = summary_tbl,
 			splitCovariates = splitCovariates,
@@ -1512,9 +1512,9 @@ tableNCARatios <- function(projectFile           = NULL,
 	}
 
 	# SET ATTRIBUTES for style_tfl --> identify NCA ratio table with sections
-	if (includeId && "Section" %in% names(summary_tbl)) {
+	if (includeIds && "Section" %in% names(summary_tbl)) {
 		attr(summary_tbl, "table_type") <- "nca_ratio"
-		attr(summary_tbl, "format")     <- "long"  # Always long when includeId=TRUE
+		attr(summary_tbl, "format")     <- "long"  # Always long when includeIds=TRUE
 	}
 	attr(summary_tbl, "project_source") <- lixoftConnectors::getProjectSettings()$directory
 	attr(summary_tbl, "r_source")       <- .getRScriptPath()

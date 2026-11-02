@@ -2899,7 +2899,7 @@
 ##################################################################################
 #' Mask individual subject IDs within a Section-tagged summary table
 #'
-#' With `includeId = TRUE`, the "Statistic" column mixes metric names (SUMMARY
+#' With `includeIds = TRUE`, the "Statistic" column mixes metric names (SUMMARY
 #' rows) with real subject/composite IDs (INDIVIDUAL rows). This relabels only
 #' the individual-row IDs, mirroring the `id` case in `.mockDataListing()`.
 #'

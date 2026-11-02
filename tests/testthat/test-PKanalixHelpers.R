@@ -307,7 +307,7 @@ test_that("tableNCAConcentration maxTimeDeviation excludes observations and atta
 			projectFile      = pkx_project_complex,
 			metrics          = c("min", "MeanSD", "max"),
 			splitCovariates  = "ATRTNCA",
-			includeId        = TRUE,
+			includeIds        = TRUE,
 			maxTimeDeviation = 20,
 			filterCovariates = list(ATRTNCA = "A (DRG1 + DRG2)")),
 		"time deviation threshold")
@@ -322,7 +322,7 @@ test_that("tableNCAConcentration maxTimeDeviation excludes observations and atta
 	expect_s3_class(excluded, "data.frame")
 	expect_gte(nrow(excluded), 1)   # documented run excluded 1 observation
 
-	# includeId = TRUE (with useWideFormat = TRUE default) adds Section column
+	# includeIds = TRUE (with useWideFormat = TRUE default) adds Section column
 	expect_true("Section" %in% names(tb_conc))
 	expect_true(all(c("SUMMARY", "INDIVIDUAL") %in% tb_conc$Section))
 })
@@ -755,14 +755,14 @@ test_that("tableNCAParameters roundByParameter rejects invalid digits/method", {
 											 roundByParameter = c(Cmax = -1)))
 })
 
-test_that("tableNCAParameters roundByParameter applies per-parameter rounding to individual values (includeId)", {
+test_that("tableNCAParameters roundByParameter applies per-parameter rounding to individual values (includeIds)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	common <- list(
 		projectFile     = pkx_project_1,
 		useWideFormat   = FALSE,
 		splitCovariates = "TINFCAT",
-		includeId       = TRUE,
+		includeIds       = TRUE,
 		selectParameters = c("Cmax", "AUClast"),
 		metrics         = c("MeanSD", "GeomCV", "median"),
 		roundDigits     = 1,
@@ -787,7 +787,7 @@ test_that("tableNCAParameters roundByParameter applies per-parameter rounding to
 	expect_equal(ind_over$AUClast, ind_base$AUClast)
 })
 
-test_that("tableNCAParameters includeId individual values match independent per-parameter rounding", {
+test_that("tableNCAParameters includeIds individual values match independent per-parameter rounding", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Decisive check: each overridden individual cell equals the raw parameter value
@@ -801,7 +801,7 @@ test_that("tableNCAParameters includeId individual values match independent per-
 		projectFile      = pkx_project_1,
 		useWideFormat    = FALSE,
 		splitCovariates  = "TINFCAT",
-		includeId        = TRUE,
+		includeIds        = TRUE,
 		selectParameters = cfg$parameter,
 		metrics          = c("MeanSD", "median"),
 		roundDigits      = 1,
@@ -1159,17 +1159,17 @@ test_that("tableNCAParameters edge case: many parameters, many metrics", {
 })
 
 ################################################################################
-# tableNCAParameters with includeId feature
+# tableNCAParameters with includeIds feature
 
-test_that("tableNCAParameters with includeId basic (no covariates)", {
+test_that("tableNCAParameters with includeIds basic (no covariates)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	# Test basic includeId functionality without covariates
+	# Test basic includeIds functionality without covariates
 	table <- tableNCAParameters(
 		projectFile  = pkx_project_1,
 		useWideFormat   = FALSE,
 		selectParameters = c("Cmax", "AUClast", "Lambda_z"),
-		includeId   = TRUE,
+		includeIds   = TRUE,
 		prettyLabels = FALSE
 	)
 
@@ -1191,17 +1191,17 @@ test_that("tableNCAParameters with includeId basic (no covariates)", {
 	expect_true(has_ids, label = "Table should contain individual IDs in addition to summary statistics")
 })
 
-test_that("tableNCAParameters with includeId and single covariate", {
+test_that("tableNCAParameters with includeIds and single covariate", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	# Test includeId with stratification by single covariate
+	# Test includeIds with stratification by single covariate
 	table <- tableNCAParameters(
 		projectFile  = pkx_project_1,
 		useWideFormat   = FALSE,
 		splitCovariates   = "TINFCAT",
 		selectParameters = c("Cmax", "AUClast", "Lambda_z"),
 		metrics      = c("min", "MeanSD", "median", "GeomCV", "max"),
-		includeId   = TRUE,
+		includeIds   = TRUE,
 		prettyLabels = FALSE,
 		units        = FALSE,
 		aliases      = FALSE)
@@ -1222,17 +1222,17 @@ test_that("tableNCAParameters with includeId and single covariate", {
 	expect_true(has_metrics)
 })
 
-test_that("tableNCAParameters with includeId and multiple covariates", {
+test_that("tableNCAParameters with includeIds and multiple covariates", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	# Test includeId with multiple covariates
+	# Test includeIds with multiple covariates
 	table <- tableNCAParameters(
 		projectFile  = pkx_project_3,
 		useWideFormat = FALSE,
 		splitCovariates = c("DOSE_mg", "ROUTE"),
 		selectParameters = c("Cmax", "AUClast"),
 		metrics      = c("MeanSD", "GeomCV"),
-		includeId   = TRUE,
+		includeIds   = TRUE,
 		prettyLabels = FALSE)
 
 	# Verify structure
@@ -1247,15 +1247,15 @@ test_that("tableNCAParameters with includeId and multiple covariates", {
 	expect_gt(nrow(covariate_combos), 1)
 })
 
-test_that("tableNCAParameters with includeId and prettyLabels = TRUE", {
+test_that("tableNCAParameters with includeIds and prettyLabels = TRUE", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	# Test includeId with pretty labels enabled
+	# Test includeIds with pretty labels enabled
 	table <- tableNCAParameters(
 		projectFile  = pkx_project_1,
 		useWideFormat   = FALSE,
 		selectParameters = c("Cmax", "AUClast", "Lambda_z"),
-		includeId   = TRUE,
+		includeIds   = TRUE,
 		prettyLabels = TRUE,
 		units        = TRUE,
 		aliases      = TRUE
@@ -1272,26 +1272,26 @@ test_that("tableNCAParameters with includeId and prettyLabels = TRUE", {
 	# but table should still be valid
 })
 
-test_that("tableNCAParameters with includeId validation: useWideFormat = TRUE", {
+test_that("tableNCAParameters with includeIds validation: useWideFormat = TRUE", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	# Test that includeId = TRUE with useWideFormat = TRUE generates warning
+	# Test that includeIds = TRUE with useWideFormat = TRUE generates warning
 	expect_warning(
 		table <- tableNCAParameters(
 			projectFile      = pkx_project_1,
 			useWideFormat  = TRUE,  # This should trigger warning
 			selectParameters = c("Cmax"),
-			includeId       = TRUE),
-		"includeId = TRUE only works with useWideFormat = FALSE")
+			includeIds       = TRUE),
+		"includeIds = TRUE only works with useWideFormat = FALSE")
 
-	# Table should still be generated with includeId set to FALSE
+	# Table should still be generated with includeIds set to FALSE
 	expect_true(is.data.frame(table))
 })
 
-test_that("tableNCAParameters with includeId validation: stratifyColumns = TRUE", {
+test_that("tableNCAParameters with includeIds validation: stratifyColumns = TRUE", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	# Test that includeId = TRUE with stratifyColumns = TRUE generates warning
+	# Test that includeIds = TRUE with stratifyColumns = TRUE generates warning
 	expect_warning(
 		table <- tableNCAParameters(
 			projectFile      = pkx_project_1,
@@ -1299,22 +1299,22 @@ test_that("tableNCAParameters with includeId validation: stratifyColumns = TRUE"
 			stratifyColumns = TRUE,  # This should trigger warning
 			splitCovariates  = "TINFCAT",
 			selectParameters = c("Cmax"),
-			includeId       = TRUE),
-		"includeId = TRUE is not compatible with stratifyColumns = TRUE. Setting includeId to FALSE.")
+			includeIds       = TRUE),
+		"includeIds = TRUE is not compatible with stratifyColumns = TRUE. Setting includeIds to FALSE.")
 
-	# Table should still be generated with includeId set to FALSE
+	# Table should still be generated with includeIds set to FALSE
 	expect_true(is.data.frame(table))
 })
 
-test_that("tableNCAParameters with includeId = FALSE (default behavior)", {
+test_that("tableNCAParameters with includeIds = FALSE (default behavior)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	# Test that includeId = FALSE produces table without individual IDs
+	# Test that includeIds = FALSE produces table without individual IDs
 	table <- tableNCAParameters(
 		projectFile  = pkx_project_1,
 		useWideFormat   = FALSE,
 		selectParameters = c("Cmax", "AUClast"),
-		includeId   = FALSE,  # Explicitly FALSE
+		includeIds   = FALSE,  # Explicitly FALSE
 		prettyLabels = FALSE
 	)
 
@@ -1334,15 +1334,15 @@ test_that("tableNCAParameters with includeId = FALSE (default behavior)", {
 	                         paste(setdiff(statistic_values, summary_stats), collapse = ", ")))
 })
 
-test_that("tableNCAParameters with includeId and different rounding settings", {
+test_that("tableNCAParameters with includeIds and different rounding settings", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	# Test includeId with different rounding methods
+	# Test includeIds with different rounding methods
 	table_monolix <- tableNCAParameters(
 		projectFile = pkx_project_1,
 		useWideFormat  = FALSE,
 		selectParameters = c("Cmax"),
-		includeId  = TRUE,
+		includeIds  = TRUE,
 		roundDigits = 2,
 		roundMethod = "monolixSuiteRounding"
 	)
@@ -1351,7 +1351,7 @@ test_that("tableNCAParameters with includeId and different rounding settings", {
 		projectFile = pkx_project_1,
 		useWideFormat  = FALSE,
 		selectParameters = c("Cmax"),
-		includeId  = TRUE,
+		includeIds  = TRUE,
 		roundDigits = 2,
 		roundMethod = "significantFigures"
 	)
@@ -1360,7 +1360,7 @@ test_that("tableNCAParameters with includeId and different rounding settings", {
 		projectFile = pkx_project_1,
 		useWideFormat  = FALSE,
 		selectParameters = c("Cmax"),
-		includeId  = TRUE,
+		includeIds  = TRUE,
 		roundDigits = 2,
 		roundMethod = "significantFiguresPreserved"
 	)
@@ -1374,16 +1374,16 @@ test_that("tableNCAParameters with includeId and different rounding settings", {
 	expect_gt(nrow(table_signif_preserved), 0)
 })
 
-test_that("tableNCAParameters with includeId and specific metrics", {
+test_that("tableNCAParameters with includeIds and specific metrics", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	# Test includeId with specific metrics selected
+	# Test includeIds with specific metrics selected
 	table <- tableNCAParameters(
 		projectFile  = pkx_project_1,
 		useWideFormat   = FALSE,
 		selectParameters = c("Cmax", "AUClast"),
 		metrics      = c("median", "GeomCV", "max"),
-		includeId   = TRUE,
+		includeIds   = TRUE,
 		prettyLabels = FALSE
 	)
 
@@ -1399,7 +1399,7 @@ test_that("tableNCAParameters with includeId and specific metrics", {
 	expect_gt(length(unique(statistic_values)), 3)  # More than just the 3 metrics
 })
 
-test_that("tableNCAParameters with includeId comprehensive test", {
+test_that("tableNCAParameters with includeIds comprehensive test", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Comprehensive test with all compatible features
@@ -1409,7 +1409,7 @@ test_that("tableNCAParameters with includeId comprehensive test", {
 		selectParameters = c("Cmax", "AUClast", "Lambda_z"),
 		metrics      = c("min", "MeanSD", "median", "GeomCV", "max"),
 		useWideFormat   = FALSE,
-		includeId   = TRUE,
+		includeIds   = TRUE,
 		roundDigits  = 3,
 		roundMethod  = "monolixSuiteRounding",
 		units        = TRUE,
@@ -1425,16 +1425,16 @@ test_that("tableNCAParameters with includeId comprehensive test", {
 	expect_gt(ncol(table), 3)  # At least Statistic, covariate, and parameter columns
 })
 
-test_that("tableNCAParameters with includeId row count check", {
+test_that("tableNCAParameters with includeIds row count check", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	# Compare row counts: includeId = FALSE vs TRUE
+	# Compare row counts: includeIds = FALSE vs TRUE
 	table_no_ids <- tableNCAParameters(
 		projectFile  = pkx_project_1,
 		useWideFormat   = FALSE,
 		selectParameters = c("Cmax"),
 		metrics      = c("median", "GeomCV"),
-		includeId   = FALSE,
+		includeIds   = FALSE,
 		prettyLabels = FALSE
 	)
 
@@ -1443,19 +1443,19 @@ test_that("tableNCAParameters with includeId row count check", {
 		useWideFormat   = FALSE,
 		selectParameters = c("Cmax"),
 		metrics      = c("median", "GeomCV"),
-		includeId   = TRUE,
+		includeIds   = TRUE,
 		prettyLabels = FALSE
 	)
 
 	# Table with IDs should have more rows than without IDs
 	expect_gt(nrow(table_with_ids), nrow(table_no_ids),
-	          label = "Table with includeId=TRUE should have more rows than includeId=FALSE")
+	          label = "Table with includeIds=TRUE should have more rows than includeIds=FALSE")
 
 	# Both should have same number of columns
 	expect_equal(ncol(table_with_ids), ncol(table_no_ids)+1)
 })
 
-test_that("tableNCAParameters with includeId and numeric categorical covariate", {
+test_that("tableNCAParameters with includeIds and numeric categorical covariate", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with numeric-valued categorical covariate (tests sorting logic)
@@ -1465,7 +1465,7 @@ test_that("tableNCAParameters with includeId and numeric categorical covariate",
 		useWideFormat   = FALSE,
 		splitCovariates   = "DOSE_mg",
 		selectParameters = c("Cmax", "AUClast"),
-		includeId   = TRUE,
+		includeIds   = TRUE,
 		prettyLabels = FALSE
 	)
 
@@ -2879,7 +2879,7 @@ test_that("tableNCARatios rounding methods", {
 	expect_equal(nrow(table_monolix), nrow(table_none))
 })
 
-test_that("tableNCARatios roundByParameter applies per-parameter rounding to individual values (includeId)", {
+test_that("tableNCARatios roundByParameter applies per-parameter rounding to individual values (includeIds)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
@@ -2893,7 +2893,7 @@ test_that("tableNCARatios roundByParameter applies per-parameter rounding to ind
 		projectFile     = pkx_project_5,
 		useWideFormat   = FALSE,
 		splitCovariates = "SEQ",
-		includeId       = TRUE,
+		includeIds       = TRUE,
 		selectParameters = c(p_over, p_keep),
 		metrics         = c("MeanSD", "GeomCV", "median"),
 		roundDigits     = 1,
@@ -2917,7 +2917,7 @@ test_that("tableNCARatios roundByParameter applies per-parameter rounding to ind
 	expect_equal(ind_over[[p_keep]], ind_base[[p_keep]])
 })
 
-test_that("tableNCARatios includeId individual values match independent per-parameter rounding", {
+test_that("tableNCARatios includeIds individual values match independent per-parameter rounding", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
@@ -2936,7 +2936,7 @@ test_that("tableNCARatios includeId individual values match independent per-para
 		projectFile      = pkx_project_5,
 		useWideFormat    = FALSE,
 		splitCovariates  = "SEQ",
-		includeId        = TRUE,
+		includeIds        = TRUE,
 		selectParameters = cfg$parameter,
 		metrics          = c("MeanSD", "median"),
 		roundDigits      = 1,
@@ -3108,9 +3108,9 @@ test_that("tableNCARatios edge case: single parameter, single metric", {
 })
 
 ################################################################################
-# tableNCARatios with includeId feature
+# tableNCARatios with includeIds feature
 
-test_that("tableNCARatios with includeId basic (no covariates)", {
+test_that("tableNCARatios with includeIds basic (no covariates)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
@@ -3121,12 +3121,12 @@ test_that("tableNCARatios with includeId basic (no covariates)", {
 	if (length(available_ratios) >= 2) {
 		selected_ratios <- available_ratios[1:2]
 
-		# Test basic includeId functionality without covariates
+		# Test basic includeIds functionality without covariates
 		table <- tableNCARatios(
 			projectFile     = pkx_project_5,
 			useWideFormat = FALSE,
 			selectParameters = selected_ratios,
-			includeId      = TRUE,
+			includeIds      = TRUE,
 			prettyLabels    = FALSE
 		)
 
@@ -3148,7 +3148,7 @@ test_that("tableNCARatios with includeId basic (no covariates)", {
 	}
 })
 
-test_that("tableNCARatios with includeId and single covariate", {
+test_that("tableNCARatios with includeIds and single covariate", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
@@ -3159,14 +3159,14 @@ test_that("tableNCARatios with includeId and single covariate", {
 	if (length(available_ratios) >= 2) {
 		selected_ratios <- available_ratios[1:2]
 
-		# Test includeId with stratification by single covariate
+		# Test includeIds with stratification by single covariate
 		table <- tableNCARatios(
 			projectFile     = pkx_project_5,
 			useWideFormat = FALSE,
 			splitCovariates = "SEQ",
 			selectParameters = selected_ratios,
 			metrics         = c("min", "MeanSD", "median", "GeomCV", "max"),
-			includeId      = TRUE,
+			includeIds      = TRUE,
 			prettyLabels    = FALSE
 		)
 
@@ -3178,45 +3178,45 @@ test_that("tableNCARatios with includeId and single covariate", {
 	}
 })
 
-test_that("tableNCARatios with includeId validation: useWideFormat = TRUE", {
+test_that("tableNCARatios with includeIds validation: useWideFormat = TRUE", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
-	# Test that includeId = TRUE with useWideFormat = TRUE generates warning
+	# Test that includeIds = TRUE with useWideFormat = TRUE generates warning
 	expect_warning(
 		table <- tableNCARatios(
 			projectFile     = pkx_project_5,
 			useWideFormat = TRUE,  # This should trigger warning
-			includeId      = TRUE
+			includeIds      = TRUE
 		),
-		"includeId = TRUE only works with useWideFormat = FALSE"
+		"includeIds = TRUE only works with useWideFormat = FALSE"
 	)
 
-	# Table should still be generated with includeId set to FALSE
+	# Table should still be generated with includeIds set to FALSE
 	expect_true(is.data.frame(table))
 })
 
-test_that("tableNCARatios with includeId validation: stratifyColumns = TRUE", {
+test_that("tableNCARatios with includeIds validation: stratifyColumns = TRUE", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
-	# Test that includeId = TRUE with stratifyColumns = TRUE generates warning
+	# Test that includeIds = TRUE with stratifyColumns = TRUE generates warning
 	expect_warning(
 		table <- tableNCARatios(
 			projectFile      = pkx_project_5,
 			useWideFormat  = FALSE,
 			stratifyColumns = TRUE,  # This should trigger warning
 			splitCovariates  = "SEQ",
-			includeId       = TRUE
+			includeIds       = TRUE
 		),
-		"includeId = TRUE is not compatible with stratifyColumns = TRUE"
+		"includeIds = TRUE is not compatible with stratifyColumns = TRUE"
 	)
 
-	# Table should still be generated with includeId set to FALSE
+	# Table should still be generated with includeIds set to FALSE
 	expect_true(is.data.frame(table))
 })
 
-test_that("tableNCARatios with includeId = FALSE (default behavior)", {
+test_that("tableNCARatios with includeIds = FALSE (default behavior)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
@@ -3227,12 +3227,12 @@ test_that("tableNCARatios with includeId = FALSE (default behavior)", {
 	if (length(available_ratios) >= 1) {
 		selected_ratio <- available_ratios[1]
 
-		# Test that includeId = FALSE produces table without individual IDs
+		# Test that includeIds = FALSE produces table without individual IDs
 		table <- tableNCARatios(
 			projectFile     = pkx_project_5,
 			useWideFormat = FALSE,
 			selectParameters = selected_ratio,
-			includeId      = FALSE,  # Explicitly FALSE
+			includeIds      = FALSE,  # Explicitly FALSE
 			prettyLabels    = FALSE
 		)
 
@@ -3253,7 +3253,7 @@ test_that("tableNCARatios with includeId = FALSE (default behavior)", {
 	}
 })
 
-test_that("tableNCARatios with includeId row count check", {
+test_that("tableNCARatios with includeIds row count check", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
@@ -3264,13 +3264,13 @@ test_that("tableNCARatios with includeId row count check", {
 	if (length(available_ratios) >= 1) {
 		selected_ratio <- available_ratios[1]
 
-		# Compare row counts: includeId = FALSE vs TRUE
+		# Compare row counts: includeIds = FALSE vs TRUE
 		table_no_ids <- tableNCARatios(
 			projectFile     = pkx_project_5,
 			useWideFormat = FALSE,
 			selectParameters = selected_ratio,
 			metrics         = c("median", "GeomCV"),
-			includeId      = FALSE,
+			includeIds      = FALSE,
 			prettyLabels    = FALSE
 		)
 
@@ -3279,13 +3279,13 @@ test_that("tableNCARatios with includeId row count check", {
 			useWideFormat = FALSE,
 			selectParameters = selected_ratio,
 			metrics         = c("median", "GeomCV"),
-			includeId      = TRUE,
+			includeIds      = TRUE,
 			prettyLabels    = FALSE
 		)
 
 		# Table with IDs should have more rows than without IDs
 		expect_gt(nrow(table_with_ids), nrow(table_no_ids),
-		          label = "Table with includeId=TRUE should have more rows than includeId=FALSE")
+		          label = "Table with includeIds=TRUE should have more rows than includeIds=FALSE")
 
 		# Both should have same number of columns
 		expect_equal(ncol(table_with_ids), ncol(table_no_ids) + 1)  # Section column added
@@ -3310,7 +3310,7 @@ test_that("tableNCARatios all arguments combined", {
 			selectParameters = selected_ratios,
 			metrics          = c("min", "MeanSD", "median", "GeomCV", "max"),
 			useWideFormat  = FALSE,
-			includeId       = TRUE,
+			includeIds       = TRUE,
 			roundDigits      = 4,
 			roundMethod      = "significantFigures",
 			prettyLabels     = TRUE
@@ -3436,7 +3436,7 @@ test_that("tableNCAConcentration with combined filterCovariates and filterIds", 
 	}
 })
 
-test_that("tableNCAConcentration with filterCovariates and includeId", {
+test_that("tableNCAConcentration with filterCovariates and includeIds", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
@@ -3447,14 +3447,14 @@ test_that("tableNCAConcentration with filterCovariates and includeId", {
 	if (length(tinfcat_values) >= 2) {
 		filter_value <- tinfcat_values[1]
 
-		# Test with covariate filter and includeId
-		# Note: includeId = TRUE requires useWideFormat = TRUE for tableNCAConcentration
+		# Test with covariate filter and includeIds
+		# Note: includeIds = TRUE requires useWideFormat = TRUE for tableNCAConcentration
 		table <- tableNCAConcentration(
 			projectFile      = pkx_project_1,
 			useWideFormat  = TRUE,
 			splitCovariates  = "TINFCAT",
 			filterCovariates = list(TINFCAT = filter_value),
-			includeId       = TRUE
+			includeIds       = TRUE
 		)
 
 		expect_true(is.data.frame(table))
@@ -3552,7 +3552,7 @@ test_that("tableNCAParameters with filterIds", {
 	}
 })
 
-test_that("tableNCAParameters with filterCovariates and includeId", {
+test_that("tableNCAParameters with filterCovariates and includeIds", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
@@ -3563,14 +3563,14 @@ test_that("tableNCAParameters with filterCovariates and includeId", {
 	if (length(tinfcat_values) >= 2) {
 		filter_value <- tinfcat_values[1]
 
-		# Test with covariate filter and includeId
+		# Test with covariate filter and includeIds
 		table <- tableNCAParameters(
 			projectFile      = pkx_project_1,
 			useWideFormat  = FALSE,
 			splitCovariates  = "TINFCAT",
 			selectParameters = c("Cmax"),
 			filterCovariates = list(TINFCAT = filter_value),
-			includeId       = TRUE,
+			includeIds       = TRUE,
 			prettyLabels     = FALSE)
 
 		expect_true(is.data.frame(table))
@@ -3713,7 +3713,7 @@ test_that("tableNCARatios with combined filterCovariates and filterIds", {
 	}
 })
 
-test_that("tableNCARatios with filterCovariates and includeId", {
+test_that("tableNCARatios with filterCovariates and includeIds", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
@@ -3724,13 +3724,13 @@ test_that("tableNCARatios with filterCovariates and includeId", {
 	if (length(seq_values) >= 2) {
 		filter_value <- seq_values[1]
 
-		# Test with covariate filter and includeId
+		# Test with covariate filter and includeIds
 		table <- tableNCARatios(
 			projectFile      = pkx_project_5,
 			useWideFormat  = FALSE,
 			splitCovariates  = "SEQ",
 			filterCovariates = list(SEQ = filter_value),
-			includeId       = TRUE
+			includeIds       = TRUE
 		)
 
 		expect_true(is.data.frame(table))
@@ -4072,43 +4072,43 @@ test_that("filter with multiple covariate values", {
 
 ################################################################################
 ################################################################################
-# Tests for includeId in tableNCAConcentration --------------------------------
+# Tests for includeIds in tableNCAConcentration --------------------------------
 
-test_that("tableNCAConcentration with includeId basic (no covariates)", {
+test_that("tableNCAConcentration with includeIds basic (no covariates)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
-	# Test basic includeId functionality without covariates
-	# Note: includeId = TRUE requires useWideFormat = TRUE for tableNCAConcentration
+	# Test basic includeIds functionality without covariates
+	# Note: includeIds = TRUE requires useWideFormat = TRUE for tableNCAConcentration
 	table <- tableNCAConcentration(
 		projectFile     = pkx_project_1,
 		useWideFormat = TRUE,
-		includeId      = TRUE,
+		includeIds      = TRUE,
 		prettyLabels    = FALSE
 	)
 
 	# Verify structure
 	expect_true(is.data.frame(table))
 	expect_true("Statistic" %in% names(table))
-	expect_true("Section" %in% names(table))  # Section column added when includeId = TRUE
+	expect_true("Section" %in% names(table))  # Section column added when includeIds = TRUE
 	expect_gt(nrow(table), 0)
 
 	# Verify that table contains both SUMMARY and INDIVIDUAL sections
 	expect_true(all(c("SUMMARY", "INDIVIDUAL") %in% table$Section))
 })
 
-test_that("tableNCAConcentration with includeId and single covariate", {
+test_that("tableNCAConcentration with includeIds and single covariate", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
-	# Test includeId with stratification by single covariate
-	# Note: includeId = TRUE requires useWideFormat = TRUE for tableNCAConcentration
+	# Test includeIds with stratification by single covariate
+	# Note: includeIds = TRUE requires useWideFormat = TRUE for tableNCAConcentration
 	table <- tableNCAConcentration(
 		projectFile     = pkx_project_1,
 		useWideFormat = TRUE,
 		splitCovariates = "TINFCAT",
 		metrics         = c("min", "MeanSD", "median", "GeomCV", "max"),
-		includeId      = TRUE,
+		includeIds      = TRUE,
 		prettyLabels    = FALSE
 	)
 
@@ -4120,57 +4120,57 @@ test_that("tableNCAConcentration with includeId and single covariate", {
 	expect_gt(nrow(table), 0)
 })
 
-test_that("tableNCAConcentration with includeId validation: useWideFormat = FALSE", {
+test_that("tableNCAConcentration with includeIds validation: useWideFormat = FALSE", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
-	# Test that includeId = TRUE with useWideFormat = TRUE generates warning
+	# Test that includeIds = TRUE with useWideFormat = TRUE generates warning
 	expect_warning(
 		table <- tableNCAConcentration(
 			projectFile     = pkx_project_1,
 			useWideFormat = FALSE,  # This should trigger warning
-			includeId      = TRUE),
-		"includeId = TRUE only works with useWideFormat = TRUE")
+			includeIds      = TRUE),
+		"includeIds = TRUE only works with useWideFormat = TRUE")
 
-	# Table should still be generated with includeId set to FALSE
+	# Table should still be generated with includeIds set to FALSE
 	expect_true(is.data.frame(table))
 })
 
-test_that("tableNCAConcentration with includeId validation: stratifyColumns = TRUE", {
+test_that("tableNCAConcentration with includeIds validation: stratifyColumns = TRUE", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Test that conflicting settings (useWideFormat=TRUE + stratifyColumns=TRUE)
 	# emits an informational message and falls back to valid settings
 	# Note: stratifyColumns=TRUE requires useWideFormat=FALSE, so stratifyColumns
-	# gets disabled first, before the includeId+stratifyColumns check can fire
+	# gets disabled first, before the includeIds+stratifyColumns check can fire
 	expect_message(
 		table <- tableNCAConcentration(
 			projectFile      = pkx_project_1,
 			useWideFormat  = TRUE,
 			stratifyColumns = TRUE,
 			splitCovariates  = "TINFCAT",
-			includeId       = TRUE
+			includeIds       = TRUE
 		),
 		"stratifyColumns = TRUE requires long format"
 	)
 
 	# Table should still be generated with fallback settings
 	expect_true(is.data.frame(table))
-	# With fallback, includeId should work (Section column present)
+	# With fallback, includeIds should work (Section column present)
 	expect_true("Section" %in% names(table))
 })
 
-test_that("tableNCAConcentration with includeId = FALSE (default behavior)", {
+test_that("tableNCAConcentration with includeIds = FALSE (default behavior)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
-	# Test that includeId = FALSE produces table without individual IDs
+	# Test that includeIds = FALSE produces table without individual IDs
 	# Using useWideFormat = TRUE for consistent structure with Statistic column
 	table <- tableNCAConcentration(
 		projectFile     = pkx_project_1,
 		useWideFormat = TRUE,
-		includeId      = FALSE,  # Explicitly FALSE
+		includeIds      = FALSE,  # Explicitly FALSE
 		prettyLabels    = FALSE
 	)
 
@@ -4178,7 +4178,7 @@ test_that("tableNCAConcentration with includeId = FALSE (default behavior)", {
 	expect_true(is.data.frame(table))
 	expect_true("Statistic" %in% names(table))
 
-	# Should NOT have Section column when includeId = FALSE
+	# Should NOT have Section column when includeIds = FALSE
 	expect_false("Section" %in% names(table))
 
 	# All Statistic values should be summary statistics, no individual IDs
@@ -4194,17 +4194,17 @@ test_that("tableNCAConcentration with includeId = FALSE (default behavior)", {
 	                         paste(setdiff(statistic_values, summary_stats), collapse = ", ")))
 })
 
-test_that("tableNCAConcentration with includeId row count check", {
+test_that("tableNCAConcentration with includeIds row count check", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
-	# Compare row counts: includeId = FALSE vs TRUE
-	# Note: includeId = TRUE requires useWideFormat = TRUE for tableNCAConcentration
+	# Compare row counts: includeIds = FALSE vs TRUE
+	# Note: includeIds = TRUE requires useWideFormat = TRUE for tableNCAConcentration
 	table_no_ids <- tableNCAConcentration(
 		projectFile     = pkx_project_1,
 		useWideFormat = TRUE,
 		metrics         = c("median", "GeomCV"),
-		includeId      = FALSE,
+		includeIds      = FALSE,
 		prettyLabels    = FALSE
 	)
 
@@ -4212,13 +4212,13 @@ test_that("tableNCAConcentration with includeId row count check", {
 		projectFile     = pkx_project_1,
 		useWideFormat = TRUE,
 		metrics         = c("median", "GeomCV"),
-		includeId      = TRUE,
+		includeIds      = TRUE,
 		prettyLabels    = FALSE
 	)
 
 	# Table with IDs should have more rows than without IDs
 	expect_gt(nrow(table_with_ids), nrow(table_no_ids),
-	          label = "Table with includeId=TRUE should have more rows")
+	          label = "Table with includeIds=TRUE should have more rows")
 
 	# Table with IDs has Section column added
 	expect_equal(ncol(table_with_ids), ncol(table_no_ids) + 1)

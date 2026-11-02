@@ -9,15 +9,16 @@ tableContinuousCovariateSummary(
   customAliases = NULL,
   customUnits = NULL,
   splitCovariates = NULL,
+  splitCovariateLabels = NULL,
+  stratifyColumns = FALSE,
   metrics = NULL,
   useWideFormat = TRUE,
-  stratifyColumns = FALSE,
-  covariateLabels = NULL,
   filterCovariates = NULL,
   filterIds = NULL,
   roundDigits = 2,
   roundMethod = c("monolixSuiteRounding", "significantFigures",
     "significantFiguresPreserved", "none"),
+  trailingZeros = TRUE,
   prettyLabels = TRUE,
   mock = FALSE
 )
@@ -33,7 +34,20 @@ Covariates not in the mapping keep their original names.}
 custom unit labels. Example: \code{c(WEIGHT = "kg", HEIGHT = "cm")}.
 Units are appended in parentheses: "Weight (kg)".}
 
-\item{splitCovariates}{vector of categorical covariates to stratify by, or NULL}
+\item{splitCovariates}{vector of categorical covariates or occasion columns
+(e.g. "Period") to stratify by, or NULL}
+
+\item{splitCovariateLabels}{Character vector of custom labels for
+\code{splitCovariates}, must be the same length as \code{splitCovariates}. If \code{NULL}
+(default), the original covariate names are used. These labels are applied
+in both layouts: they appear in the combined column headers when
+\code{stratifyColumns = TRUE}, and they rename the split-covariate columns when
+\code{stratifyColumns = FALSE}.}
+
+\item{stratifyColumns}{Logical; if \code{TRUE}, creates a stratified table layout with
+separate columns for each covariate combination plus an "Overall" column. If \code{FALSE}
+(default), splitCovariates appear as separate columns on the left side of the table.
+Only applicable when \code{splitCovariates} is specified.s}
 
 \item{metrics}{vector of metrics to display, or NULL to display all available metrics}
 
@@ -42,15 +56,6 @@ statistics appear as columns and covariates appear as rows.
 If \code{FALSE}, returns a "long" table format where statistics appear as rows
 (useful for vertical reporting layouts).
 Note: \code{stratifyColumns = TRUE} is only compatible with \code{useWideFormat = FALSE}.}
-
-\item{stratifyColumns}{Logical; if \code{TRUE}, creates a stratified table layout with
-separate columns for each covariate combination plus an "Overall" column. If \code{FALSE}
-(default), splitCovariates appear as separate columns on the left side of the table.
-Only applicable when \code{splitCovariates} is specified.}
-
-\item{covariateLabels}{Character vector of custom labels for splitCovariates, must be the
-same length as \code{splitCovariates}. If \code{NULL} (default), the original covariate names are
-used. These labels appear in column headers when \code{stratifyColumns = TRUE}.}
 
 \item{filterCovariates}{Named list where names are categorical covariate names
 (type "categorical", "additionalstratificationcategorical" or "stratificationcategorical"
@@ -70,6 +75,12 @@ standard/textbook definition (zeroes non-significant digits before the decimal f
 numbers), or "significantFiguresPreserved" for the same but never zeroing digits before the
 decimal - once the integer part already has as many digits as requested, the value is simply
 rounded to the nearest whole number}
+
+\item{trailingZeros}{Logical. If \code{TRUE} (default), values are shown to the full
+precision implied by \code{roundDigits}/\code{roundMethod}, padding with trailing zeros
+(e.g. \code{1.20}, \code{0.010}). If \code{FALSE}, the minimal form is shown (\code{1.2}, \code{0.01}).
+Either way each value is displayed at its own precision (no uniform-column
+padding), and combined metrics such as \code{MeanSD} read as \code{"70.00 (12.30)"}.}
 
 \item{prettyLabels}{Logical; if \code{TRUE} (default), converts column names to
 human-readable labels (e.g., "CV" becomes "CV (\%)", "geoMean" becomes "Geometric Mean").}

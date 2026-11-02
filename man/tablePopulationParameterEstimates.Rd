@@ -12,8 +12,8 @@ tablePopulationParameterEstimates(
   includeRSE = TRUE,
   includeIIV = TRUE,
   includeIOV = TRUE,
-  includeCI = FALSE,
-  includeCV = FALSE,
+  includeCI = TRUE,
+  includeCV = TRUE,
   includeFEcategory = FALSE,
   includeBootstrap = FALSE,
   useWideFormat = FALSE,
@@ -21,6 +21,8 @@ tablePopulationParameterEstimates(
   roundDigits = 3,
   roundMethod = c("monolixSuiteRounding", "significantFigures",
     "significantFiguresPreserved", "none"),
+  roundByParameter = NULL,
+  trailingZeros = TRUE,
   prettyLabels = TRUE,
   mock = FALSE
 )
@@ -48,7 +50,7 @@ When \code{useWideFormat = TRUE}, IIV/IOV rows are collapsed into columns alongs
 parent fixed effect; descriptions supplied for \verb{omega_*} / \verb{gamma_*} keys will therefore
 not be displayed (a message lists the unmatched keys).}
 
-\item{includeRSE}{Logical; if \code{TRUE} (default), includes relative standard error (RSE) columns in the table. Applies to both fixed effects and random effects in wide format.}
+\item{includeRSE}{Logical; if \code{TRUE} (default), includes relative standard error (RSE) columns in the table. Applies to both fixed effects and random effects in wide format. If no standard error results are available (SE task not run), a warning is issued and this is set to \code{FALSE} so the table is still produced.}
 
 \item{includeIIV}{Logical; if \code{TRUE} (default), includes inter-individual variability (IIV)
 omega estimates in wide format tables. When \code{FALSE}, only fixed effect estimates are shown
@@ -56,7 +58,7 @@ in wide format (CV\% can still be shown if \code{includeCV = TRUE}).}
 
 \item{includeIOV}{Logical; if \code{TRUE} (default), includes inter-occasion variability (IOV) gamma parameters in the table. When \code{FALSE}, IOV parameters are excluded from the output.}
 
-\item{includeCI}{Logical; if \code{TRUE}, includes confidence interval columns (P2.5, P97.5) in the table. Default is \code{FALSE}. Applies to both fixed effects and random effects in wide format.}
+\item{includeCI}{Logical; if \code{TRUE}, includes confidence interval columns (P2.5, P97.5) in the table. Default is \code{FALSE}. Applies to both fixed effects and random effects in wide format. If no standard error results are available (SE task not run), a warning is issued and this is set to \code{FALSE} so the table is still produced.}
 
 \item{includeCV}{Logical; if \code{TRUE}, includes coefficient of variation (CV\%) for random effects.
 Default is \code{FALSE}. In wide format, CV\% is shown as an additional column alongside omega estimates
@@ -96,6 +98,28 @@ digits before the decimal - once the integer part already has as many digits as
 \code{digits} requests, the value is simply rounded to the nearest whole number
 \item \code{"none"}: No rounding applied
 }}
+
+\item{roundByParameter}{Optional per-parameter rounding overrides on top of the
+global \code{roundDigits}/\code{roundMethod}, supplied in one of two forms (mirroring
+\code{customAliases}/\code{customUnits}):
+\itemize{
+\item a named numeric vector of digits, e.g. \code{c(V_pop = 2, omega_V = 4)} (the
+rounding method then falls back to the global \code{roundMethod}); or
+\item a 3-column data.frame with columns \code{parameter}, \code{digits} and \code{method}, e.g.
+\code{data.frame(parameter = "omega_V", digits = 4, method = "significantFigures")}.
+\code{NA}/missing \code{digits} or \code{method} entries fall back to the global settings.
+}
+
+Keys use the original parameter names (e.g. \code{V_pop}, \code{omega_V}, \code{gamma_V}),
+not the displayed labels. Parameters not listed keep the global settings.
+Unknown parameter names are ignored with a message. Default \code{NULL} (global
+rounding everywhere).}
+
+\item{trailingZeros}{Logical. If \code{TRUE} (default), values are shown to the full
+precision implied by \code{roundDigits}/\code{roundMethod} (and any \code{roundByParameter}
+override), padding with trailing zeros (e.g. \code{1.20}, \code{0.010}); if \code{FALSE}, the
+minimal form is shown. Either way estimate/uncertainty columns are returned as
+character display strings at each value's own precision.}
 
 \item{prettyLabels}{Logical; if \code{TRUE} (default), applies pretty formatting to column names with newline characters for better table display (e.g., "Fixed Effect\\nEstimate", "IIV\\nSD").
 If \code{FALSE}, uses simpler column names without newlines (e.g., "FE_Estimate", "IIV_SD").}

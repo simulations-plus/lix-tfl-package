@@ -11,7 +11,7 @@ plotAbsIWRESScatterPlot(
     = TRUE, censoring = "simulated", binsSettings = list(criteria = "leastsquare",
     is.fixedNbBins = TRUE, nbBins = 5L, binRange = c(5L, 100L), nbBinData = c(5L, 200L)),
     residuals = TRUE, empPercentiles = FALSE, predPercentiles = FALSE, predInterval =
-    FALSE, outlierDots = TRUE, outlierAreas = TRUE, spline = FALSE, binLimits = FALSE,
+    FALSE, outlierDots = FALSE, outlierAreas = FALSE, spline = FALSE, binLimits = FALSE,
     linearInterpolation = TRUE, legend = FALSE, grid = TRUE, footnote = FALSE, ncol = 4L),
   stratify = list(),
   preferences = list(point = list(color = "#4682B4", size = 1.5), empPercentile =

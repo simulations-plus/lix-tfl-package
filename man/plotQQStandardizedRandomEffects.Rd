@@ -21,12 +21,22 @@ If NULL, all available parameters are used.}
 
 \item{settings}{List of plot settings:
 \itemize{
-\item indivEstimate: "mean" (default), "mode", or "simulated"
+\item indivEstimate: which individual random-effect estimates to use:
+\code{"mean"} (default) or \code{"mode"} (conditional-distribution EBEs), or
+\code{"simulated"} (draws from the conditional distribution). Only
+\code{"simulated"} exposes per-level (ID / occasion) random effects; \code{"mean"}
+and \code{"mode"} provide only the combined ID + occasion random effects.
 \item identityLine: logical, show identity line (default TRUE)
 \item confidenceInterval: logical, show CI band (default TRUE)
 \item level: CI level, e.g. 0.90 (default)
-\item variabilityLevel: In case of IOV, specifies which level to plot
-(default NULL = ID + Occasions)
+\item variabilityLevel: for models with inter-occasion variability (IOV),
+selects which variability level to plot. Only used when
+\code{indivEstimate = "simulated"} (otherwise ignored with a warning, since
+mean/mode give only the combined level). Valid values are \code{"ID"} or an
+occasion-level name as returned by
+\code{lixoftConnectors::getVariabilityLevels()} (e.g. \code{"OCC"}); run that
+function on the loaded project to discover the available names.
+\code{NULL} (default) plots the combined ID + occasion random effects.
 \item footnote: logical, add a footnote below the plot (and legend) with the
 Monolix project directory and R script path, styled like the table
 footers (small, italic, left-aligned) (default FALSE)

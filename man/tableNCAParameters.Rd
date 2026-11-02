@@ -7,18 +7,19 @@
 tableNCAParameters(
   projectFile = NULL,
   splitCovariates = NULL,
+  splitCovariateLabels = NULL,
+  stratifyColumns = FALSE,
   selectParameters = NULL,
   metrics = NULL,
   useWideFormat = TRUE,
-  stratifyColumns = FALSE,
-  covariateLabels = NULL,
-  includeId = FALSE,
+  includeIds = FALSE,
   filterCovariates = NULL,
   filterIds = NULL,
   roundDigits = 3,
   roundMethod = c("monolixSuiteRounding", "significantFigures",
     "significantFiguresPreserved", "none"),
   roundByParameter = NULL,
+  trailingZeros = TRUE,
   units = TRUE,
   aliases = TRUE,
   customUnits = NULL,
@@ -36,6 +37,18 @@ specified project if it differs from the currently active one.}
 (e.g., \code{"TREAT"}, \code{"FOOD"}, or \code{c("TREAT","FOOD")}). If \code{NULL}
 (default), no stratification is applied and overall summaries are returned.}
 
+\item{splitCovariateLabels}{Character vector of custom labels for
+\code{splitCovariates}, must be the same length as \code{splitCovariates}. If \code{NULL}
+(default), the original covariate names are used. These labels are applied
+in both layouts: they appear in the combined column headers when
+\code{stratifyColumns = TRUE}, and they rename the split-covariate columns when
+\code{stratifyColumns = FALSE}.}
+
+\item{stratifyColumns}{Logical; if \code{TRUE}, creates a stratified table layout with
+separate columns for each covariate combination plus an "Overall" column. If \code{FALSE}
+(default), splitCovariates appear as separate columns on the left side of the table.
+Only applicable when \code{splitCovariates} is specified.}
+
 \item{selectParameters}{Character vector of NCA parameter names to include. If
 \code{NULL} (default), all parameters currently enabled in the project are used
 (i.e., \code{lixoftConnectors::getNCASettings()$computedncaparameters}).}
@@ -51,20 +64,19 @@ each parameter, i.e., PKanalix-like structure. If \code{FALSE}, returns a
 "vertical" table where \code{Statistic} forms the first column and the
 parameters form the subsequent columns (useful for reporting).}
 
-\item{stratifyColumns}{Logical; if \code{TRUE}, creates a stratified table layout with
-separate columns for each covariate combination plus an "Overall" column. If \code{FALSE}
-(default), splitCovariates appear as separate columns on the left side of the table.
-Only applicable when \code{splitCovariates} is specified.}
-
-\item{covariateLabels}{Character vector of custom labels for splitCovariates, must be the
-same length as \code{splitCovariates}. If \code{NULL} (default), the original covariate names are
-used. These labels appear in column headers when \code{stratifyColumns = TRUE}.}
-
-\item{includeId}{Logical. If \code{TRUE} and \code{useWideFormat = FALSE}, adds individual
+\item{includeIds}{Logical. If \code{TRUE} and \code{useWideFormat = FALSE}, adds individual
 subject IDs and their parameter values below the summary statistics in the
 "Statistic" column. When stratified by splitCovariates, individual IDs are grouped
 by their covariate values and listed after the corresponding summary metrics.
 Default is \code{FALSE}. Only works when \code{useWideFormat = FALSE}.}
+
+\item{filterCovariates}{Named list where names are categorical covariate names
+and values are vectors of allowed values, e.g.
+\code{list(SEX = "Male", DOSE = c("100", "200"))}. Rows not matching are dropped.
+If \code{NULL} (default), no covariate filtering is applied.}
+
+\item{filterIds}{Character or numeric vector of subject IDs to include. If
+\code{NULL} (default), no ID filtering is applied.}
 
 \item{roundDigits}{Integer specifying the number of decimal places for rounding
 numeric values. Default is \code{3}.}
@@ -96,6 +108,12 @@ rounding method then falls back to the global \code{roundMethod}); or
 Parameters not listed keep the global settings. Unknown parameter names are
 ignored with a message. Default \code{NULL} (global rounding everywhere).}
 
+\item{trailingZeros}{Logical. If \code{TRUE} (default), numeric values are shown to the
+full precision implied by \code{roundDigits}/\code{roundMethod} (and any \code{roundByParameter}
+override), padding with trailing zeros (e.g. \code{1.20}, \code{0.010}). If \code{FALSE}, the
+minimal form is shown (\code{1.2}, \code{0.01}). Either way each value is displayed at its
+own precision (no uniform-column padding).}
+
 \item{units}{Logical. If \code{TRUE} (default), units are appended to parameter names.}
 
 \item{aliases}{Logical. If \code{TRUE} (default), parameter aliases (friendly names) are used
@@ -117,13 +135,13 @@ If \code{FALSE}, uses raw column names.}
 outputs: metric values become placeholders (e.g. \code{"xx.xx"}), and
 \code{splitCovariates} values become generic labels (\code{"Category 1"}, ...). The
 parameter name and \code{Statistic}/\code{Section} labels are kept, except that with
-\code{includeId = TRUE} the individual subject IDs listed under \code{Statistic}
+\code{includeIds = TRUE} the individual subject IDs listed under \code{Statistic}
 are relabeled (\code{"id1"}, \code{"id2"}, ...), since those are real identifiers.
 Default \code{FALSE}.}
 }
 \value{
 A data frame combining standard NCA statistics with additional descriptive statistics
-(Q1, Q3, median, max) for the specified parameters. If \code{includeId = TRUE},
+(Q1, Q3, median, max) for the specified parameters. If \code{includeIds = TRUE},
 also includes individual parameter values for each subject.
 }
 \description{
@@ -138,7 +156,7 @@ Combines individual parameter data with summary statistics for complete reportin
 # Stratified by a categorical covariate, selected parameters, vertical layout
 # tableNCAParameters(
 #   splitCovariates = "FORM",
-#   selectParameters  = c("AUCINF_obs", "AUClast", "Cmax"),
+#   selectParameters = c("AUCINF_obs", "AUClast", "Cmax"),
 #   roundDigits = 2,
 #   useWideFormat = FALSE
 # )
@@ -146,15 +164,15 @@ Combines individual parameter data with summary statistics for complete reportin
 # Vertical layout with individual IDs included
 # tableNCAParameters(
 #   useWideFormat = FALSE,
-#   includeId = TRUE,
-#   selectParameters  = c("Cmax", "AUClast", "Lambda_z")
+#   includeIds = TRUE,
+#   selectParameters = c("Cmax", "AUClast", "Lambda_z")
 # )
 
 # Stratified with individual IDs
 # tableNCAParameters(
 #   splitCovariates = "TREAT",
 #   useWideFormat = FALSE,
-#   includeId = TRUE
+#   includeIds = TRUE
 # )
 
 }
