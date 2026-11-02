@@ -2437,7 +2437,13 @@ listingNCAParameters <- function(projectFile          = NULL,
 		# Reorder: splitCovariates (left of id, grouping keys leftmost), then id, then rest
 		indivNCA <- indivNCA %>%
 			dplyr::select(dplyr::all_of(splitCovariates), "id", dplyr::all_of(remaining_cols)) %>%
-			dplyr::arrange(!!!rlang::syms(splitCovariates))
+			dplyr::arrange(dplyr::across(
+				dplyr::all_of(splitCovariates),
+				~{
+					num <- suppressWarnings(as.numeric(as.character(.x)))
+					if(all(is.na(num))) .x else num
+				}
+			))
 	}
 
 	if (isTRUE(mock)) {
@@ -2674,7 +2680,13 @@ listingNCARatios <- function(projectFile      = NULL,
 		# Reorder: splitCovariates (left of id, grouping keys leftmost), then id, then rest
 		indivRatios <- indivRatios %>%
 			dplyr::select(dplyr::all_of(splitCovariates), "id", dplyr::all_of(remaining_cols)) %>%
-			dplyr::arrange(!!!rlang::syms(splitCovariates))
+			dplyr::arrange(dplyr::across(
+				dplyr::all_of(splitCovariates),
+				~{
+					num <- suppressWarnings(as.numeric(as.character(.x)))
+					if(all(is.na(num))) .x else num
+				}
+			))
 	}
 
 	if (isTRUE(mock)) {
