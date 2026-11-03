@@ -1211,3 +1211,34 @@ utils::globalVariables(c("."))
 
 	res_err_params
 }
+
+#' Check (non-fatally) whether standard error estimates are available
+#'
+#' Like the `"rse"` branch of [.validateProjectResultsAvailability()] but returns
+#' a status list instead of throwing, so callers can drop RSE/CI columns and warn
+#' when the standard error estimation task has not been run.
+#'
+#' @param method Optional SE method name; `""` (default) accepts any method.
+#' @return List with `available` (logical) and `reason` (character or `NULL`).
+#' @noRd
+.standardErrorsAvailable <- function(method = "") {
+	all_rse <- tryCatch(lixoftConnectors::getEstimatedStandardErrors(), error = function(e) NULL)
+
+	# No SE results at all (task not run)
+	if (is.null(all_rse) || length(all_rse) == 0) {
+		return(list(
+			available = FALSE,
+			reason    = "No standard error estimates available (standard error estimation task not run)."))
+	}
+
+	# Requested method not among the available ones
+	if (method != "" && !(method %in% names(all_rse))) {
+		return(list(
+			available = FALSE,
+			reason    = paste0(
+				"Standard errors for method '", method, "' not available. ",
+				"Available methods: ", paste(names(all_rse), collapse = ", "), ".")))
+	}
+
+	list(available = TRUE, reason = NULL)
+}

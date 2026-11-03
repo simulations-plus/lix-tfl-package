@@ -7,6 +7,7 @@
 tableExclusions(
   projectFile = NULL,
   splitCovariates = NULL,
+  splitCovariateLabels = NULL,
   filterCovariates = NULL,
   filterIds = NULL,
   useWideFormat = TRUE,
@@ -23,6 +24,11 @@ in the dataset may be used (including columns tagged "ignore" in the GUI,
 such as Exclusion_reason); only non-existent names are rejected. A warning is
 emitted if a chosen column has too many modalities per subject (see
 \code{maxSubjectRatio}). If NULL, an overall summary is provided.}
+
+\item{splitCovariateLabels}{Character vector of custom labels for
+\code{splitCovariates}, must be the same length as \code{splitCovariates}. If \code{NULL}
+(default), the original column names are used. When \code{splitCovariates} is
+set, these labels rename the corresponding grouping columns in the table.}
 
 \item{filterCovariates}{Named list where names are existing dataset columns
 (any column, not only covariates) and values are vectors of allowed values,

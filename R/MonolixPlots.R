@@ -1,19 +1,63 @@
-#' Internal helper: Derive omega population-parameter name from an eta column
+#' Internal helper: Derive the variability-SD population-parameter name from an
+#' eta column
 #'
 #' Strips the leading "eta_" and, for simulated estimates with a specific
-#' variabilityLevel, the trailing "_<level>" suffix, then prepends "omega_".
+#' variabilityLevel, the trailing "_<level>" suffix, then prepends the
+#' variability-parameter prefix: "omega_" for the ID / combined level, or the
+#' IOV prefix ("gamma_", "gamma2_", ...) for an occasion level.
 #'
-#' @param param Single eta column name (e.g. "eta_V", "eta_Cl_ID")
+#' @param param Single eta column name (e.g. "eta_V", "eta_Cl_ID", "eta_V_OCC")
 #' @param settings List with indivEstimate and variabilityLevel
-#' @return Character scalar omega name (e.g. "omega_V")
+#' @param sd_prefix Variability-parameter prefix: "omega_" (default) for the
+#'   ID / combined level, or an IOV "gamma*_" prefix for an occasion level
+#'   (computed by the caller).
+#' @return Character scalar SD parameter name (e.g. "omega_V", "gamma_V")
 #' @keywords internal
-.omegaNameForEta <- function(param, settings) {
+.sdNameForEta <- function(param, settings, sd_prefix = "omega_") {
 	param_suffix <- sub("^eta_", "", param)
 	if (settings$indivEstimate == "simulated" && !is.null(settings$variabilityLevel)) {
 		suffix_pattern <- paste0("_", settings$variabilityLevel, "$")
 		param_suffix <- sub(suffix_pattern, "", param_suffix)
 	}
-	paste0("omega_", param_suffix)
+	paste0(sd_prefix, param_suffix)
+}
+
+#' Internal helper: variability-SD component names contributing to an eta column
+#'
+#' At a selected level (simulated with `variabilityLevel` set to "ID" or an
+#' occasion name) the eta is a single random effect, so the standardizing SD is
+#' the single component from [.sdNameForEta()]. At the combined level
+#' (`variabilityLevel = NULL`, and all mode/mean cases) the eta is the sum of the
+#' ID and occasion random effects, so its SD combines the omega and the
+#' occasion-level gammas: sqrt(omega^2 + sum gamma_level^2). This returns the
+#' pop-parameter names of those components; callers keep only the ones present
+#' in the estimated parameters (a parameter without IOV has no gamma_* entry).
+#'
+#' @param param Single eta column name (e.g. "eta_V").
+#' @param settings List with indivEstimate and variabilityLevel.
+#' @param occ_vars Character vector of occasion variability-level names.
+#' @param sd_prefix Variability-parameter prefix passed to [.sdNameForEta()] for
+#'   the single-component (selected-level) case.
+#' @return Character vector of SD pop-parameter names: one for a selected level;
+#'   omega plus the gamma components for the combined level.
+#' @keywords internal
+.sdComponentsForEta <- function(param, settings, occ_vars, sd_prefix = "omega_") {
+	# Per-level selection: a single component.
+	if (settings$indivEstimate == "simulated" && !is.null(settings$variabilityLevel)) {
+		return(.sdNameForEta(param, settings, sd_prefix))
+	}
+	# Combined level: omega_<base> plus gamma*_<base> for each occasion level,
+	# using the same gamma prefixes as the occasion-level standardization
+	# ("gamma_" for the 1st occasion level, "gamma2_" for the 2nd, ...).
+	base <- sub("^eta_", "", param)
+	gamma_names <- character(0)
+	if (length(occ_vars) > 0) {
+		gamma_prefixes <- vapply(seq_along(occ_vars),
+			function(k) if (k == 1L) "gamma_" else paste0("gamma", k, "_"),
+			character(1))
+		gamma_names <- paste0(gamma_prefixes, base)
+	}
+	c(paste0("omega_", base), gamma_names)
 }
 
 #' Internal helper: Prepare QQ plot data for standardized random effects
@@ -29,6 +73,18 @@
 	available_levels <- lixoftConnectors::getVariabilityLevels()
 	occ_vars <- setdiff(available_levels, "ID")
 	has_occasions <- length(occ_vars) > 0
+
+	# Variability-parameter prefix used to standardize the random effects:
+	#   ID / combined level -> "omega_"
+	#   occasion level       -> IOV prefix "gamma_" (1st occasion level),
+	#                           "gamma2_" (2nd), ... matching .getIOVParameters().
+	sd_prefix <- "omega_"
+	if (settings$indivEstimate == "simulated" &&
+			!is.null(settings$variabilityLevel) &&
+			settings$variabilityLevel %in% occ_vars) {
+		occ_idx   <- match(settings$variabilityLevel, occ_vars)
+		sd_prefix <- if (occ_idx == 1L) "gamma_" else paste0("gamma", occ_idx, "_")
+	}
 
 	#-----------------------------------------------------------------------------
 	# Retrieve random effects based on indivEstimate type
@@ -189,23 +245,44 @@
 	# Retrieve population parameters omegas to standardize random effects
 	pop_params <- getEstimatedPopulationParameters()
 
-	# Skip parameters whose omega is absent (no between-subject variability on
-	# that parameter). Keeps the plot useful for models where only a subset of
-	# parameters has random effects.
-	omega_names <- vapply(parameters, .omegaNameForEta, character(1),
-												settings = settings)
-	has_omega <- omega_names %in% names(pop_params) &
-		!is.na(pop_params[omega_names])
-	if (any(!has_omega)) {
-		skipped <- sub("^eta_", "", parameters[!has_omega])
+	# Standardizing SD per parameter. For a selected level (simulated with a
+	# variabilityLevel) the eta is a single random effect, so its SD is the single
+	# omega_*/gamma*_* component. At the combined level (variabilityLevel = NULL,
+	# and all mode/mean cases) the eta is the sum of the ID and occasion effects,
+	# so its SD combines the active components: sqrt(omega^2 + sum gamma_level^2).
+	# Parameters with no estimated variability component are skipped.
+	sd_components <- lapply(parameters, .sdComponentsForEta,
+												 settings = settings, occ_vars = occ_vars, sd_prefix = sd_prefix)
+	names(sd_components) <- parameters
+
+	sd_vals <- vapply(sd_components, function(nms) {
+		present <- nms[nms %in% names(pop_params)]
+		present <- present[!is.na(pop_params[present])]
+		if (length(present) == 0) return(NA_real_)
+		sqrt(sum(pop_params[present]^2))
+	}, numeric(1))
+
+	has_sd <- !is.na(sd_vals)
+	if (any(!has_sd)) {
+		skipped <- sub("^eta_", "", parameters[!has_sd])
 		message(sprintf(
 			"QQ plot unavailable for parameter(s) without random effects: %s.",
 			paste(skipped, collapse = ", ")))
-		parameters <- parameters[has_omega]
+		parameters <- parameters[has_sd]
+		sd_vals     <- sd_vals[has_sd]
 	}
 	if (length(parameters) == 0) {
 		stop("No random effects with an estimated omega were found; nothing to plot.")
 	}
+
+	# A param carries occ variability at the combined level when it has an
+	# estimated gamma component. Such params keep their distinct per-occ rows;
+	# params w/o one are constant across occs.
+	param_has_iov <- vapply(sd_components, function(nms) {
+		present <- nms[nms %in% names(pop_params)]
+		present <- present[!is.na(pop_params[present])]
+		any(grepl("^gamma", present))
+	}, logical(1))
 
 	alpha <- 1 - settings$level
 
@@ -225,15 +302,29 @@
 	# Build data list (one data frame per parameter x split group)
 	plot_data_list <- lapply(parameters, function(param) {
 
-		omega  <- pop_params[.omegaNameForEta(param, settings)]
-		std_re <- rand_eff_df[[param]] / sqrt(omega)
+		# Collapse structural occ duplicates (constant across occs) on the identifier,
+		# not the value, so coincidentally equal occ estimates of an IOV param survive.
+		id_cols <- intersect(c("rep", "id"), names(rand_eff_df))
+		work    <- rand_eff_df[, c(id_cols, "split", "color", param)]
+		occ_active <- (!is.null(settings$variabilityLevel) &&
+									 settings$variabilityLevel %in% occ_vars) ||
+			(is.null(settings$variabilityLevel) && param_has_iov[[param]])
+		if (!occ_active) {
+			work <- work[!duplicated(work[, id_cols, drop = FALSE]), , drop = FALSE]
+		}
+
+		# omega_*/gamma_* are standard deviations (models declare `sd=omega_*`), so
+		# the standardized random effect is eta / SD (not eta / sqrt(SD)). sd_val is
+		# the combined SD for this parameter (see sd_vals above).
+		sd_val <- sd_vals[[param]]
+		std_re <- work[[param]] / sd_val
 
 		# Compute QQ statistics per group (split or color when mergedSplits)
 		per_group <- lapply(qq_group_levels, function(g) {
-			mask <- rand_eff_df[[qq_group_col]] == g
+			mask <- work[[qq_group_col]] == g
 			std_re_group <- std_re[mask]
-			split_group  <- rand_eff_df$split[mask]
-			color_group  <- rand_eff_df$color[mask]
+			split_group  <- work$split[mask]
+			color_group  <- work$color[mask]
 
 			n_group <- length(std_re_group)
 			if (n_group < 2) {
@@ -284,12 +375,22 @@
 #' @param parameters Character vector of base parameter names (e.g., "ka", "Cl").
 #'   If NULL, all available parameters are used.
 #' @param settings List of plot settings:
-#'   - indivEstimate: "mean" (default), "mode", or "simulated"
+#'   - indivEstimate: which individual random-effect estimates to use:
+#'     `"mean"` (default) or `"mode"` (conditional-distribution EBEs), or
+#'     `"simulated"` (draws from the conditional distribution). Only
+#'     `"simulated"` exposes per-level (ID / occasion) random effects; `"mean"`
+#'     and `"mode"` provide only the combined ID + occasion random effects.
 #'   - identityLine: logical, show identity line (default TRUE)
 #'   - confidenceInterval: logical, show CI band (default TRUE)
 #'   - level: CI level, e.g. 0.90 (default)
-#'   - variabilityLevel: In case of IOV, specifies which level to plot
-#'     (default NULL = ID + Occasions)
+#'   - variabilityLevel: for models with inter-occasion variability (IOV),
+#'     selects which variability level to plot. Only used when
+#'     `indivEstimate = "simulated"` (otherwise ignored with a warning, since
+#'     mean/mode give only the combined level). Valid values are `"ID"` or an
+#'     occasion-level name as returned by
+#'     `lixoftConnectors::getVariabilityLevels()` (e.g. `"OCC"`); run that
+#'     function on the loaded project to discover the available names.
+#'     `NULL` (default) plots the combined ID + occasion random effects.
 #'   - footnote: logical, add a footnote below the plot (and legend) with the
 #'     Monolix project directory and R script path, styled like the table
 #'     footers (small, italic, left-aligned) (default FALSE)
@@ -387,12 +488,7 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 	#-----------------------------------------------------------------------------
 	# Input validation
 	valid_estimates <- c("mean", "mode", "simulated")
-	if (!settings$indivEstimate %in% valid_estimates) {
-		stop(sprintf(
-			"Invalid `indivEstimate`: '%s'. Must be one of: %s.",
-			settings$indivEstimate,
-			paste(valid_estimates, collapse = ", ")))
-	}
+	settings$indivEstimate <- match.arg(settings$indivEstimate, valid_estimates)
 	if (!is.numeric(settings$level) || settings$level <= 0 || settings$level >= 1) {
 		stop("`level` must be a number strictly between 0 and 1, e.g. 0.90.")
 	}
@@ -1165,8 +1261,8 @@ plotAbsIWRESScatterPlot <- function(
 		empPercentiles   = FALSE,
 		predPercentiles  = FALSE,
 		predInterval     = FALSE,
-		outlierDots      = TRUE,
-		outlierAreas     = TRUE,
+		outlierDots      = FALSE,
+		outlierAreas     = FALSE,
 		spline           = FALSE,
 		binLimits        = FALSE,
 		linearInterpolation = TRUE,      # TRUE: interpolate bands between bins; FALSE: steps
@@ -1467,6 +1563,8 @@ plotAbsIWRESScatterPlot <- function(
 		theme(legend.position  = if (settings$legend) "bottom" else "none",
 					legend.box       = "vertical",     # stack the guides vertically
 					legend.direction = "vertical",     # stack keys within each guide
+					axis.line        = element_line(color = "black"),  # theme_minimal omits axes
+					axis.ticks       = element_line(color = "black"),
 					strip.placement  = "outside",      # xaxis strip sits below the axis
 					strip.background  = element_blank())
 

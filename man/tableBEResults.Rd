@@ -11,6 +11,7 @@ tableBEResults(
   roundMethod = c("monolixSuiteRounding", "significantFigures",
     "significantFiguresPreserved", "none"),
   roundByParameter = NULL,
+  trailingZeros = TRUE,
   units = TRUE,
   aliases = TRUE,
   customUnits = NULL,
@@ -57,6 +58,12 @@ rounding method then falls back to the global \code{roundMethod}); or
 
 Parameters not listed keep the global settings. Unknown parameter names are
 ignored with a message. Default \code{NULL} (global rounding everywhere).}
+
+\item{trailingZeros}{Logical. If \code{TRUE} (default), the ratio and confidence-interval
+values are shown to the full precision implied by \code{roundDigits}/\code{roundMethod}
+(and any \code{roundByParameter} override), padding with trailing zeros (e.g. \code{1.20},
+\verb{(0.80; 1.25)}). If \code{FALSE}, the minimal form is shown. Each value is displayed
+at its own precision.}
 
 \item{units}{Logical; if \code{TRUE} (default), appends units to parameter names
 (e.g., "ln(AUClast) (h*ng/mL)"). Units are retrieved from project settings.}

@@ -7,6 +7,7 @@
 listingNCARatios(
   projectFile = NULL,
   splitCovariates = NULL,
+  splitCovariateLabels = NULL,
   selectParameters = NULL,
   filterCovariates = NULL,
   filterIds = NULL,
@@ -14,6 +15,7 @@ listingNCARatios(
   roundMethod = c("monolixSuiteRounding", "significantFigures",
     "significantFiguresPreserved", "none"),
   roundByParameter = NULL,
+  trailingZeros = TRUE,
   aliases = TRUE,
   customAliases = NULL,
   mock = FALSE
@@ -28,6 +30,11 @@ to include and sort by. If specified, the table is sorted by these
 splitCovariates in the order provided. Occasion-varying covariates are
 rejected, since ratios are computed across occasions and cannot be
 stratified by a covariate that changes within subject.}
+
+\item{splitCovariateLabels}{Character vector of custom labels for
+\code{splitCovariates}, must be the same length as \code{splitCovariates}. If \code{NULL}
+(default), the original covariate names are used. When \code{splitCovariates} is
+set, these labels rename the corresponding covariate columns in the listing.}
 
 \item{selectParameters}{Character vector. Ratio parameters to include. If NULL (default),
 all available ratio parameters are included.}
@@ -58,6 +65,11 @@ global \code{roundDigits}/\code{roundMethod}, supplied in one of two forms (mirr
 
 Parameters not listed keep the global settings. Unknown parameter names are
 ignored with a message. Default \code{NULL} (global rounding everywhere).}
+
+\item{trailingZeros}{Logical. Only applies when \code{roundMethod != "none"}. If \code{TRUE}
+(default), values are shown to the full precision implied by
+\code{roundDigits}/\code{roundMethod} (and any \code{roundByParameter} override), padding with
+trailing zeros (e.g. \code{1.20}, \code{0.010}); if \code{FALSE}, the minimal form is shown.}
 
 \item{aliases}{Logical. If TRUE (default), parameter names are replaced with their aliases.}
 

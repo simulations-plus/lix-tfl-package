@@ -7,6 +7,7 @@
 listingDosingRegimen(
   projectFile = NULL,
   splitCovariates = NULL,
+  splitCovariateLabels = NULL,
   filterCovariates = NULL,
   filterIds = NULL,
   mock = FALSE
@@ -18,6 +19,11 @@ listingDosingRegimen(
 
 \item{splitCovariates}{Character vector of categorical covariate / occasion
 names to include as columns and sort by. Validated against the project.}
+
+\item{splitCovariateLabels}{Character vector of custom labels for
+\code{splitCovariates}, must be the same length as \code{splitCovariates}. If \code{NULL}
+(default), the original covariate names are used. When \code{splitCovariates} is
+set, these labels rename the corresponding covariate columns in the listing.}
 
 \item{filterCovariates}{Named list of categorical covariate filters, e.g.
 \code{list(SEX = "M", DOSE = c("100", "200"))}. Rows not matching are dropped.}

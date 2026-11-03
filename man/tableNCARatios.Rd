@@ -8,17 +8,18 @@ tableNCARatios(
   projectFile = NULL,
   splitCovariates = NULL,
   stratifyColumns = FALSE,
-  covariateLabels = NULL,
+  splitCovariateLabels = NULL,
   selectParameters = NULL,
   metrics = NULL,
   useWideFormat = TRUE,
-  includeId = FALSE,
+  includeIds = FALSE,
   filterCovariates = NULL,
   filterIds = NULL,
   roundDigits = 3,
   roundMethod = c("monolixSuiteRounding", "significantFigures",
     "significantFiguresPreserved", "none"),
   roundByParameter = NULL,
+  trailingZeros = TRUE,
   prettyLabels = TRUE,
   customAliases = NULL,
   mock = FALSE
@@ -36,9 +37,12 @@ separate columns for each covariate combination plus an "Overall" column. If \co
 Only applicable when \code{splitCovariates} is specified. Only compatible with
 \code{useWideFormat = FALSE}.}
 
-\item{covariateLabels}{Character vector of custom labels for splitCovariates, must be the
-same length as \code{splitCovariates}. If \code{NULL} (default), the original covariate names are
-used. These labels appear in column headers when \code{stratifyColumns = TRUE}.}
+\item{splitCovariateLabels}{Character vector of custom labels for
+\code{splitCovariates}, must be the same length as \code{splitCovariates}. If \code{NULL}
+(default), the original covariate names are used. These labels are applied
+in both layouts: they appear in the combined column headers when
+\code{stratifyColumns = TRUE}, and they rename the split-covariate columns when
+\code{stratifyColumns = FALSE}.}
 
 \item{selectParameters}{Character vector of ratio parameter names to include. If \code{NULL}
 (default), all available ratio parameters are used.}
@@ -48,7 +52,7 @@ output table. If \code{NULL} (default), all available metrics are included.}
 
 \item{useWideFormat}{logical; if TRUE (default) results are wide; if FALSE, results are pivoted to long format.}
 
-\item{includeId}{Logical. If \code{TRUE} and \code{useWideFormat = FALSE}, adds individual
+\item{includeIds}{Logical. If \code{TRUE} and \code{useWideFormat = FALSE}, adds individual
 subject ratio values below the summary statistics in the "Statistic" column.
 Default is \code{FALSE}. Only works when \code{useWideFormat = FALSE} and
 \code{stratifyColumns = FALSE}.}
@@ -89,6 +93,12 @@ global \code{roundDigits}/\code{roundMethod}, supplied in one of two forms (mirr
 Parameters not listed keep the global settings. Unknown parameter names are
 ignored with a message. Default \code{NULL} (global rounding everywhere).}
 
+\item{trailingZeros}{Logical. If \code{TRUE} (default), values are shown to the full
+precision implied by \code{roundDigits}/\code{roundMethod} (and any \code{roundByParameter}
+override), padding with trailing zeros (e.g. \code{1.20}, \code{0.010}). If \code{FALSE}, the
+minimal form is shown (\code{1.2}, \code{0.01}). Either way each value is displayed at its
+own precision (no uniform-column padding).}
+
 \item{prettyLabels}{Logical; if \code{TRUE} (default), converts column names to
 human-readable labels.}
 
@@ -99,7 +109,7 @@ to custom alias labels. Ratios are dimensionless, so no \code{units} argument is
 outputs: metric values become placeholders (e.g. \code{"xx.xx"}), and
 \code{splitCovariates} values become generic labels (\code{"Category 1"}, ...). The
 parameter name and \code{Statistic}/\code{Section} labels are kept, except that with
-\code{includeId = TRUE} the individual subject IDs listed under \code{Statistic}
+\code{includeIds = TRUE} the individual subject IDs listed under \code{Statistic}
 are relabeled (\code{"id1"}, \code{"id2"}, ...), since those are real identifiers.
 Default \code{FALSE}.}
 }
@@ -117,7 +127,7 @@ The function:
 \item Identifies candidate grouping variables (all columns except id and ratio columns).
 \item Reshapes the data into long format (Parameter, Ratio).
 \item Summarises across subjects to provide descriptive statistics (N, Min, Q1, Mean, Median, Q3, Max).
-\item Returns results either in wide format (one row per Parameter × group) or long format (Statistic/Value pairs).
+\item Returns results either in wide format (one row per Parameter Ã— group) or long format (Statistic/Value pairs).
 }
 }
 \examples{

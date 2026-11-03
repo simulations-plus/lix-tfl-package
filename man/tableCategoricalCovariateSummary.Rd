@@ -9,8 +9,8 @@ tableCategoricalCovariateSummary(
   covDisplayLabels = NULL,
   categoryDisplayLabels = NULL,
   splitCovariates = NULL,
+  splitCovariateLabels = NULL,
   stratifyColumns = FALSE,
-  covariateLabels = NULL,
   filterCovariates = NULL,
   filterIds = NULL,
   roundDigits = 2,
@@ -33,15 +33,17 @@ and label for the dataset categorical covariate categories.}
 Allowed types from \code{getCovariateInformation()}: "categorical",
 "additionalstratificationcategorical", "stratificationcategorical". Default NULL.}
 
+\item{splitCovariateLabels}{Character vector of custom labels for
+\code{splitCovariates}, must be the same length as \code{splitCovariates}. If \code{NULL}
+(default), the original covariate names are used. These labels are applied
+in both layouts: they appear in the combined column headers when
+\code{stratifyColumns = TRUE}, and they rename the split-covariate columns when
+\code{stratifyColumns = FALSE}.}
+
 \item{stratifyColumns}{Logical; if \code{TRUE}, creates a stratified table layout with
 separate columns for each covariate combination plus an "Overall" column. If
 \code{FALSE} (default), \code{splitCovariates} appear as separate columns on the left side
 of the table. Only applicable when \code{splitCovariates} is specified.}
-
-\item{covariateLabels}{Character vector of custom labels for \code{splitCovariates},
-must be the same length as \code{splitCovariates}. If \code{NULL} (default), the original
-covariate names are used. These labels appear in column headers when
-\code{stratifyColumns = TRUE}.}
 
 \item{filterCovariates}{Named list where names are categorical covariate names
 (type "categorical", "additionalstratificationcategorical" or
@@ -86,7 +88,7 @@ tableCategoricalCovariateSummary(splitCovariates = "ATRTNCA")
 tableCategoricalCovariateSummary(
     splitCovariates  = "ATRTNCA",
     stratifyColumns = TRUE,
-    covariateLabels = "Treatment"
+    splitCovariateLabels = "Treatment"
 )
 }
 }

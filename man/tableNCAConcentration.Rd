@@ -7,19 +7,21 @@
 tableNCAConcentration(
   projectFile = NULL,
   splitCovariates = NULL,
+  splitCovariateLabels = NULL,
+  stratifyColumns = FALSE,
   useNominalTime = TRUE,
   metrics = NULL,
-  stratifyColumns = FALSE,
-  covariateLabels = NULL,
   useWideFormat = TRUE,
   maxTimeDeviation = NULL,
-  includeId = FALSE,
+  includeIds = FALSE,
   filterCovariates = NULL,
   filterIds = NULL,
   roundDigits = 3,
   roundMethod = c("monolixSuiteRounding", "significantFigures",
     "significantFiguresPreserved", "none"),
+  trailingZeros = TRUE,
   prettyLabels = TRUE,
+  units = TRUE,
   mock = FALSE
 )
 }
@@ -32,6 +34,18 @@ specified project if it differs from the currently active one.}
 (e.g., \code{c("DOSE", "FOOD")}). If \code{NULL} (default), no stratification is applied
 and overall summary statistics are returned.}
 
+\item{splitCovariateLabels}{Character vector of custom labels for
+\code{splitCovariates}, must be the same length as \code{splitCovariates}. If \code{NULL}
+(default), the original covariate names are used. These labels are applied
+in both layouts: they appear in the combined column headers when
+\code{stratifyColumns = TRUE}, and they rename the split-covariate columns when
+\code{stratifyColumns = FALSE}.}
+
+\item{stratifyColumns}{Logical; if \code{TRUE}, creates a stratified table layout with
+separate columns for each covariate combination plus an "Overall" column. If \code{FALSE}
+(default), splitCovariates appear as separate columns on the left side of the table.
+Only applicable when \code{splitCovariates} is specified.}
+
 \item{useNominalTime}{Logical; if \code{TRUE} (default), the function attempts to use
 nominal time for the summary table. If nominal time is not available in the
 project (checked via \code{lixoftConnectors::getData()} and \code{headerTypes == "nominaltime"}),
@@ -41,15 +55,6 @@ the function will fall back to actual time and issue a warning.}
 output table. If \code{NULL} (default), all available metrics are included. Common options
 include: \code{"mean"}, \code{"SD"}, \code{"CV"}, \code{"geoMean"}, \code{"geoCV"}, \code{"geoSD"}, \code{"MeanSD"},
 \code{"GeomCV"}, \code{"GeomSD"}, \code{"median"}, \code{"min"}, \code{"max"}, \code{"P05"}, \code{"P95"}, \code{"Nobs"}.}
-
-\item{stratifyColumns}{Logical; if \code{TRUE}, creates a stratified table layout with
-separate columns for each covariate combination plus an "Overall" column. If \code{FALSE}
-(default), splitCovariates appear as separate columns on the left side of the table.
-Only applicable when \code{splitCovariates} is specified.}
-
-\item{covariateLabels}{Character vector of custom labels for splitCovariates, must be the
-same length as \code{splitCovariates}. If \code{NULL} (default), the original covariate names are
-used. These labels appear in column headers when \code{stratifyColumns = TRUE}.}
 
 \item{useWideFormat}{Logical. If \code{TRUE} (default), returns a "wide" table format where
 time points appear as columns and statistics appear as rows (one row per statistic).
@@ -65,14 +70,22 @@ is applied. When set (e.g., \code{20} for 20\%), observations where
 \code{abs((ActualTime - NominalTime) / NominalTime) * 100} exceeds this threshold
 are excluded from summary statistics. Only applies when \code{useNominalTime = TRUE}.
 Observations at \code{NominalTime = 0} are always retained. Individual data (when
-\code{includeId = TRUE}) is not affected by this filter. When observations are
+\code{includeIds = TRUE}) is not affected by this filter. When observations are
 excluded, attributes are attached to the output for footnote generation:
 \code{timeDeviationFiltered}, \code{timeDeviationThreshold}, and \code{timeDeviationExcluded}.}
 
-\item{includeId}{Logical. If \code{TRUE}, adds individual subject IDs and their
+\item{includeIds}{Logical. If \code{TRUE}, adds individual subject IDs and their
 concentration values at each time point below the summary statistics. When
 stratified by splitCovariates, individual IDs are grouped by their covariate values.
 Default is \code{FALSE}. Only applicable when \code{stratifyColumns = FALSE}.}
+
+\item{filterCovariates}{Named list where names are categorical covariate names
+and values are vectors of allowed values, e.g.
+\code{list(SEX = "Male", DOSE = c("100", "200"))}. Rows not matching are dropped.
+If \code{NULL} (default), no covariate filtering is applied.}
+
+\item{filterIds}{Character or numeric vector of subject IDs to include. If
+\code{NULL} (default), no ID filtering is applied.}
 
 \item{roundDigits}{Integer specifying the number of decimal places for rounding
 numeric values. Default is \code{3}.}
@@ -90,15 +103,25 @@ the value is simply rounded to the nearest whole number
 \item \code{"none"}: No rounding performed
 }}
 
+\item{trailingZeros}{Logical. If \code{TRUE} (default), values are shown to the full
+precision implied by \code{roundDigits}/\code{roundMethod}, padding with trailing zeros
+(e.g. \code{1.20}, \code{0.010}). If \code{FALSE}, the minimal form is shown (\code{1.2}, \code{0.01}).
+Either way each value is displayed at its own precision (no uniform-column padding).}
+
 \item{prettyLabels}{Logical; if \code{TRUE} (default), converts column names to
 human-readable labels (e.g., "CV" becomes "CV (\%)", "geoMean" becomes "Geometric Mean").
 If \code{FALSE}, uses raw column names.}
+
+\item{units}{Logical; if \code{TRUE} and units are enabled in the project,
+appends the time unit to the time column header in long format
+(\code{useWideFormat = FALSE}), e.g. "Nominal time (d)". No effect in wide
+layout. Default \code{FALSE}.}
 
 \item{mock}{Logical; if \code{TRUE}, masks the table for documentation / example
 outputs: concentration statistic values become placeholders (e.g.
 \code{"xx.xx"}), and \code{splitCovariates} values become generic labels
 (\code{"Category 1"}, ...). The time column/headers and \code{Statistic}/\code{Section}
-labels are kept, except that with \code{includeId = TRUE} the individual
+labels are kept, except that with \code{includeIds = TRUE} the individual
 subject IDs listed under \code{Statistic} are relabeled (\code{"id1"}, \code{"id2"},
 ...), since those are real identifiers. Default \code{FALSE}.}
 }
@@ -138,13 +161,13 @@ timepoint/covariate combination.
 # tableNCAConcentration(
 #   splitCovariates = c("SEX", "AGE_CAT"),
 #   metrics = c("GeomCV", "MeanSD"),
-#   covariateLabels = c("Sex", "Age Category"),
+#   splitCovariateLabels = c("Sex", "Age Category"),
 #   stratifyColumns = TRUE
 # )
 
 # With individual concentrations included
 # tableNCAConcentration(
-#   includeId = TRUE,
+#   includeIds = TRUE,
 #   metrics = c("mean", "SD"),
 #   useWideFormat = FALSE
 # )

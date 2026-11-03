@@ -758,12 +758,12 @@ tableCovariateModelBuilding <- function(projectFile        = NULL,
 #'   When `useWideFormat = TRUE`, IIV/IOV rows are collapsed into columns alongside their
 #'   parent fixed effect; descriptions supplied for `omega_*` / `gamma_*` keys will therefore
 #'   not be displayed (a message lists the unmatched keys).
-#' @param includeRSE Logical; if `TRUE` (default), includes relative standard error (RSE) columns in the table. Applies to both fixed effects and random effects in wide format.
+#' @param includeRSE Logical; if `TRUE` (default), includes relative standard error (RSE) columns in the table. Applies to both fixed effects and random effects in wide format. If no standard error results are available (SE task not run), a warning is issued and this is set to `FALSE` so the table is still produced.
 #' @param includeIIV Logical; if `TRUE` (default), includes inter-individual variability (IIV)
 #'   omega estimates in wide format tables. When `FALSE`, only fixed effect estimates are shown
 #'   in wide format (CV% can still be shown if `includeCV = TRUE`).
 #' @param includeIOV Logical; if `TRUE` (default), includes inter-occasion variability (IOV) gamma parameters in the table. When `FALSE`, IOV parameters are excluded from the output.
-#' @param includeCI Logical; if `TRUE`, includes confidence interval columns (P2.5, P97.5) in the table. Default is `FALSE`. Applies to both fixed effects and random effects in wide format.
+#' @param includeCI Logical; if `TRUE`, includes confidence interval columns (P2.5, P97.5) in the table. Default is `FALSE`. Applies to both fixed effects and random effects in wide format. If no standard error results are available (SE task not run), a warning is issued and this is set to `FALSE` so the table is still produced.
 #' @param includeCV Logical; if `TRUE`, includes coefficient of variation (CV%) for random effects.
 #'   Default is `FALSE`. In wide format, CV% is shown as an additional column alongside omega estimates
 #'   when `includeIIV = TRUE`.
@@ -930,11 +930,23 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 		}
 	}
 
+	# RSE and CI both require SE results. If the SE task was not run (or the requested
+	# method is unavailable), warn and drop these columns rather than erroring, so the
+	# table is still produced.
+	if (includeRSE || includeCI) {
+		se_status <- .standardErrorsAvailable(stdErrMethod)
+		if (!se_status$available) {
+			dropped <- c(if (includeRSE) "includeRSE", if (includeCI) "includeCI")
+			warning(se_status$reason, " Setting ", paste(dropped, collapse = " and "),
+							" to FALSE.", call. = FALSE)
+			includeRSE <- FALSE
+			includeCI  <- FALSE
+		}
+	}
+
 	err <- NULL
 
 	if (includeRSE) {
-		# Validate RSE availability with method
-		.validateProjectResultsAvailability(software = "monolix", resultType = "rse", method = stdErrMethod)
 		err <- lixoftConnectors::getEstimatedStandardErrors(method = stdErrMethod, withValuesByGroups = includeFEcategory)
 		if (length(err) == 0) {
 			.TFL_message("Standard errors not available for method: ", stdErrMethod)
@@ -959,9 +971,6 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 	ci_col_name <- NULL
 
 	if (includeCI) {
-		# Validate RSE availability with method
-		.validateProjectResultsAvailability(software = "monolix", resultType = "rse", method = stdErrMethod)
-
 		interval_level <- lixoftConnectors::getStandardErrorEstimationSettings()$intervallevel
 
 		# Calculate percentiles based on interval level

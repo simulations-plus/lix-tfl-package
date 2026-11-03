@@ -7,12 +7,16 @@
 listingNCAConcentration(
   projectFile = NULL,
   splitCovariates = NULL,
+  splitCovariateLabels = NULL,
   useNominalTime = FALSE,
   filterCovariates = NULL,
   filterIds = NULL,
+  prettyLabels = TRUE,
+  units = TRUE,
   roundDigits = 3,
-  roundMethod = c("none", "monolixSuiteRounding", "significantFigures",
-    "significantFiguresPreserved"),
+  roundMethod = c("monolixSuiteRounding", "significantFigures",
+    "significantFiguresPreserved", "none"),
+  trailingZeros = TRUE,
   mock = FALSE
 )
 }
@@ -24,6 +28,11 @@ If NULL, uses the currently loaded project.}
 stratification columns (e.g., \code{c("TREAT","FOOD")}); \code{NULL} for no
 stratification. Occasion columns present in the project are appended
 automatically (see Details).}
+
+\item{splitCovariateLabels}{Character vector of custom labels for
+\code{splitCovariates}, must be the same length as \code{splitCovariates}. If \code{NULL}
+(default), the original covariate names are used. When \code{splitCovariates} is
+set, these labels rename the corresponding covariate columns in the listing.}
 
 \item{useNominalTime}{Logical; if \code{TRUE}, the function attempts to use
 nominal time for the concentration listing. If nominal time is not available
@@ -39,21 +48,37 @@ If \code{NULL} (default), no covariate filtering is applied.}
 \item{filterIds}{Character or numeric vector of subject IDs to include. If
 \code{NULL} (default), no ID filtering is applied.}
 
+\item{prettyLabels}{Logical; if \code{TRUE}, renames the fixed listing columns to
+publication form: \code{ActualTime} -> "Actual time", \code{NominalTime} ->
+"Nominal time", \code{Concentration} -> "Concentration", \code{UsedConc} ->
+"Used concentration", \code{Censoring} -> "Censoring". Default \code{FALSE} (raw
+column names are kept, e.g. for downstream processing).}
+
+\item{units}{Logical; if \code{TRUE} and units are enabled in the project,
+appends the time unit to the time columns and the concentration unit
+(amount/volume, e.g. "mg/L") to the concentration columns, e.g.
+"Actual time (h)". Default \code{FALSE}.}
+
 \item{roundDigits}{Integer specifying the number of decimal places for rounding
 numeric values. Default is \code{3}.}
 
 \item{roundMethod}{Character string specifying the rounding method. Options are:
 \itemize{
-\item \code{"none"} (default): No rounding performed
-\item \code{"monolixSuiteRounding"}: Adaptive rounding that keeps all digits before the
-decimal untouched and rounds only the fractional part to the specified number of
-significant digits (adds extra digits for values < 1)
+\item \code{"monolixSuiteRounding"} (default): values with |x| >= 1 are rounded to \code{roundDigits}
+decimal places, values with |x| < 1 to \code{roundDigits} significant figures (matching MonolixSuite)
 \item \code{"significantFigures"}: Standard significant figures rounding - zeroes non-significant
 digits before the decimal for large numbers
 \item \code{"significantFiguresPreserved"}: Modified significant figures rounding that never zeroes
 digits before the decimal - once the integer part already has as many digits as requested,
 the value is simply rounded to the nearest whole number
+\item \code{"none"}: No rounding performed (raw values shown)
 }}
+
+\item{trailingZeros}{Logical. Only applies when \code{roundMethod != "none"}. If \code{TRUE}
+(default), rounded concentration values are shown to the full precision implied by
+\code{roundDigits}/\code{roundMethod}, padding with trailing zeros (e.g. \code{1.20}, \code{0.010});
+if \code{FALSE}, the minimal form is shown. With \code{roundMethod = "none"} raw values are
+shown unchanged.}
 
 \item{mock}{Logical; if \code{TRUE}, masks the listing for documentation / example
 outputs: id -> \code{"id1"}, categorical covariates / occasions -> \code{"Category 1"}
@@ -63,7 +88,9 @@ Censoring) -> \code{"xx.xx"}. Default \code{FALSE}.}
 \value{
 A data frame in long format containing (if present) \code{splitCovariates},
 \code{id}, \code{ActualTime}, \code{NominalTime} (if available),
-\code{Concentration}, \code{UsedConc}, and \code{Censoring}.
+\code{Concentration}, \code{UsedConc}, and \code{Censoring}. When
+\code{prettyLabels} and/or \code{units} are set, the fixed columns are
+renamed accordingly (e.g. \code{ActualTime} -> "Actual time (h)").
 }
 \description{
 Creates a long-format listing of individual concentrations by time, with
@@ -88,7 +115,7 @@ aligned per-subject using an artificial row index (\code{row_id}) that
 preserves column order. This ensures each actual concentration is paired
 with exactly one nominal time point.
 \item \strong{Used concentrations:} After long-formatting, the table is joined with
-\code{lixoftConnectors::getPointsIncludedForLambdaZ()}, which indicates which concentration–
+\code{lixoftConnectors::getPointsIncludedForLambdaZ()}, which indicates which concentrationâ€“
 time points were used in the lambda-z calculation and provides censoring
 flags.
 \item If occasion-level splitCovariates exist, they are concatenated to the subject
@@ -104,6 +131,10 @@ listingNCAConcentration(splitCovariates = c("TREAT", "FOOD"))
 
 # Include nominal time if available
 listingNCAConcentration(splitCovariates = c("TREAT", "FOOD"), useNominalTime = TRUE)
+
+# Publication-style column labels with project units, e.g. "Actual time (h)"
+# and "Concentration (mg/L)"
+listingNCAConcentration(prettyLabels = TRUE, units = TRUE)
 
 \dontrun{
 # Restrict to specific subjects and covariate values

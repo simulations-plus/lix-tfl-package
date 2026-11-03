@@ -1386,6 +1386,27 @@
 
 ##################################################################################
 
+#' Internal helper: numeric-aware sort key for a covariate column
+#'
+#' Categorical covariates are stored as character/factor, so plain sorting is
+#' lexicographic ("10" < "2"). This returns a numeric key when every non-missing
+#' value converts cleanly (numeric-coded modalities then sort 2 < 10), and keeps
+#' the original values otherwise (mixed numeric/text, or genuinely categorical).
+#'
+#' @param x A covariate column (character, factor, or numeric).
+#'
+#' @return A numeric vector when `x` is wholly numeric-coded, else `x` unchanged.
+#'
+#' @keywords internal
+#' @noRd
+.covariateSortKey <- function(x) {
+	num <- suppressWarnings(as.numeric(as.character(x)))
+	if (all(is.na(x) | !is.na(num))) num else x
+}
+
+
+##################################################################################
+
 #' Internal helper to validate covariate labels against splitCovariates
 #'
 #' @param splitCovariates Character vector of covariate names.
@@ -2899,7 +2920,7 @@
 ##################################################################################
 #' Mask individual subject IDs within a Section-tagged summary table
 #'
-#' With `includeId = TRUE`, the "Statistic" column mixes metric names (SUMMARY
+#' With `includeIds = TRUE`, the "Statistic" column mixes metric names (SUMMARY
 #' rows) with real subject/composite IDs (INDIVIDUAL rows). This relabels only
 #' the individual-row IDs, mirroring the `id` case in `.mockDataListing()`.
 #'
@@ -2961,10 +2982,7 @@
 		df_prepared <- df_prepared %>%
 			dplyr::arrange(dplyr::across(
 				dplyr::all_of(splitCovariates),
-				~{
-					num <- suppressWarnings(as.numeric(as.character(.x)))
-					if (all(is.na(num))) .x else num
-				}
+				.covariateSortKey
 			))
 
 		# Map headers to N counts

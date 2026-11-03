@@ -12,7 +12,8 @@
 \item{value_col}{Character string specifying the name of the value column to summarize.}
 
 \item{id_col}{Character string specifying the name of the ID/subject column.
-Used to calculate N (number of unique subjects) and SE (standard error).}
+Used for the occasion-aware N (see \code{\link[=.effectiveSampleSize]{.effectiveSampleSize()}}) and SE, which
+is derived from that N.}
 
 \item{group_by}{Character vector or NULL specifying column names to group by.
 Examples: \code{c("Time", "SEX")}, \code{c("Parameter")}, \code{NULL} for no grouping.}

@@ -2,7 +2,7 @@
 % Please edit documentation in R/InternalHelpers_PKanalix.R
 \name{.getDelim}
 \alias{.getDelim}
-\title{RoundNumericCols}
+\title{.getDelim}
 \usage{
 .getDelim(filename, seps = c(",", "\\t", ";"), nrows = 50)
 }
@@ -12,21 +12,16 @@
 \item{seps}{A character vector of possible delimiters to test. The default is \code{c("\\t", " ", ";", ",")}.}
 
 \item{nrows}{An integer specifying the number of rows to read for testing the delimiter. Default is 50.}
-
-\item{df}{A data frame containing columns to be rounded.}
-
-\item{digits}{An integer specifying the number of decimal places for rounding. Default is 3.}
 }
 \value{
-A data frame with all numeric columns rounded to the specified number of decimal places.
-
 Returns the detected delimiter as a character if successful. If the file cannot be
 split into columns with any of the tested delimiters, returns \code{NULL} invisibly.
 }
 \description{
-Rounds all numeric columns in a data frame to a specified number of decimal places.
-Also attempts to convert character columns that contain numeric values to numeric
-before rounding, providing robust handling of mixed data types.
+This helper function attempts to detect the delimiter used in a text file by reading
+a small sample of rows and determining which of a specified set of delimiters yields the
+highest number of columns. This function is useful for automatically identifying the correct
+delimiter when reading data files with various formats.
 }
 \details{
 The function works by iteratively attempting to read a portion of the file (\code{nrows} rows) with
@@ -40,16 +35,6 @@ file could not be split into columns), the function outputs an error message and
 }
 }
 \examples{
-# Example usage:
-# df <- data.frame(param = c("AUC", "Cmax"), value1 = c(123.456, 67.891), value2 = c("234.567", "89.123"))
-# RoundNumericCols(df, digits = 2)
-.getDelim
-
-This helper function attempts to detect the delimiter used in a text file by reading
-a small sample of rows and determining which of a specified set of delimiters yields the
-highest number of columns. This function is useful for automatically identifying the correct
-delimiter when reading data files with various formats.
-
 # Example usage:
 # sep <- .getDelim("datafile.txt")
 
