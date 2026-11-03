@@ -1673,6 +1673,40 @@ test_that("listingNCAParameters sorts by covariates in specified order", {
 	}
 })
 
+# .covariateSortKey drives the covariate sort order in listingNCAParameters and
+# listingNCARatios (via dplyr::arrange). These assert the numeric-aware behavior
+# directly, independent of any project fixture.
+test_that(".covariateSortKey sorts numeric-coded modalities numerically (not lexically)", {
+	x   <- c("2", "10", "3")
+	key <- .covariateSortKey(x)
+	expect_type(key, "double")
+	# numeric order is 2, 3, 10 (lexical would be 10, 2, 3)
+	expect_equal(x[order(key)], c("2", "3", "10"))
+})
+
+test_that(".covariateSortKey sorts numeric-coded factor modalities numerically", {
+	x <- factor(c("2", "10", "3"))
+	expect_equal(.covariateSortKey(x), c(2, 10, 3))
+})
+
+test_that(".covariateSortKey falls back to original values for mixed numeric/text", {
+	x <- c("2", "low", "10")
+	# a single non-convertible value keeps categorical (lexical) ordering
+	expect_identical(.covariateSortKey(x), x)
+})
+
+test_that(".covariateSortKey leaves genuinely categorical covariates unchanged", {
+	x <- c("low", "high", "medium")
+	expect_identical(.covariateSortKey(x), x)
+})
+
+test_that(".covariateSortKey treats NA as convertible and keeps a numeric key", {
+	x   <- c("2", NA, "10")
+	key <- .covariateSortKey(x)
+	expect_type(key, "double")
+	expect_equal(key, c(2, NA, 10))
+})
+
 test_that("listingNCAParameters validates invalid covariates", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 

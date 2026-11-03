@@ -275,6 +275,15 @@
 		stop("No random effects with an estimated omega were found; nothing to plot.")
 	}
 
+	# A param carries occ variability at the combined level when it has an
+	# estimated gamma component. Such params keep their distinct per-occ rows;
+	# params w/o one are constant across occs.
+	param_has_iov <- vapply(sd_components, function(nms) {
+		present <- nms[nms %in% names(pop_params)]
+		present <- present[!is.na(pop_params[present])]
+		any(grepl("^gamma", present))
+	}, logical(1))
+
 	alpha <- 1 - settings$level
 
 	# Determine grouping variable for QQ computation:
@@ -293,12 +302,16 @@
 	# Build data list (one data frame per parameter x split group)
 	plot_data_list <- lapply(parameters, function(param) {
 
-		# Drop occasion duplicates: a parameter constant across occasions (no IOV at
-		# this level) repeats per (id x occasion), inflating n and shrinking the CI.
-		# Keep one row per identifier (plus rep) and distinct eta value.
+		# Collapse structural occ duplicates (constant across occs) on the identifier,
+		# not the value, so coincidentally equal occ estimates of an IOV param survive.
 		id_cols <- intersect(c("rep", "id"), names(rand_eff_df))
 		work    <- rand_eff_df[, c(id_cols, "split", "color", param)]
-		work    <- work[!duplicated(work), , drop = FALSE]
+		occ_active <- (!is.null(settings$variabilityLevel) &&
+									 settings$variabilityLevel %in% occ_vars) ||
+			(is.null(settings$variabilityLevel) && param_has_iov[[param]])
+		if (!occ_active) {
+			work <- work[!duplicated(work[, id_cols, drop = FALSE]), , drop = FALSE]
+		}
 
 		# omega_*/gamma_* are standard deviations (models declare `sd=omega_*`), so
 		# the standardized random effect is eta / SD (not eta / sqrt(SD)). sd_val is

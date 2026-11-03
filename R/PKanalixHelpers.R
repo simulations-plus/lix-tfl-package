@@ -982,10 +982,7 @@ tableNCAParameters <- function(projectFile          = NULL,
 			summary_stats <- summary_stats %>%
 				dplyr::arrange(dplyr::across(
 					dplyr::all_of(splitCovariates),
-					~{
-						num <- suppressWarnings(as.numeric(as.character(.x)))
-						if(all(is.na(num))) .x else num
-					}
+					.covariateSortKey
 				))
 		}
 	}
@@ -1479,10 +1476,7 @@ tableNCARatios <- function(projectFile           = NULL,
 			summary_tbl <- summary_tbl %>%
 				dplyr::arrange(dplyr::across(
 					dplyr::all_of(splitCovariates),
-					~{
-						num <- suppressWarnings(as.numeric(as.character(.x)))
-						if(all(is.na(num))) .x else num
-					}
+					.covariateSortKey
 				))
 		}
 	}
@@ -2439,10 +2433,7 @@ listingNCAParameters <- function(projectFile          = NULL,
 			dplyr::select(dplyr::all_of(splitCovariates), "id", dplyr::all_of(remaining_cols)) %>%
 			dplyr::arrange(dplyr::across(
 				dplyr::all_of(splitCovariates),
-				~{
-					num <- suppressWarnings(as.numeric(as.character(.x)))
-					if (all(is.na(.x) | !is.na(num))) num else .x
-				}
+				.covariateSortKey
 			))
 	}
 
@@ -2682,10 +2673,7 @@ listingNCARatios <- function(projectFile      = NULL,
 			dplyr::select(dplyr::all_of(splitCovariates), "id", dplyr::all_of(remaining_cols)) %>%
 			dplyr::arrange(dplyr::across(
 				dplyr::all_of(splitCovariates),
-				~{
-					num <- suppressWarnings(as.numeric(as.character(.x)))
-					if (all(is.na(.x) | !is.na(num))) num else .x
-				}
+				.covariateSortKey
 			))
 	}
 
