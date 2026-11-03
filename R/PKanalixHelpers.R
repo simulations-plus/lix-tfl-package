@@ -2441,7 +2441,7 @@ listingNCAParameters <- function(projectFile          = NULL,
 				dplyr::all_of(splitCovariates),
 				~{
 					num <- suppressWarnings(as.numeric(as.character(.x)))
-					if(all(is.na(num))) .x else num
+					if (all(is.na(.x) | !is.na(num))) num else .x
 				}
 			))
 	}
@@ -2684,7 +2684,7 @@ listingNCARatios <- function(projectFile      = NULL,
 				dplyr::all_of(splitCovariates),
 				~{
 					num <- suppressWarnings(as.numeric(as.character(.x)))
-					if(all(is.na(num))) .x else num
+					if (all(is.na(.x) | !is.na(num))) num else .x
 				}
 			))
 	}

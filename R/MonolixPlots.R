@@ -22,6 +22,44 @@
 	paste0(sd_prefix, param_suffix)
 }
 
+#' Internal helper: variability-SD component names contributing to an eta column
+#'
+#' At a selected level (simulated with `variabilityLevel` set to "ID" or an
+#' occasion name) the eta is a single random effect, so the standardizing SD is
+#' the single component from [.sdNameForEta()]. At the combined level
+#' (`variabilityLevel = NULL`, and all mode/mean cases) the eta is the sum of the
+#' ID and occasion random effects, so its SD combines the omega and the
+#' occasion-level gammas: sqrt(omega^2 + sum gamma_level^2). This returns the
+#' pop-parameter names of those components; callers keep only the ones present
+#' in the estimated parameters (a parameter without IOV has no gamma_* entry).
+#'
+#' @param param Single eta column name (e.g. "eta_V").
+#' @param settings List with indivEstimate and variabilityLevel.
+#' @param occ_vars Character vector of occasion variability-level names.
+#' @param sd_prefix Variability-parameter prefix passed to [.sdNameForEta()] for
+#'   the single-component (selected-level) case.
+#' @return Character vector of SD pop-parameter names: one for a selected level;
+#'   omega plus the gamma components for the combined level.
+#' @keywords internal
+.sdComponentsForEta <- function(param, settings, occ_vars, sd_prefix = "omega_") {
+	# Per-level selection: a single component.
+	if (settings$indivEstimate == "simulated" && !is.null(settings$variabilityLevel)) {
+		return(.sdNameForEta(param, settings, sd_prefix))
+	}
+	# Combined level: omega_<base> plus gamma*_<base> for each occasion level,
+	# using the same gamma prefixes as the occasion-level standardization
+	# ("gamma_" for the 1st occasion level, "gamma2_" for the 2nd, ...).
+	base <- sub("^eta_", "", param)
+	gamma_names <- character(0)
+	if (length(occ_vars) > 0) {
+		gamma_prefixes <- vapply(seq_along(occ_vars),
+			function(k) if (k == 1L) "gamma_" else paste0("gamma", k, "_"),
+			character(1))
+		gamma_names <- paste0(gamma_prefixes, base)
+	}
+	c(paste0("omega_", base), gamma_names)
+}
+
 #' Internal helper: Prepare QQ plot data for standardized random effects
 #'
 #' @param parameters Character vector of parameter names
@@ -207,19 +245,31 @@
 	# Retrieve population parameters omegas to standardize random effects
 	pop_params <- getEstimatedPopulationParameters()
 
-	# Skip parameters whose omega is absent (no between-subject variability on
-	# that parameter). Keeps the plot useful for models where only a subset of
-	# parameters has random effects.
-	sd_names <- vapply(parameters, .sdNameForEta, character(1),
-										 settings = settings, sd_prefix = sd_prefix)
-	has_sd <- sd_names %in% names(pop_params) &
-		!is.na(pop_params[sd_names])
+	# Standardizing SD per parameter. For a selected level (simulated with a
+	# variabilityLevel) the eta is a single random effect, so its SD is the single
+	# omega_*/gamma*_* component. At the combined level (variabilityLevel = NULL,
+	# and all mode/mean cases) the eta is the sum of the ID and occasion effects,
+	# so its SD combines the active components: sqrt(omega^2 + sum gamma_level^2).
+	# Parameters with no estimated variability component are skipped.
+	sd_components <- lapply(parameters, .sdComponentsForEta,
+												 settings = settings, occ_vars = occ_vars, sd_prefix = sd_prefix)
+	names(sd_components) <- parameters
+
+	sd_vals <- vapply(sd_components, function(nms) {
+		present <- nms[nms %in% names(pop_params)]
+		present <- present[!is.na(pop_params[present])]
+		if (length(present) == 0) return(NA_real_)
+		sqrt(sum(pop_params[present]^2))
+	}, numeric(1))
+
+	has_sd <- !is.na(sd_vals)
 	if (any(!has_sd)) {
 		skipped <- sub("^eta_", "", parameters[!has_sd])
 		message(sprintf(
 			"QQ plot unavailable for parameter(s) without random effects: %s.",
 			paste(skipped, collapse = ", ")))
 		parameters <- parameters[has_sd]
+		sd_vals     <- sd_vals[has_sd]
 	}
 	if (length(parameters) == 0) {
 		stop("No random effects with an estimated omega were found; nothing to plot.")
@@ -243,17 +293,25 @@
 	# Build data list (one data frame per parameter x split group)
 	plot_data_list <- lapply(parameters, function(param) {
 
+		# Drop occasion duplicates: a parameter constant across occasions (no IOV at
+		# this level) repeats per (id x occasion), inflating n and shrinking the CI.
+		# Keep one row per identifier (plus rep) and distinct eta value.
+		id_cols <- intersect(c("rep", "id"), names(rand_eff_df))
+		work    <- rand_eff_df[, c(id_cols, "split", "color", param)]
+		work    <- work[!duplicated(work), , drop = FALSE]
+
 		# omega_*/gamma_* are standard deviations (models declare `sd=omega_*`), so
-		# the standardized random effect is eta / SD (not eta / sqrt(SD)).
-		sd_val <- pop_params[.sdNameForEta(param, settings, sd_prefix)]
-		std_re <- rand_eff_df[[param]] / sd_val
+		# the standardized random effect is eta / SD (not eta / sqrt(SD)). sd_val is
+		# the combined SD for this parameter (see sd_vals above).
+		sd_val <- sd_vals[[param]]
+		std_re <- work[[param]] / sd_val
 
 		# Compute QQ statistics per group (split or color when mergedSplits)
 		per_group <- lapply(qq_group_levels, function(g) {
-			mask <- rand_eff_df[[qq_group_col]] == g
+			mask <- work[[qq_group_col]] == g
 			std_re_group <- std_re[mask]
-			split_group  <- rand_eff_df$split[mask]
-			color_group  <- rand_eff_df$color[mask]
+			split_group  <- work$split[mask]
+			color_group  <- work$color[mask]
 
 			n_group <- length(std_re_group)
 			if (n_group < 2) {
@@ -417,12 +475,7 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 	#-----------------------------------------------------------------------------
 	# Input validation
 	valid_estimates <- c("mean", "mode", "simulated")
-	if (!settings$indivEstimate %in% valid_estimates) {
-		stop(sprintf(
-			"Invalid `indivEstimate`: '%s'. Must be one of: %s.",
-			settings$indivEstimate,
-			paste(valid_estimates, collapse = ", ")))
-	}
+	settings$indivEstimate <- match.arg(settings$indivEstimate, valid_estimates)
 	if (!is.numeric(settings$level) || settings$level <= 0 || settings$level >= 1) {
 		stop("`level` must be a number strictly between 0 and 1, e.g. 0.90.")
 	}
