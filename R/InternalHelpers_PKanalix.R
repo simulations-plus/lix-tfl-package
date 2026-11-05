@@ -2853,7 +2853,8 @@
 #'     rule covers every date datatype).
 #'   \item everything numeric (`time`, `observation`, `contcov`, `amount`, `rate`,
 #'     `mdv`, `cens`, `limit`, ...) and any unrecognized type -> numeric mask
-#'     (`"xx.xx"` at `digits` width); non-numeric text in such a column is kept.
+#'     (`"xx.xx"` at `digits` width); non-numeric text in such a column is kept,
+#'     unless `maskUntagged = TRUE` (see below).
 #' }
 #'
 #' @param df Data frame (one row per record) to mask.
@@ -2861,10 +2862,17 @@
 #'   `getData()`: `setNames(headerTypes, header)`). Columns not found default to the
 #'   numeric mask.
 #' @param digits Integer mask width for numeric columns (default 2 -> `"xx.xx"`).
+#' @param maskUntagged Logical; if `TRUE`, every column that is not one of the
+#'   relabeled kinds (id/obsid/adm/cat/occ/date) has its whole value replaced by
+#'   the numeric mask rather than only its digit runs. This masks free-text
+#'   columns that carry no digits and are therefore left untouched by digits-only
+#'   masking (e.g. an exclusion-reason column in `listingExclusions()`, typed
+#'   `NA`, `"ignore"` or `""`). Missing markers are still kept. Default `FALSE`
+#'   (digits-only masking, previous behaviour).
 #' @return `df` with masked columns (all returned as character).
 #' @keywords internal
 #' @noRd
-.mockDataListing <- function(df, colTypes, digits = 2) {
+.mockDataListing <- function(df, colTypes, digits = 2, maskUntagged = FALSE) {
 	num_mask <- if (digits > 0) paste0("xx.", strrep("x", digits)) else "xx"
 
 	relabel <- function(x, prefix) {
@@ -2881,6 +2889,14 @@
 		x <- as.character(x)
 		x <- gsub("[0-9]+\\.[0-9]+", num_mask, x)
 		x <- gsub("[0-9]+", num_mask, x)
+		x
+	}
+	# Whole-value mask for untagged free-text columns (no digits to catch);
+	# missing markers are kept.
+	mask_full <- function(x) {
+		x    <- as.character(x)
+		keep <- is.na(x) | !nzchar(x) | x == "."
+		x[!keep] <- num_mask
 		x
 	}
 	mask_date <- function(x) {
@@ -2903,6 +2919,12 @@
 		"num"
 	}
 
+	# Columns that are not one of the relabeled kinds fall to the numeric mask.
+	# When maskUntagged is set, use the whole-value mask there instead of the
+	# digits-only one, so free-text columns with no digits (and columns typed
+	# "ignore"/"" rather than NA) are masked too.
+	num_mask_fun <- if (isTRUE(maskUntagged)) mask_full else mask_num
+
 	for (col in names(df)) {
 		k <- kind_of(unname(colTypes[col]))
 		df[[col]] <- switch(k,
@@ -2912,7 +2934,7 @@
 			cat   = relabel(df[[col]], "Category "),
 			occ   = relabel(df[[col]], "occ"),
 			date  = mask_date(df[[col]]),
-			mask_num(df[[col]]))
+			num_mask_fun(df[[col]]))
 	}
 	df
 }

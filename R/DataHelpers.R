@@ -882,8 +882,9 @@ tableExclusions <- function(projectFile          = NULL,
 #'   outputs, by column data type (from `getData()`): id -> `"id1"`, obsid ->
 #'   `"obsid1"`, categorical covariates -> `"Category 1"`, occasions -> `"occ1"`,
 #'   dates -> `"xx/xx/xxxx"`, and all numeric columns (times, observations,
-#'   continuous covariates, ...) -> `"xx.xx"`. Missing markers (`"."`) are kept.
-#'   Default `FALSE`.
+#'   continuous covariates, ...) -> `"xx.xx"`. Untagged columns with no header
+#'   type (e.g. an added exclusion-reason column) are masked as `"xx.xx"` too.
+#'   Missing markers (`"."`) are kept. Default `FALSE`.
 #'
 #' @return If exclusions are found, returns a data frame containing the excluded rows from
 #'         the raw dataset. If no exclusions are found, returns NULL and outputs a message.
@@ -1085,7 +1086,7 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
 
         if (isTRUE(mock)) {
             col_types <- stats::setNames(data$headerTypes, data$header)
-            excl <- .mockDataListing(excl, colTypes = col_types)
+            excl <- .mockDataListing(excl, colTypes = col_types, maskUntagged = TRUE)
         }
 
         attr(excl, "project_source") <- lixoftConnectors::getProjectSettings()$directory
