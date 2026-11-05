@@ -682,6 +682,11 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 #' @param maxSubjectRatio Ratio (n_modalities / n_subjects) above which a
 #'   chosen grouping variable triggers a "might not be a suitable grouping
 #'   variable" warning. Default 0.5.
+#' @param prettyLabels Logical; if `TRUE` (default), the summary metrics are
+#'   shown with report-ready labels (`nbSbj` -> "Nb. of Subjects", `totalNbObs`
+#'   -> "Total Nb. of Obs.", `meanNbObsPerSbj` -> "Mean Nb. of Obs./Subject",
+#'   `minNbObsPerSbj`/`maxNbObsPerSbj` -> "Min."/"Max. Nb. of Obs./Subject"). If
+#'   `FALSE`, the generic metric keys are kept.
 #' @param mock Logical; if `TRUE`, masks the table for documentation / example
 #'   outputs: the count/summary values become placeholders (e.g. `"xx.xx"`) and
 #'   `splitCovariates` grouping values become generic labels (`"Category 1"`, ...).
@@ -715,6 +720,7 @@ tableExclusions <- function(projectFile          = NULL,
 														filterIds            = NULL,
 														useWideFormat        = TRUE,
 														maxSubjectRatio      = 0.5,
+														prettyLabels         = TRUE,
 														mock                 = FALSE) {
 
 	.checkProjectFile(projectFile, c("pkanalix", "monolix"))
@@ -809,11 +815,11 @@ tableExclusions <- function(projectFile          = NULL,
 		summary_tbl <- as.data.frame(per_subject) %>%
 			dplyr::group_by(dplyr::across(dplyr::all_of(splitCovariates))) %>%
 			dplyr::summarise(
-				`Nb. of Subjects`          = dplyr::n_distinct(.data[[id]]),
-				`Total Nb. of Obs.`        = sum(n_obs),
-				`Mean Nb. of Obs./Subject` = round(mean(n_obs), 2),
-				`Min. Nb. of Obs./Subject` = min(n_obs),
-				`Max. Nb. of Obs./Subject` = max(n_obs),
+				nbSbj           = dplyr::n_distinct(.data[[id]]),
+				totalNbObs      = sum(n_obs),
+				meanNbObsPerSbj = round(mean(n_obs), 2),
+				minNbObsPerSbj  = min(n_obs),
+				maxNbObsPerSbj  = max(n_obs),
 				.groups = "drop") %>%
 			dplyr::relocate(dplyr::all_of(splitCovariates), .before = 1) %>%
 			dplyr::arrange(dplyr::across(dplyr::all_of(splitCovariates)))
@@ -821,11 +827,11 @@ tableExclusions <- function(projectFile          = NULL,
 		# Overall summary (no grouping)
 		summary_tbl <- as.data.frame(per_subject) %>%
 			dplyr::summarise(
-				`Nb. of Subjects`          = dplyr::n_distinct(.data[[id]]),
-				`Total Nb. of Obs.`        = sum(n_obs),
-				`Mean Nb. of Obs./Subject` = round(mean(n_obs), 2),
-				`Min. Nb. of Obs./Subject` = min(n_obs),
-				`Max. Nb. of Obs./Subject` = max(n_obs)) %>%
+				nbSbj           = dplyr::n_distinct(.data[[id]]),
+				totalNbObs      = sum(n_obs),
+				meanNbObsPerSbj = round(mean(n_obs), 2),
+				minNbObsPerSbj  = min(n_obs),
+				maxNbObsPerSbj  = max(n_obs)) %>%
 			dplyr::arrange(dplyr::across(dplyr::all_of(splitCovariates)))
 	}
 
@@ -853,6 +859,18 @@ tableExclusions <- function(projectFile          = NULL,
 			excludeCols  = "Statistic",
 			modalityCols = if (length(modality_cols)) modality_cols else NULL,
 			naFillAxis   = if (useWideFormat) "column" else "row")
+	}
+
+	if (isTRUE(prettyLabels)) {
+		if (!useWideFormat && "Statistic" %in% names(summary_tbl)) {
+			keys  <- unique(summary_tbl$Statistic)
+			dummy <- as.data.frame(stats::setNames(as.list(rep(NA, length(keys))), keys),
+														 check.names = FALSE, stringsAsFactors = FALSE)
+			label_map <- stats::setNames(names(.prettyLabels(dummy)), keys)
+			summary_tbl$Statistic <- unname(label_map[summary_tbl$Statistic])
+		} else {
+			summary_tbl <- .prettyLabels(summary_tbl)
+		}
 	}
 
 	if (length(splitCovariates) > 0) {

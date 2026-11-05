@@ -649,7 +649,12 @@ utils::globalVariables(c("."))
 		"BestModel"           = "Best\nModel",
 		"ActualTime"          = "Actual Time",
 		"NominalTime"         = "Nominal Time",
-		"UsedConc"            = "Used Concentration")
+		"UsedConc"            = "Used Concentration",
+		"nbSbj"               = "Nb. of Subjects",
+		"totalNbObs"          = "Total Nb. of Obs.",
+		"meanNbObsPerSbj"     = "Mean Nb. of Obs./Subject",
+		"minNbObsPerSbj"      = "Min. Nb. of Obs./Subject",
+		"maxNbObsPerSbj"      = "Max. Nb. of Obs./Subject")
 
 	# Process each column name
 	col_names <- names(df)
