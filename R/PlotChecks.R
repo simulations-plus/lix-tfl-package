@@ -5,7 +5,7 @@
     return(split)
   }
   
-  covariates <- getCovariateInformation()$covariate
+  covariates <- lixoftConnectors::getCovariateInformation()$covariate
   covNames <- .getCovariates(continuous = TRUE, categorical = TRUE)
 
   # When only one output --> create a list of output
@@ -55,8 +55,8 @@
       if (is.null(covariates)) {
         covariates <- unique(do.call(
           rbind,
-          lapply(getObservationInformation()$name,
-                 function(obs) unique(getObservationInformation()[[obs]][intersect(.getSubjocc(), names(getObservationInformation()[[obs]]))]))
+          lapply(lixoftConnectors::getObservationInformation()$name,
+                 function(obs) unique(lixoftConnectors::getObservationInformation()[[obs]][intersect(.getSubjocc(), names(lixoftConnectors::getObservationInformation()[[obs]]))]))
         ))
       }
 
@@ -128,7 +128,7 @@
     return(filter)
   }
   
-  cov <- getCovariateInformation()$covariate
+  cov <- lixoftConnectors::getCovariateInformation()$covariate
   covNames <- .getCovariates(continuous = TRUE, categorical = TRUE)
 
   # When only one output --> create a list of output

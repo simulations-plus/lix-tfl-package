@@ -1027,7 +1027,7 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 		# Validate RSE availability with method
 		.validateProjectResultsAvailability(software = "monolix", resultType = "bootstrap", method = stdErrMethod)
 
-		boot_interval_level <- getBootstrapSettings()$level
+		boot_interval_level <- lixoftConnectors::getBootstrapSettings()$level
 
 		# Calculate percentiles based on interval level
 		boot_lower_p     <- (100 - boot_interval_level) / 2

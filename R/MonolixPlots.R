@@ -243,7 +243,7 @@
 
 	#-----------------------------------------------------------------------------
 	# Retrieve population parameters omegas to standardize random effects
-	pop_params <- getEstimatedPopulationParameters()
+	pop_params <- lixoftConnectors::getEstimatedPopulationParameters()
 
 	# Standardizing SD per parameter. For a selected level (simulated with a
 	# variabilityLevel) the eta is a single random effect, so its SD is the single

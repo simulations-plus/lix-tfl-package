@@ -116,12 +116,12 @@
 
 .stratifyCovariates <- function(split = NULL, filter = NULL, splitbyid = FALSE) {
   ## Get covariates information ------------------------------------------------
-  covData <- getCovariateInformation()$covariate
+  covData <- lixoftConnectors::getCovariateInformation()$covariate
   allcovariates <- .getCovariates(continuous = TRUE, categorical = TRUE)
   covtypes = sapply(allcovariates, .getCovariateType)
   covNames <- allcovariates
 
-  data <- getData()
+  data <- lixoftConnectors::getData()
 
   if (length(.getOccasions())) {
     occHeader <- .getOccasions()
@@ -130,7 +130,7 @@
   }
 
   if (is.null(covData)) {
-    observations <- getObservationInformation()
+    observations <- lixoftConnectors::getObservationInformation()
     obsNames <- observations$name
     covData <- unique(do.call(
       rbind,
@@ -244,7 +244,7 @@
 }
 
 .getIndividualParametersWithVariability <- function(variabilityLevel = NULL) {
-  parameterVariability <- getIndividualParameterModel()$variability
+  parameterVariability <- lixoftConnectors::getIndividualParameterModel()$variability
 
   if (! is.null(variabilityLevel)) {
     variabilityLevel[variabilityLevel == "ID"] <- "id"
@@ -257,7 +257,7 @@
 
 .getCovariates <- function(categorical = FALSE, continuous = FALSE, latent = FALSE) {
   covariates <- NULL
-  covTypes <- getCovariateInformation()$type
+  covTypes <- lixoftConnectors::getCovariateInformation()$type
   
   if (length(covTypes) == 0) return(covariates)
 
@@ -302,7 +302,7 @@
     headerMlx <- .filterHeaders(headerMlx)
   }
   
-  data <- getData()
+  data <- lixoftConnectors::getData()
   headersMlx <- data$headerTypes
   headersDataset <- data$header
   
@@ -329,12 +329,12 @@
       occasions <- .matchToData("occ")
     }
     if (.isHeader("evid")) {
-      if ("OCCevid" %in% names(getObservationInformation()[[getObservationInformation()$name[1]]])) {
+      if ("OCCevid" %in% names(lixoftConnectors::getObservationInformation()[[lixoftConnectors::getObservationInformation()$name[1]]])) {
         occasions <- c(occasions, "OCCevid")
       }
     }
   } else {
-    occElements <- getOccasionElements()$names
+    occElements <- lixoftConnectors::getOccasionElements()$names
     if (length(occElements) > 0) {
       occasions <-  occElements
     }
@@ -345,13 +345,13 @@
 
 .software <- function (){
   
-  softname <- getLixoftConnectorsState()$software
+  softname <- lixoftConnectors::getLixoftConnectorsState()$software
   return(softname)
   
 }
 
 .isHeader <- function(headers) {
-  return(headers %in% getData()$headerTypes)
+  return(headers %in% lixoftConnectors::getData()$headerTypes)
 }
 
 .renameColumns <- function(df, oldName, newName){
@@ -374,7 +374,7 @@
   for (h in headersList) {
     if (.isHeader(h)) {
       outputHeadersList <- c(outputHeadersList, h)
-    } else if (is.element(h, getData()$header)) {
+    } else if (is.element(h, lixoftConnectors::getData()$header)) {
       outputHeadersList <- c(outputHeadersList, h)
     }
   }
