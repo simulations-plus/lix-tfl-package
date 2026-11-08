@@ -3295,9 +3295,12 @@
 #' output. `prettyLabels` delegates naming to the shared `.prettyLabels()` helper
 #' (which maps `ActualTime` -> "Actual time", `NominalTime` -> "Nominal time",
 #' `UsedConc` -> "Used concentration"; `Concentration` / `Censoring` are already
-#' their pretty form). `units` appends the project unit in parentheses: the time
-#' columns use `getDataSettings()$units$time` and the concentration columns use
-#' amount-per-volume (`units$dose` / `units$volume`, e.g. "mg/L").
+#' their pretty form). For urine (excretion-rate) projects the value columns are
+#' instead labelled "Excretion Rate" / "Used Excretion Rate" and the time column
+#' "Interval Midpoint". `units` appends the project unit in parentheses: the time
+#' columns use `getDataSettings()$units$time` and the value columns use
+#' amount-per-volume (`units$dose` / `units$volume`, e.g. "mg/L"), or
+#' amount-per-time for urine (`units$dose` / `units$time`, e.g. "ng/h").
 #'
 #' The two flags are independent and compose freely:
 #' \itemize{
@@ -3334,10 +3337,19 @@
 	# so units can be appended by position regardless of the pretty rename.
 	time_idx <- which(names(df) %in% c("ActualTime", "NominalTime"))
 	conc_idx <- which(names(df) %in% c("Concentration", "UsedConc"))
+	fixed_idx <- c(time_idx, conc_idx)
+	raw_fixed <- names(df)[fixed_idx]
 
 	# Pretty names via the shared package helper (single source of truth)
 	if (isTRUE(prettyLabels)) {
 		df <- .prettyLabels(df)
+		# Urine data is excretion rate, not concentration: override the fixed labels
+		if (.isUrineProject()) {
+			for (k in seq_along(fixed_idx)) {
+				u_lab <- .urineNCAConcLabel(raw_fixed[k])
+				if (!is.null(u_lab)) names(df)[fixed_idx[k]] <- u_lab
+			}
+		}
 	}
 
 	# Append units onto the (now possibly pretty) labels by captured position
@@ -3358,9 +3370,11 @@
 #'
 #' @description
 #' Reads the project unit settings via `lixoftConnectors::getDataSettings()`.
-#' The time unit is taken directly from `$units$time`; the concentration unit is
-#' derived as amount per volume (`$units$dose` / `$units$volume`, e.g. "mg/L").
-#' Each component is passed through `.formatUnits()` for consistent display.
+#' The time unit is taken directly from `$units$time`; the value unit is derived
+#' as amount per volume (`$units$dose` / `$units$volume`, e.g. "mg/L") for
+#' concentration data, or amount per time (`$units$dose` / `$units$time`, e.g.
+#' "ng/h") for urine (excretion-rate) projects. Each component is passed through
+#' `.formatUnits()` for consistent display.
 #'
 #' Units are only returned when `enabled = TRUE` *and* units are enabled in the
 #' project (`$enableunits`); otherwise a warning is issued (when `enabled`) and
@@ -3392,13 +3406,45 @@
 		time_unit <- .formatUnits(u$time)
 	}
 
-	# Concentration is amount (dose) per volume
+	# Value unit: amount/volume for concentration data, amount/time for urine
+	# (excretion rate) data.
 	conc_unit <- ""
-	if (!is.null(u$dose) && !is.null(u$volume) && nzchar(u$dose) && nzchar(u$volume)) {
+	if (.isUrineProject()) {
+		if (!is.null(u$dose) && !is.null(u$time) && nzchar(u$dose) && nzchar(u$time)) {
+			conc_unit <- paste0(.formatUnits(u$dose), "/", .formatUnits(u$time))
+		}
+	} else if (!is.null(u$dose) && !is.null(u$volume) && nzchar(u$dose) && nzchar(u$volume)) {
 		conc_unit <- paste0(.formatUnits(u$dose), "/", .formatUnits(u$volume))
 	}
 
 	list(time = time_unit, concentration = conc_unit)
+}
+
+################################################################################
+#' Is the loaded PKanalix project urine (excretion-rate) data?
+#'
+#' @return TRUE when `getDataSettings()$datatype` is "urine".
+#' @keywords internal
+#' @noRd
+.isUrineProject <- function() {
+	dt <- tryCatch(lixoftConnectors::getDataSettings()$datatype, error = function(e) NULL)
+	isTRUE(any(dt == "urine"))
+}
+
+################################################################################
+#' Urine (excretion-rate) pretty label for a fixed NCA-concentration column
+#'
+#' @param rawName Raw column name (ActualTime/NominalTime/Concentration/UsedConc).
+#' @return Urine-specific pretty label, or NULL if the column has no urine override.
+#' @keywords internal
+#' @noRd
+.urineNCAConcLabel <- function(rawName) {
+	switch(rawName,
+		ActualTime    = "Interval Midpoint",
+		NominalTime   = "Nominal Interval Midpoint",
+		Concentration = "Excretion Rate",
+		UsedConc      = "Used Excretion Rate",
+		NULL)
 }
 
 ################################################################################
