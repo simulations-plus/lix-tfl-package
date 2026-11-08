@@ -729,7 +729,7 @@
 #'       "Inconclusive" (yellow), "Not Proportional" (red)}
 #'   }
 #'   If `NULL` (default), no conditional coloring is applied.
-#' @param theme_fn Function to apply a flextable theme. Default is `theme_box`. Other options include `theme_vanilla`, `theme_zebra`, `theme_booktabs`, `theme_tron`.
+#' @param theme_fn Function to apply a flextable theme. Default is `flextable::theme_booktabs`. Other options include `flextable::theme_vanilla`, `flextable::theme_zebra`, `flextable::theme_box`, `flextable::theme_tron`.
 #' @param soften_amount Numeric value between 0 and 1 controlling color softening for docx/pptx output. 0 = original colors, 1 = white. Default is 0.50.
 #' @param html_alpha Numeric value between 0 and 1 controlling transparency for HTML output (rgba colors). Default is 0.18.
 #' @param align_default Character string for global alignment: "left", "center" (default), "right", or "justify".
@@ -771,7 +771,7 @@
 #'
 #' # Population table with section headers
 #' pop_table <- tablePopulationParameterEstimates(useWideFormat = TRUE)
-#' style_tfl(pop_table, color = c("RSE"), theme_fn = theme_booktabs)
+#' style_tfl(pop_table, color = c("RSE"), theme_fn = flextable::theme_booktabs)
 #'
 #' # With grouping columns and custom headers
 #' style_tfl(df,
@@ -785,7 +785,7 @@ style_tfl <- function(data.flex,
 											header_level2    = NULL,
 											header_level3    = NULL,
 											color            = NULL,     # e.g. c("BE","DP","PVAL","RSE")
-											theme_fn         = theme_booktabs,
+											theme_fn         = flextable::theme_booktabs,
 											soften_amount    = 0.50,     # 0 = original, 1 = white
 											html_alpha       = 0.18,     # only used for html rgba
 											align_default    = "center", # global default alignment
@@ -978,7 +978,7 @@ style_tfl <- function(data.flex,
 	has_section_headers <- length(section_header_rows) > 0 || !is.null(wide_split_col)
 
 
-	ft <- flextable(data.flex)
+	ft <- flextable::flextable(data.flex)
 
 	#-----------------------------------------------------------------------------
 	# [Alias Conversion]
@@ -989,11 +989,11 @@ style_tfl <- function(data.flex,
 	#-----------------------------------------------------------------------------
 	# Initialize flextable with theme
 	ft <- theme_fn(ft)
-	ft <- fontsize(ft, size = 8, part = "all")
+	ft <- flextable::fontsize(ft, size = 8, part = "all")
 
 	# Merge vertical grouping columns
 	if (!is.null(grouping.columns)) {
-		ft <- merge_v(ft, j = grouping.columns)
+		ft <- flextable::merge_v(ft, j = grouping.columns)
 	}
 
 	# Apply default alignment to all table content
@@ -1242,7 +1242,7 @@ style_tfl <- function(data.flex,
 		ft <- flextable::align(ft, align = "left", part = "footer")
 	}
 
-	ft <- set_table_properties(ft, width = 1, layout = "autofit")
+	ft <- flextable::set_table_properties(ft, width = 1, layout = "autofit")
 	return(ft)
 }
 

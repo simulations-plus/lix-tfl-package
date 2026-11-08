@@ -11,7 +11,7 @@ style_tfl(
   header_level2 = NULL,
   header_level3 = NULL,
   color = NULL,
-  theme_fn = theme_booktabs,
+  theme_fn = flextable::theme_booktabs,
   soften_amount = 0.5,
   html_alpha = 0.18,
   align_default = "center",
@@ -54,7 +54,7 @@ Options include:
 }
 If \code{NULL} (default), no conditional coloring is applied.}
 
-\item{theme_fn}{Function to apply a flextable theme. Default is \code{theme_box}. Other options include \code{theme_vanilla}, \code{theme_zebra}, \code{theme_booktabs}, \code{theme_tron}.}
+\item{theme_fn}{Function to apply a flextable theme. Default is \code{flextable::theme_booktabs}. Other options include \code{flextable::theme_vanilla}, \code{flextable::theme_zebra}, \code{flextable::theme_box}, \code{flextable::theme_tron}.}
 
 \item{soften_amount}{Numeric value between 0 and 1 controlling color softening for docx/pptx output. 0 = original colors, 1 = white. Default is 0.50.}
 
@@ -110,7 +110,7 @@ style_tfl(df, color = c("RSE"))
 
 # Population table with section headers
 pop_table <- tablePopulationParameterEstimates(useWideFormat = TRUE)
-style_tfl(pop_table, color = c("RSE"), theme_fn = theme_booktabs)
+style_tfl(pop_table, color = c("RSE"), theme_fn = flextable::theme_booktabs)
 
 # With grouping columns and custom headers
 style_tfl(df,
