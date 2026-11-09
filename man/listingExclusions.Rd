@@ -14,8 +14,9 @@ loaded project is used.}
 outputs, by column data type (from \code{getData()}): id -> \code{"id1"}, obsid ->
 \code{"obsid1"}, categorical covariates -> \code{"Category 1"}, occasions -> \code{"occ1"},
 dates -> \code{"xx/xx/xxxx"}, and all numeric columns (times, observations,
-continuous covariates, ...) -> \code{"xx.xx"}. Missing markers (\code{"."}) are kept.
-Default \code{FALSE}.}
+continuous covariates, ...) -> \code{"xx.xx"}. Untagged columns with no header
+type (e.g. an added exclusion-reason column) are masked as \code{"xx.xx"} too.
+Missing markers (\code{"."}) are kept. Default \code{FALSE}.}
 }
 \value{
 If exclusions are found, returns a data frame containing the excluded rows from

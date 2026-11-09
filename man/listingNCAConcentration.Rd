@@ -51,13 +51,15 @@ If \code{NULL} (default), no covariate filtering is applied.}
 \item{prettyLabels}{Logical; if \code{TRUE}, renames the fixed listing columns to
 publication form: \code{ActualTime} -> "Actual time", \code{NominalTime} ->
 "Nominal time", \code{Concentration} -> "Concentration", \code{UsedConc} ->
-"Used concentration", \code{Censoring} -> "Censoring". Default \code{FALSE} (raw
-column names are kept, e.g. for downstream processing).}
+"Used concentration", \code{Censoring} -> "Censoring". For urine (excretion-rate)
+projects the value columns become "Excretion Rate" / "Used Excretion Rate"
+and the time column "Interval Midpoint". Default \code{FALSE} (raw column names
+are kept, e.g. for downstream processing).}
 
 \item{units}{Logical; if \code{TRUE} and units are enabled in the project,
-appends the time unit to the time columns and the concentration unit
-(amount/volume, e.g. "mg/L") to the concentration columns, e.g.
-"Actual time (h)". Default \code{FALSE}.}
+appends the time unit to the time columns and the value unit to the value
+columns: amount/volume (e.g. "mg/L") for concentration data, or amount/time
+(e.g. "ng/h") for urine, e.g. "Actual time (h)". Default \code{FALSE}.}
 
 \item{roundDigits}{Integer specifying the number of decimal places for rounding
 numeric values. Default is \code{3}.}

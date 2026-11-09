@@ -71,7 +71,7 @@ than a mix of path and rejected candidates. Applies only to stepwise
 strategies (COSSAC/SCM); for SAMBA and other runs without a \code{Step} column it
 is ignored (with a message) and the full table is returned. The accepted
 per-step winners are also recorded on the returned data.frame's
-\code{best_per_step} attribute, which \code{\link[=style_tfl]{style_tfl()}} uses (via \code{autoHighlight}) to
+\code{best_per_step} attribute, which \code{\link[=styleTFL]{styleTFL()}} uses (via \code{autoHighlight}) to
 shade those rows. See \code{\link[=.modelBuildingBestPerStep]{.modelBuildingBestPerStep()}}.}
 
 \item{roundDigits}{Integer specifying the number of digits for rounding
