@@ -4770,6 +4770,35 @@ test_that("listingNCAConcentration prettyLabels renames the nominal time column"
 })
 
 ################################################################################
+# N / Nobs / SE exclude missing values (as PKanalix Nobs)
+################################################################################
+test_that(".calculateDescriptiveStats counts only non-missing values in N, Nobs and SE", {
+	d <- data.frame(id = 1:5, value = c(1, 2, 3, NA, NA))
+	s <- .calculateDescriptiveStats(d, value_col = "value", id_col = "id", group_by = NULL)
+	expect_equal(s$N, 3)
+	expect_equal(s$Nobs, 3)
+	expect_equal(s$SE, stats::sd(c(1, 2, 3)) / sqrt(3))
+	# without an ID column N is the number of non-missing rows
+	expect_equal(.calculateDescriptiveStats(d, value_col = "value", id_col = NULL, group_by = NULL)$N, 3)
+})
+
+test_that("tableNCAParameters N and SE match PKanalix when some subjects have missing values", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	# project_steadystate_infusion: AUCINF_obs etc. are missing for subjects where
+	# lambda_z could not be estimated
+	tb <- suppressWarnings(suppressMessages(
+		tableNCAParameters(pkx_project_4, roundMethod = "none", prettyLabels = FALSE,
+											 aliases = FALSE, units = FALSE)))
+	st <- lixoftConnectors::getNCAParameterStatistics()$statistics
+	expect_true(any(st$Nmiss > 0))   # the fixture really has missing values
+	m <- merge(tb, st, by = "parameter", suffixes = c(".tfl", ".pkx"))
+	expect_equal(as.numeric(m$N), as.numeric(m$Nobs.pkx))
+	expect_equal(as.numeric(m$Nobs.tfl), as.numeric(m$Nobs.pkx))
+	expect_equal(as.numeric(m$SE.tfl), m$SE.pkx, tolerance = 1e-6)
+	expect_equal(as.numeric(m$mean.tfl), m$mean.pkx, tolerance = 1e-6)
+})
+
+################################################################################
 # setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
 # testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-PKanalixHelpers.R")
 

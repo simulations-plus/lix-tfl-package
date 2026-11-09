@@ -443,7 +443,8 @@
 #'
 #' @return A data frame with grouping columns (if any) and the following metrics:
 #'   N, Nobs, min, P05, Q1, mean, SD, SE, CV, median, Q3, P95, max,
-#'   geoMean, geoSD, geoCV, harmMean
+#'   geoMean, geoSD, geoCV, harmMean. `N` and `Nobs` count non-missing values
+#'   only (as PKanalix `Nobs`), and `SE = SD / sqrt(N)`.
 #'
 #' @keywords internal
 #'
@@ -471,7 +472,7 @@
 	stats <- data %>%
 		dplyr::group_by(dplyr::across(dplyr::all_of(group_by))) %>%
 		dplyr::summarise(
-			Nobs = dplyr::n(),
+			Nobs = sum(!is.na(.data[[value_col]])),   # non-missing values (PKanalix Nobs)
 			min = { v <- .data[[value_col]]; if (all(is.na(v))) NA_real_ else min(v, na.rm = TRUE) },
 			P05 = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE, type = 5),
 			Q1 = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE, type = 5),
@@ -548,12 +549,12 @@
 #' @keywords internal
 #'
 .effectiveSampleSize <- function(data, value_col, id_col, group_by) {
-	# No ID column: N is just the number of observations per group.
+	# No ID column: N is the number of non-missing observations per group.
 	if (is.null(id_col)) {
 		return(
 			data %>%
 				dplyr::group_by(dplyr::across(dplyr::all_of(group_by))) %>%
-				dplyr::summarise(N = dplyr::n(), .groups = "drop") %>%
+				dplyr::summarise(N = sum(!is.na(.data[[value_col]])), .groups = "drop") %>%
 				as.data.frame()
 		)
 	}
@@ -567,11 +568,14 @@
 			.groups = "drop"
 		)
 
-	# dplyr::n() counts subjects (one row per subject in per_id).
+	# Subjects are counted only when they have at least one non-missing value,
+	# so N (and SE = SD / sqrt(N)) match the values actually summarized, as in
+	# PKanalix (Nobs excludes missing values, e.g. AUCINF_obs when lambda_z
+	# could not be estimated).
 	per_id %>%
 		dplyr::group_by(dplyr::across(dplyr::all_of(group_by))) %>%
 		dplyr::summarise(
-			N = if (any(n_val > 1)) sum(n_rec) else dplyr::n(),
+			N = if (any(n_val > 1)) sum(n_rec) else sum(n_rec > 0),
 			.groups = "drop"
 		) %>%
 		as.data.frame()
