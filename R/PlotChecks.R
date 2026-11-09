@@ -87,9 +87,16 @@
     # continuous splits
     if (covtypes[[sname]] == "continuous") {
       .check_list(s, argname = paste("Continuous ", argname, " element", sname),
-                  listNames = c("name", "breaks"))
+                  listNames = "name",
+                  optionalNames = "breaks")
       .check_vector_of_double(s$breaks, paste("breaks field in ", argname, " element", sname))
-      s$breaks <- unique(sort(c(min(covariates[[sname]]), s$breaks, max(covariates[[sname]]))))
+      covValues <- covariates[[sname]]
+      # No groups defined for this covariate --> default to two groups with the
+      # same number of individuals, i.e. split at the median.
+      if (is.null(s$breaks)) {
+        s$breaks <- stats::median(covValues, na.rm = TRUE)
+      }
+      s$breaks <- unique(sort(c(min(covValues, na.rm = TRUE), s$breaks, max(covValues, na.rm = TRUE))))
       split[[i]] <- s[names(s) %in% c("name", "breaks")]
     }
   }

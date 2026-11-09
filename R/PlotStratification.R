@@ -193,9 +193,14 @@
   for (strat in stratifiers) {
     cov <- strat$name
     if (covtypes[[cov]] == "continuous") {
-      factor <- cut(covData[[cov]], breaks = strat$breaks, include.lowest=TRUE, right = FALSE)
-      levels(factor) <- paste0(cov, ": ", levels(factor), " ")
-      
+      if (length(strat$breaks) < 2) {
+        # Constant covariate (min == max): a single group. cut() would read a
+        # single break as a number of intervals and create empty groups.
+        factor <- factor(rep(paste0(cov, ": ", strat$breaks[1], " "), nrow(covData)))
+      } else {
+        factor <- cut(covData[[cov]], breaks = strat$breaks, include.lowest=TRUE, right = FALSE)
+        levels(factor) <- paste0(cov, ": ", levels(factor), " ")
+      }
     } else {
       factor <- factor(covData[[cov]])
       if (! is.null(strat$groups)) {

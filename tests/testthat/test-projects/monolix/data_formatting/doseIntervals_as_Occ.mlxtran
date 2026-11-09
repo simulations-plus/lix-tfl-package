@@ -1,0 +1,107 @@
+<DATA_FORMATTING>
+
+[FILEINFO]
+file='data/data_multidose.csv'
+header={ID, TIME, CONC, AMT}
+
+[CONTENT]
+ID = {use=identifier}
+TIME = {use=time}
+
+[SETTINGS]
+LINES:
+header={0}
+excluded={}
+
+[OPERATIONS]
+OBSERVATIONS:
+type=id
+duplicateInfo=true
+censoringTags={}
+'CONC'={}
+
+TREATMENTS:
+occasionGeneration=true
+administrations={{start=0, interval=12, nbDoses=7, amount = {constant=40}}}
+
+<DATAFILE>
+
+[FILEINFO]
+file='data/data_multidose.csv'
+delimiter = comma
+header={ID, TIME, CONC, AMT, DOSE_OCC, AMT1}
+
+[CONTENT]
+ID = {use=identifier}
+TIME = {use=time}
+CONC = {use=observation, type=continuous}
+DOSE_OCC = {use=occasion}
+AMT1 = {use=amount}
+
+[SETTINGS]
+dataType = {'CONC'=plasma}
+
+<MODEL>
+
+[INDIVIDUAL]
+input = {ka_pop, omega_ka, V_pop, omega_V, Cl_pop, omega_Cl, F_pop, gamma_F}
+
+DEFINITION:
+V = {distribution=logNormal, typical=V_pop, sd=omega_V}
+ka = {distribution=logNormal, typical=ka_pop, sd=omega_ka}
+Cl = {distribution=logNormal, typical=Cl_pop, sd=omega_Cl}
+F = {distribution=logNormal, typical=F_pop, varlevel=id*occ, sd=gamma_F}
+
+[LONGITUDINAL]
+input = {a, b}
+
+file = 'model/PKmodel_F.txt'
+
+DEFINITION:
+CONC = {distribution=normal, prediction=Cc, errorModel=combined1(a, b)}
+
+<FIT>
+data = 'CONC'
+model = CONC
+
+<PARAMETER>
+Cl_pop = {value=0.4, method=MLE}
+F_pop = {value=1, method=FIXED}
+V_pop = {value=9, method=MLE}
+a = {value=1, method=MLE}
+b = {value=0.3, method=MLE}
+c = {value=1, method=FIXED}
+gamma_F = {value=0.1, method=MLE}
+ka_pop = {value=0.8, method=MLE}
+omega_Cl = {value=1, method=MLE}
+omega_V = {value=1, method=MLE}
+omega_ka = {value=1, method=MLE}
+
+<MONOLIX>
+
+[TASKS]
+populationParameters()
+individualParameters(method = {conditionalMean, conditionalMode })
+fim(method = Linearization)
+logLikelihood(method = Linearization)
+plotResult(method = {indfits, parameterdistribution, covariancemodeldiagnosis, covariatemodeldiagnosis, obspred, vpc, residualsscatter, residualsdistribution, randomeffects, saemresults })
+
+[SETTINGS]
+GLOBAL:
+exportpath = 'doseIntervals_as_Occ'
+
+[COMMENTS]
+; # Data Formatting: create occasions from dose intervals
+; When adding new doses in a dataset with data formatting, it is possible to define dose intervals as occasions. This allows to consider inter-occasion variability between the different set of measurements following each dose.
+; 
+; In this example, we have a dataset with multiple doses that already has a format compatible with Monolix, with dense drug concentration profiles following the first and last doses. However, considering inter-occasion variability between both profiles is not possible with the original dataset because there is no column defining these profiles as different occasions. Thus, the Data formatting module is used to define again the multiple doses, with the option "Dose intervals as occasions". This creates a new column for dose amounts which is used instead of the original one, along with a new column defining occasions. This allows to consider inter-occasion variability on the relative bioavailability F between the dose intervals.
+; 
+; **To format the data:**
+; - We loaded the dataset in the "Data formatting" panel instead of "Data".
+; - In the Initialization tab of Data Formatting, we initialized the data formatting by selecting columns for ID and Time (if not already preselected).
+; - In the Observations tab of Data Formatting, we selected the column CONC containing the observations.
+; - In the Treatments tab, we defined the treatment as regular dosing times with the dose amount given manually, and selected the option "Dose intervals as occasions".
+; Data formatting with this option creates two new columns named DOSE_OCC and AMT1 (since AMT already exists in the original dataset), and new dose lines with the dose amounts in the AMT1 column. The column DOSE_OCC contains on each line the index of the last dose.
+; - When clicking Preview: the dataset is formatted and is loaded in the Data tab. 
+; - A usual, you can then tag columns in the Data tab if needed and accept the dataset. Here the original AMT column is automatically ignored and the new AMT1 column is tagged as AMOUNT instead. In addition the new DOSE_OCC column is automatically tagged as OCCASION.
+
