@@ -953,20 +953,28 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
     iTime    <- which(data$headerTypes == "time")
     iOcc     <- which(data$headerTypes == "occ")
     iMdv     <- which(data$headerTypes == "mdv")
-    iOccUsed <- iOcc
     colNameDataRaw <- names(dataRaw)
 
-    # check if the occasion were created using the data formatting
-    if (length(iOcc) > 0) {
-        for (indexOcc in 1:length(iOcc)) {
-            nameOcc <- data$header[iOcc[indexOcc]]
-            if (!(nameOcc %in% colNameDataRaw)) { # The OCC column was created by data formatting
-                iOcc[indexOcc]     <- which(colNameDataRaw == sub(x = nameOcc, pattern = "_OCC", ""))
-                iOccUsed[indexOcc] <- which(names(dataUsed) == colNameDataRaw[iOcc[indexOcc]])
-            }
-            iOccUsed[indexOcc] <- which(names(dataUsed) == colNameDataRaw[iOcc[indexOcc]])
+    # Map each occasion level to its column in the raw data (iOcc) and in the
+    # interpreted data (iOccUsed). Occasion columns created by Data Formatting are
+    # not in the raw file:
+    #  - "<col>_OCC" is built from the raw column <col> --> match on <col>;
+    #  - occasions without a source column (e.g. "dose intervals as occasions",
+    #    which creates DOSE_OCC) cannot be compared with the raw data, so that
+    #    level is left out of the matching (id, time and observation still are).
+    occRaw  <- integer(0)
+    occUsed <- integer(0)
+    for (nameOcc in data$header[iOcc]) {
+        srcName <- if (nameOcc %in% colNameDataRaw) nameOcc else sub("_OCC$", "", nameOcc)
+        rawIdx  <- match(srcName, colNameDataRaw)
+        usedIdx <- match(srcName, names(dataUsed))
+        if (!is.na(rawIdx) && !is.na(usedIdx)) {
+            occRaw  <- c(occRaw, rawIdx)
+            occUsed <- c(occUsed, usedIdx)
         }
     }
+    iOcc       <- occRaw
+    iOccUsed   <- occUsed
     nbOccLevel <- length(iOcc)
 
     iObs <- which(data$headerTypes == "observation")
