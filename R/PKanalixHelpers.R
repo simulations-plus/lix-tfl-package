@@ -472,7 +472,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 				}
 			}
 
-			# Set table attributes for style_tfl
+			# Set table attributes for styleTFL
 			attr(final_df, "table_type") <- "concentration"
 			attr(final_df, "format")     <- "wide"
 
@@ -554,7 +554,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	}
 
 	# ==========================================================================
-	# SET ATTRIBUTES for style_tfl --> to identify NCA concentration table with sections
+	# SET ATTRIBUTES for styleTFL --> to identify NCA concentration table with sections
 	if (includeIds && "Section" %in% names(final_df)) {
 		attr(final_df, "table_type") <- "nca_concentration"
 		attr(final_df, "format")     <- "long"  # Always long when includeIds=TRUE
@@ -1514,7 +1514,7 @@ tableNCARatios <- function(projectFile           = NULL,
 			splitCovariate_labels = splitCovariateLabels)
 	}
 
-	# SET ATTRIBUTES for style_tfl --> identify NCA ratio table with sections
+	# SET ATTRIBUTES for styleTFL --> identify NCA ratio table with sections
 	if (includeIds && "Section" %in% names(summary_tbl)) {
 		attr(summary_tbl, "table_type") <- "nca_ratio"
 		attr(summary_tbl, "format")     <- "long"  # Always long when includeIds=TRUE

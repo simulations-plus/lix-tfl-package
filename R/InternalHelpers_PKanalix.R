@@ -26,7 +26,7 @@
 #' **Design Philosophy:**
 #' - Table helpers should be presentation-agnostic (don't know about flextable)
 #' - Placeholders serve as an intermediate format between HTML and flextable
-#' - Actual rendering (as_sub(), as_sup()) happens in style_tfl()
+#' - Actual rendering (as_sub(), as_sup()) happens in styleTFL()
 #'
 #' @param df A data frame containing an "aliases" column with HTML-formatted text.
 #'   Typically obtained from getNCAParameterStatistics()$information

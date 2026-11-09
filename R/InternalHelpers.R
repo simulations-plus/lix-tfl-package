@@ -17,7 +17,7 @@ utils::globalVariables(c("."))
 #'
 #' Determines the file path of the script that called the current helper so it
 #' can be stored as a data-frame attribute (`r_source`) and later rendered as
-#' an auto-footnote by [style_tfl()].
+#' an auto-footnote by [styleTFL()].
 #'
 #' Detection order (first non-empty result wins):
 #' 1. **Innermost `source()`'d file** — the deepest `ofile` on the call stack.

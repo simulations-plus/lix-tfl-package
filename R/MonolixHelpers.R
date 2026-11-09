@@ -394,7 +394,7 @@ tableRunHistory <- function(sycomoreProjectFile,
 #'   strategies (COSSAC/SCM); for SAMBA and other runs without a `Step` column it
 #'   is ignored (with a message) and the full table is returned. The accepted
 #'   per-step winners are also recorded on the returned data.frame's
-#'   `best_per_step` attribute, which [style_tfl()] uses (via `autoHighlight`) to
+#'   `best_per_step` attribute, which [styleTFL()] uses (via `autoHighlight`) to
 #'   shade those rows. See [.modelBuildingBestPerStep()].
 #' @param roundDigits Integer specifying the number of digits for rounding
 #'   numeric values. Default is `2`.
@@ -699,7 +699,7 @@ tableCovariateModelBuilding <- function(projectFile        = NULL,
 
 	attr(df, "table_type")     <- "modelBuilding"
 	# Run labels of the accepted best model per step, for best-per-step row
-	# highlighting in style_tfl (autoHighlight). Restricted to rows still present
+	# highlighting in styleTFL (autoHighlight). Restricted to rows still present
 	# (e.g. after displayBestModelPerStep reduction). Empty for SAMBA.
 	attr(df, "best_per_step")  <- intersect(bestPerStep, df$Run)
 	attr(df, "project_source") <- if (!is.null(projectFile)) projectFile else
@@ -737,7 +737,7 @@ tableCovariateModelBuilding <- function(projectFile        = NULL,
 #' - `RES_ERR`: Residual error parameters
 #' - `LAT`: Latent covariate probabilities
 #'
-#' When used with [style_tfl()], these sections automatically generate visual section
+#' When used with [styleTFL()], these sections automatically generate visual section
 #' headers to improve table readability.
 #'
 #' @param projectFile Character string specifying the path to a Monolix .mlxtran project file, or `NULL` (default) to use the currently loaded project.
@@ -846,24 +846,24 @@ tableCovariateModelBuilding <- function(projectFile        = NULL,
 #'     \item{r_source}{Path of the R/Quarto/Rmd script that generated the table (auto-detected at table-creation time, see \code{.getRScriptPath()})}
 #'   }
 #'
-#'   These attributes are used by [style_tfl()] to automatically add
+#'   These attributes are used by [styleTFL()] to automatically add
 #'   section headers when rendering the table.
 #'
 #' @export
-#' @seealso [style_tfl()]
+#' @seealso [styleTFL()]
 #'
 #' @examples
 #' \dontrun{
 #' # Basic usage with default long format
 #' pop_table <- tablePopulationParameterEstimates()
-#' style_tfl(pop_table, color = c("RSE"))
+#' styleTFL(pop_table, colorBy = "RSE")
 #'
 #' # Wide format with IIV and CV%
 #' pop_table_wide <- tablePopulationParameterEstimates(
 #'   useWideFormat = TRUE,
 #'   includeIIV = TRUE,
 #'   includeCV = TRUE)
-#' style_tfl(pop_table_wide, color = c("RSE"), theme_fn = theme_booktabs)
+#' styleTFL(pop_table_wide, colorBy = "RSE", themeFn = flextable::theme_booktabs)
 #'
 #' # With custom aliases and units
 #' pop_table <- tablePopulationParameterEstimates(

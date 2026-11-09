@@ -6,26 +6,6 @@
 # Internal helper functions
 # ---------------------------------------------------------------------------
 
-#' Convert header input to string
-#' Helper function that converts header input to a single string value.
-#' Handles data.frame or character input and extracts the first non-NA element.
-#' @param x Input value. Can be NULL, data.frame, or character vector.
-#' @return A single character string, or NULL if input is NULL or empty.
-#' @keywords internal
-.as_header_string <- function(x) {
-  if (is.null(x)) {
-    return(NULL)
-  }
-  if (is.data.frame(x)) x <- x[[1]]
-  x <- as.character(x)
-  x <- x[!is.na(x)]
-  if (length(x) == 0) {
-    return(NULL)
-  }
-  x[1] # take first element if someone passes a vector
-}
-
-################################################################################
 #' Soften hex color by blending with white
 #' Blends a hex color with white to create a softer, pastel version.
 #' Primarily used for docx/pptx output where softer colors are preferred.
@@ -707,18 +687,21 @@
 #' conditional coloring, section headers for population tables, subscript formatting,
 #' custom headers, and various pre-defined themes.
 #'
-#' @param data.flex Data frame to be formatted as a flextable. Can include:
+#' @param data Data frame to be formatted as a flextable. Can include:
 #'   - Subscript markers: Use `[[sub:text]]` in cell values for subscripts
 #'   - Attributes for special handling:
 #'     - `table_type = "pop"`: Enables population table section headers
 #'     - `format = "wide"` or `"long"`: Controls section header layout for pop tables
 #'   - Column `Section` (for pop tables): Section codes (FE, IIV, IOV, CORR, RES_ERR)
 #'
-#' @param grouping.columns Character vector of column names to left-align. These columns are reordered to appear first in the table. If `NULL` (default), no special column ordering is applied.
-#' @param header_level1 Character string, data frame, or vector for the topmost header line. Added using `flextable::add_header_lines()`. If `NULL` (default), no level 1 header.
-#' @param header_level2 Character string, data frame, or vector for the middle header line. If `NULL` (default), no level 2 header.
-#' @param header_level3 Character string, data frame, or vector for the bottom header line. If `NULL` (default), no level 3 header.
-#' @param color Character vector specifying which columns to conditionally color.
+#' @param groupingColumns Character vector of column names to left-align. These columns are reordered to appear first in the table. If `NULL` (default), no special column ordering is applied.
+#' @param headerLines Character vector of title lines placed above the column
+#'   header, added with `flextable::add_header_lines()`. The first element is the
+#'   topmost line. Accepts any number of lines. If `NULL` (default), no title
+#'   lines are added.
+#' @param colorBy Character vector selecting one or more conditional colouring
+#'   rules to apply (not a colour value). Any of `"BE"`, `"DP"`, `"PVAL"`, `"RSE"`;
+#'   case-insensitive. `NULL` (default) applies no colouring.
 #'   Options include:
 #'   \describe{
 #'     \item{"RSE"}{Colors any column with "RSE" in its name based on thresholds:
@@ -729,12 +712,15 @@
 #'       "Inconclusive" (yellow), "Not Proportional" (red)}
 #'   }
 #'   If `NULL` (default), no conditional coloring is applied.
-#' @param theme_fn Function to apply a flextable theme. Default is `flextable::theme_booktabs`. Other options include `flextable::theme_vanilla`, `flextable::theme_zebra`, `flextable::theme_box`, `flextable::theme_tron`.
-#' @param soften_amount Numeric value between 0 and 1 controlling color softening for docx/pptx output. 0 = original colors, 1 = white. Default is 0.50.
-#' @param html_alpha Numeric value between 0 and 1 controlling transparency for HTML output (rgba colors). Default is 0.18.
-#' @param align_default Character string for global alignment: "left", "center" (default), "right", or "justify".
-#' @param align_grouping Character string for grouping column alignment. If `NULL` (default), uses `align_default`.
-#' @param align_cols Named character vector for column-specific alignment (e.g., `c("Parameter" = "left", "Estimate" = "right")`). Overrides other alignment settings. If `NULL` (default), no column-specific alignment.
+#' @param themeFn Function to apply a flextable theme. Default is `flextable::theme_booktabs`. Other options include `flextable::theme_vanilla`, `flextable::theme_zebra`, `flextable::theme_box`, `flextable::theme_tron`.
+#' @param softenAmount Numeric value between 0 and 1 controlling color softening for docx/pptx output. 0 = original colors, 1 = white. Default is 0.50.
+#' @param htmlAlpha Numeric value between 0 and 1 controlling transparency for HTML output (rgba colors). Default is 0.18.
+#' @param alignDefault Character string for global alignment of the body and the column-name header row: "left", "center" (default), "right", or "justify". Title lines added via `headerLines` are always centered.
+#' @param alignGrouping Character string for grouping column alignment (body and column-name header row). If `NULL` (default), uses `alignDefault`.
+#' @param alignCols Named character vector for column-specific alignment (e.g., `c("Parameter" = "left", "Estimate" = "right")`). Overrides other alignment settings. If `NULL` (default), no column-specific alignment.
+#' @param footnote Character vector of manual footnote text to append below the table. If `NULL` (default), no manual footnote is added.
+#' @param autoFootnote Logical; if `TRUE` (default), auto-detects footnotes from data
+#'   attributes (e.g. time-deviation filtering, project/script source).
 #' @param autoHighlight Logical; if `TRUE`, shades the best-model-per-step rows of
 #'   a covariate model-building table light gray. Default is `FALSE`. The rows are
 #'   read from the `best_per_step` attribute set by [tableCovariateModelBuilding()] (the
@@ -748,7 +734,7 @@
 #'
 #' @details
 #' **Population table section headers:**
-#' If `data.flex` has attribute `table_type = "pop"` and a `Section` column, section headers are automatically added:
+#' If `data` has attribute `table_type = "pop"` and a `Section` column, section headers are automatically added:
 #' - **Wide format**: Split header "Fixed effects | Random effects" at top,
 #'   plus section headers for Correlations and Residual error
 #' - **Long format**: Section headers for all sections (Fixed effects,
@@ -765,32 +751,50 @@
 #'
 #' @examples
 #' \dontrun{
-#' # Basic usage
+#' # Basic styling with RSE conditional coloring
 #' df <- data.frame(Parameter = c("Cl", "V"), Estimate = c(1.5, 20.3), RSE = c(45, 120))
-#' style_tfl(df, color = c("RSE"))
+#' styleTFL(df, colorBy = "RSE")
 #'
-#' # Population table with section headers
+#' # Grouping column, stacked title lines, plus grouping/column-specific alignment
+#' styleTFL(df,
+#'          groupingColumns = "Parameter",
+#'          headerLines     = c("Population PK Parameters", "Study XYZ", "Final model"),
+#'          alignGrouping   = "left",
+#'          alignCols       = c(Estimate = "right", RSE = "center"))
+#'
+#' # Theme choice, default alignment, and output-specific colour tuning
+#' styleTFL(df,
+#'          colorBy      = "RSE",
+#'          themeFn      = flextable::theme_zebra,
+#'          alignDefault = "right",
+#'          softenAmount = 0.30,   # stronger colours for docx/pptx
+#'          htmlAlpha    = 0.25)   # more opaque rgba for HTML
+#'
+#' # Population table: section headers are generated automatically from attributes
 #' pop_table <- tablePopulationParameterEstimates(useWideFormat = TRUE)
-#' style_tfl(pop_table, color = c("RSE"), theme_fn = flextable::theme_booktabs)
+#' styleTFL(pop_table, colorBy = "RSE", themeFn = flextable::theme_booktabs)
 #'
-#' # With grouping columns and custom headers
-#' style_tfl(df,
-#'                  grouping.columns = c("Parameter"),
-#'                  header_level1 = "Population PK Parameters",
-#'                  color = c("RSE"))
+#' # Conclusion colouring with a manual footnote and auto-footnotes disabled
+#' be_table <- tableBEResults()
+#' styleTFL(be_table,
+#'          colorBy      = c("BE", "PVAL"),
+#'          footnote     = "90% CI of the GMR within 80-125%.",
+#'          autoFootnote = FALSE)
+#'
+#' # Covariate model-building table: shade the best model chosen at each step
+#' mb_table <- tableCovariateModelBuilding()
+#' styleTFL(mb_table, autoHighlight = TRUE)
 #' }
-style_tfl <- function(data.flex,
-											grouping.columns = NULL,
-											header_level1    = NULL,
-											header_level2    = NULL,
-											header_level3    = NULL,
-											color            = NULL,     # e.g. c("BE","DP","PVAL","RSE")
-											theme_fn         = flextable::theme_booktabs,
-											soften_amount    = 0.50,     # 0 = original, 1 = white
-											html_alpha       = 0.18,     # only used for html rgba
-											align_default    = "center", # global default alignment
-											align_grouping   = NULL,     # alignment for grouping columns (NULL = use default)
-											align_cols       = NULL,     # named vector for column-specific alignments
+styleTFL <- function(data,
+											groupingColumns = NULL,
+											headerLines     = NULL,     # title line(s) above the column header; first element = topmost
+											colorBy          = NULL,     # conditional colouring rule(s): "BE","DP","PVAL","RSE"
+											themeFn         = flextable::theme_booktabs,
+											softenAmount    = 0.50,     # 0 = original, 1 = white
+											htmlAlpha       = 0.18,     # only used for html rgba
+											alignDefault    = "center", # global default alignment
+											alignGrouping   = NULL,     # alignment for grouping columns (NULL = use default)
+											alignCols       = NULL,     # named vector for column-specific alignments
 											footnote         = NULL,     # manual footnote text
 											autoFootnote     = TRUE,     # auto-detect footnotes from attributes
 											autoHighlight    = FALSE)    # shade best-model-per-step rows (model building)
@@ -798,99 +802,96 @@ style_tfl <- function(data.flex,
 	##############################################################################
 	# 0. Check required packages
 	if (!requireNamespace("flextable", quietly = TRUE)) {
-		stop("Package 'flextable' is required for style_tfl(). ",
+		stop("Package 'flextable' is required for styleTFL(). ",
 				 "Install it with: install.packages('flextable')", call. = FALSE)
 	}
 	#-----------------------------------------------------------------------------
 	# ARGUMENT VALIDATION
-	# 1. data.flex
-	if (!is.data.frame(data.flex)) {
-		stop("'data.flex' must be a data.frame.", call. = FALSE)
+	# 1. data
+	if (!is.data.frame(data)) {
+		stop("'data' must be a data.frame.", call. = FALSE)
 	}
-	if (nrow(data.flex) == 0) {
-		stop("'data.flex' must have at least one row.", call. = FALSE)
+	if (nrow(data) == 0) {
+		stop("'data' must have at least one row.", call. = FALSE)
 	}
 	#-----------------------------------------------------------------------------
-	# 2. grouping.columns
-	if (!is.null(grouping.columns)) {
-		if (!is.character(grouping.columns)) {
-			stop("'grouping.columns' must be a character vector or NULL.", call. = FALSE)
+	# 2. groupingColumns
+	if (!is.null(groupingColumns)) {
+		if (!is.character(groupingColumns)) {
+			stop("'groupingColumns' must be a character vector or NULL.", call. = FALSE)
 		}
 		# Column existence check below
 	}
 	#-----------------------------------------------------------------------------
-	# 3. header_level1, header_level2, header_level3
-	for (hdr_name in c("header_level1", "header_level2", "header_level3")) {
-		hdr_val <- get(hdr_name)
-		if (!is.null(hdr_val) && (!is.character(hdr_val) || length(hdr_val) != 1)) {
-			stop(sprintf("'%s' must be a single character string or NULL.", hdr_name), call. = FALSE)
-		}
+	# 3. headerLines
+	if (!is.null(headerLines) && !is.character(headerLines)) {
+		stop("'headerLines' must be a character vector or NULL.", call. = FALSE)
 	}
 	#-----------------------------------------------------------------------------
-	# 4. color
-	if (!is.null(color)) {
-		color <- match.arg(toupper(color), c("BE", "DP", "PVAL", "RSE"), several.ok = TRUE)
+	# 4. colorBy
+	if (!is.null(colorBy)) {
+		colorBy <- match.arg(toupper(colorBy), c("BE", "DP", "PVAL", "RSE"), several.ok = TRUE)
 	}
 	#-----------------------------------------------------------------------------
-	# 5. theme_fn
-	if (!is.function(theme_fn)) {
-		stop("'theme_fn' must be a function.", call. = FALSE)
+	# 5. themeFn
+	if (!is.function(themeFn)) {
+		stop("'themeFn' must be a function.", call. = FALSE)
 	}
 	#-----------------------------------------------------------------------------
-	# 6. soften_amount
-	if (!is.numeric(soften_amount) || length(soften_amount) != 1) {
-		stop("'soften_amount' must be a single numeric value.", call. = FALSE)
+	# 6. softenAmount
+	if (!is.numeric(softenAmount) || length(softenAmount) != 1) {
+		stop("'softenAmount' must be a single numeric value.", call. = FALSE)
 	}
-	if (soften_amount < 0 || soften_amount > 1) {
-		stop("'soften_amount' must be between 0 and 1.", call. = FALSE)
-	}
-	#-----------------------------------------------------------------------------
-	# 7. html_alpha
-	if (!is.numeric(html_alpha) || length(html_alpha) != 1) {
-		stop("'html_alpha' must be a single numeric value.", call. = FALSE)
-	}
-	if (html_alpha < 0 || html_alpha > 1) {
-		stop("'html_alpha' must be between 0 and 1.", call. = FALSE)
+	if (softenAmount < 0 || softenAmount > 1) {
+		stop("'softenAmount' must be between 0 and 1.", call. = FALSE)
 	}
 	#-----------------------------------------------------------------------------
-	# 8. align_default
+	# 7. htmlAlpha
+	if (!is.numeric(htmlAlpha) || length(htmlAlpha) != 1) {
+		stop("'htmlAlpha' must be a single numeric value.", call. = FALSE)
+	}
+	if (htmlAlpha < 0 || htmlAlpha > 1) {
+		stop("'htmlAlpha' must be between 0 and 1.", call. = FALSE)
+	}
+	#-----------------------------------------------------------------------------
+	# 8. alignDefault
 	valid_alignments <- c("left", "center", "right", "justify")
-	if (!is.character(align_default) || length(align_default) != 1 ||
-			!align_default %in% valid_alignments) {
+	if (!is.character(alignDefault) || length(alignDefault) != 1 ||
+			!alignDefault %in% valid_alignments) {
 		stop(sprintf(
-			"'align_default' must be one of: %s",
+			"'alignDefault' must be one of: %s",
 			paste(valid_alignments, collapse = ", ")
 		), call. = FALSE)
 	}
 	#-----------------------------------------------------------------------------
-	# 9. align_grouping
-	if (!is.null(align_grouping)) {
-		if (!is.character(align_grouping) || length(align_grouping) != 1 ||
-				!align_grouping %in% valid_alignments) {
+	# 9. alignGrouping
+	if (!is.null(alignGrouping)) {
+		if (!is.character(alignGrouping) || length(alignGrouping) != 1 ||
+				!alignGrouping %in% valid_alignments) {
 			stop(sprintf(
-				"'align_grouping' must be one of: %s (or NULL)",
+				"'alignGrouping' must be one of: %s (or NULL)",
 				paste(valid_alignments, collapse = ", ")
 			), call. = FALSE)
 		}
 	}
 	#-----------------------------------------------------------------------------
-	# 10. align_cols
-	if (!is.null(align_cols)) {
-		if (!is.character(align_cols) || is.null(names(align_cols))) {
-			stop("'align_cols' must be a named character vector or NULL.", call. = FALSE)
+	# 10. alignCols
+	if (!is.null(alignCols)) {
+		if (!is.character(alignCols) || is.null(names(alignCols))) {
+			stop("'alignCols' must be a named character vector or NULL.", call. = FALSE)
 		}
-		invalid_aligns <- setdiff(align_cols, valid_alignments)
+		invalid_aligns <- setdiff(alignCols, valid_alignments)
 		if (length(invalid_aligns) > 0) {
 			stop(sprintf(
-				"'align_cols' values must be one of: %s\nInvalid values: %s",
+				"'alignCols' values must be one of: %s\nInvalid values: %s",
 				paste(valid_alignments, collapse = ", "),
 				paste(invalid_aligns, collapse = ", ")
 			), call. = FALSE)
 		}
-		missing_cols <- setdiff(names(align_cols), names(data.flex))
+		missing_cols <- setdiff(names(alignCols), names(data))
 		if (length(missing_cols) > 0) {
 			warning(sprintf(
-				"Some columns in 'align_cols' not found in data: %s",
+				"Some columns in 'alignCols' not found in data: %s",
 				paste(missing_cols, collapse = ", ")
 			), call. = FALSE)
 		}
@@ -912,20 +913,20 @@ style_tfl <- function(data.flex,
 	}
 	##############################################################################
 	# Check if columns exist
-	pval.flag <- ("PVAL" %in% color) && "p.value" %in% colnames(data.flex)
-	BE.flag   <- ("BE" %in% color) && "Conclusion" %in% colnames(data.flex)
-	DP.flag   <- ("DP" %in% color) && "Conclusion" %in% colnames(data.flex)
+	pval.flag <- ("PVAL" %in% colorBy) && "p.value" %in% colnames(data)
+	BE.flag   <- ("BE" %in% colorBy) && "Conclusion" %in% colnames(data)
+	DP.flag   <- ("DP" %in% colorBy) && "Conclusion" %in% colnames(data)
 
 	# RSE flag: detect any columns containing "RSE" in their name
 	# This covers: "RSE", "%RSE", "RSE (%)", "FE_RSE", "IIV_RSE", "IOV_RSE", "IIV\nRSE (%)", etc.
-	RSE.flag <- "RSE" %in% color
+	RSE.flag <- "RSE" %in% colorBy
 	RSE.cols <- character(0)
 	if (RSE.flag) {
-		RSE.cols <- grep("RSE", colnames(data.flex), value = TRUE, ignore.case = TRUE)
+		RSE.cols <- grep("RSE", colnames(data), value = TRUE, ignore.case = TRUE)
 		RSE.flag <- length(RSE.cols) > 0
 	}
 
-	# Display rule for missing values (applies to every table rendered via style_tfl):
+	# Display rule for missing values (applies to every table rendered via styleTFL):
 	# NaN (e.g. a failed computation): shown as "NaN"
 	# any other NA (a value that does not apply e.g missing description, CV for a
 	# FEs, IIV/IOV for params w/o variability, ...) is left blank.
@@ -933,29 +934,29 @@ style_tfl <- function(data.flex,
 	flextable::set_flextable_defaults(na_str = "", nan_str = "NaN")
 
 	# Save attributes before reordering (bc subsetting can lose attributes)
-	saved_attrs <- attributes(data.flex)
+	saved_attrs <- attributes(data)
 
 	# Reorder columns so grouping columns come first
-	if (!is.null(grouping.columns)) {
+	if (!is.null(groupingColumns)) {
 		# Validate that all grouping columns exist in the data
-		missing_cols <- setdiff(grouping.columns, names(data.flex))
+		missing_cols <- setdiff(groupingColumns, names(data))
 		if (length(missing_cols) > 0) {
 			stop(sprintf(
 				"Grouping column%s not found in data: %s\nAvailable columns: %s",
 				if (length(missing_cols) > 1) "s" else "",
 				paste(missing_cols, collapse = ", "),
-				paste(names(data.flex), collapse = ", ")
+				paste(names(data), collapse = ", ")
 			))
 		}
 
-		other.cols <- setdiff(names(data.flex), grouping.columns)
-		data.flex <- data.flex[, c(grouping.columns, other.cols), drop = FALSE]
+		other.cols <- setdiff(names(data), groupingColumns)
+		data <- data[, c(groupingColumns, other.cols), drop = FALSE]
 
 		# Restore custom attributes (table_type, format, etc.)
 		# Keep only non-standard attributes (not names, row.names, class)
 		custom_attrs <- saved_attrs[!names(saved_attrs) %in% c("names", "row.names", "class")]
 		for (attr_name in names(custom_attrs)) {
-			attr(data.flex, attr_name) <- custom_attrs[[attr_name]]
+			attr(data, attr_name) <- custom_attrs[[attr_name]]
 		}
 	}
 
@@ -968,49 +969,49 @@ style_tfl <- function(data.flex,
 	# Wide format (pop only) uses a split header at top for FE/RE.
 	#-----------------------------------------------------------------------------
 	# Save table_type before calling .add_section_headers (it may be lost during processing)
-	table_type_for_styling <- attr(data.flex, "table_type")
+	table_type_for_styling <- attr(data, "table_type")
 
-	section_result      <- .add_section_headers(data.flex, grouping.columns)
-	data.flex           <- section_result$data.flex
+	section_result      <- .add_section_headers(data, groupingColumns)
+	data           <- section_result$data.flex
 	section_header_rows <- section_result$section_header_rows
 	wide_split_col      <- section_result$wide_split_col
 	is_wide             <- section_result$is_wide
 	has_section_headers <- length(section_header_rows) > 0 || !is.null(wide_split_col)
 
 
-	ft <- flextable::flextable(data.flex)
+	ft <- flextable::flextable(data)
 
 	#-----------------------------------------------------------------------------
 	# [Alias Conversion]
 	# Apply subscript formatting to both body cells and column headers
-	ft <- .apply_alias_subscripts(ft, data.flex)
+	ft <- .apply_alias_subscripts(ft, data)
 
 
 	#-----------------------------------------------------------------------------
 	# Initialize flextable with theme
-	ft <- theme_fn(ft)
+	ft <- themeFn(ft)
 	ft <- flextable::fontsize(ft, size = 8, part = "all")
 
 	# Merge vertical grouping columns
-	if (!is.null(grouping.columns)) {
-		ft <- flextable::merge_v(ft, j = grouping.columns)
+	if (!is.null(groupingColumns)) {
+		ft <- flextable::merge_v(ft, j = groupingColumns)
 	}
 
 	# Apply default alignment to all table content
-	ft <- flextable::align(ft, align = align_default, part = "all")
+	ft <- flextable::align(ft, align = alignDefault, part = "all")
 
 	# Apply grouping column alignment if specified
-	if (!is.null(grouping.columns) && !is.null(align_grouping)) {
-		for (col in grouping.columns) {
-			ft <- flextable::align(ft, j = col, align = align_grouping, part = "all")
+	if (!is.null(groupingColumns) && !is.null(alignGrouping)) {
+		for (col in groupingColumns) {
+			ft <- flextable::align(ft, j = col, align = alignGrouping, part = "all")
 		}
 	}
 
 	# Apply column-specific alignments (highest priority)
-	if (!is.null(align_cols)) {
-		for (col_name in names(align_cols)) {
-			if (col_name %in% colnames(data.flex)) {
-				ft <- flextable::align(ft, j = col_name, align = align_cols[[col_name]], part = "all")
+	if (!is.null(alignCols)) {
+		for (col_name in names(alignCols)) {
+			if (col_name %in% colnames(data)) {
+				ft <- flextable::align(ft, j = col_name, align = alignCols[[col_name]], part = "all")
 			}
 		}
 	}
@@ -1031,9 +1032,9 @@ style_tfl <- function(data.flex,
 
 			# Merge and label "Random effects" (columns split_col to end)
 			ft <- ft %>%
-				flextable::merge_at(i = split_row_idx, j = wide_split_col:ncol(data.flex), part = "body") %>%
+				flextable::merge_at(i = split_row_idx, j = wide_split_col:ncol(data), part = "body") %>%
 				flextable::compose(i = split_row_idx, j = wide_split_col, value = flextable::as_paragraph("Random effects"), part = "body") %>%
-				flextable::align(i = split_row_idx, j = wide_split_col:ncol(data.flex), align = "left", part = "body")
+				flextable::align(i = split_row_idx, j = wide_split_col:ncol(data), align = "left", part = "body")
 
 			# Bold the split header row
 			ft <- ft %>%
@@ -1050,7 +1051,7 @@ style_tfl <- function(data.flex,
 					ft <- ft %>%
 						flextable::bold(i = row_idx, part = "body") %>%
 						flextable::align(i = row_idx, align = "left", part = "body") %>%
-						flextable::merge_at(i = row_idx, j = seq_len(ncol(data.flex)), part = "body")
+						flextable::merge_at(i = row_idx, j = seq_len(ncol(data)), part = "body")
 
 					# Add line above
 					ft <- ft %>%
@@ -1066,12 +1067,12 @@ style_tfl <- function(data.flex,
 			# Check if this is an NCA table with grouping columns
 			is_nca_with_grouping <- !is.null(table_type_for_styling) &&
 				grepl("^nca_", table_type_for_styling) &&
-				!is.null(grouping.columns) && length(grouping.columns) > 0
+				!is.null(groupingColumns) && length(groupingColumns) > 0
 
 			for (row_idx in section_header_rows) {
 				if (is_nca_with_grouping) {
 					# For NCA with grouping: only merge non-grouping columns
-					non_grouping_indices <- which(!(names(data.flex) %in% grouping.columns))
+					non_grouping_indices <- which(!(names(data) %in% groupingColumns))
 
 					ft <- ft %>%
 						flextable::bold(i = row_idx, part = "body") %>%
@@ -1082,7 +1083,7 @@ style_tfl <- function(data.flex,
 					ft <- ft %>%
 						flextable::bold(i = row_idx, part = "body") %>%
 						flextable::align(i = row_idx, align = "left", part = "body") %>%
-						flextable::merge_at(i = row_idx, j = seq_len(ncol(data.flex)), part = "body")
+						flextable::merge_at(i = row_idx, j = seq_len(ncol(data)), part = "body")
 				}
 
 				# Add line above
@@ -1102,26 +1103,34 @@ style_tfl <- function(data.flex,
 	}
 
 	# ---------------------------------------------------------------------------
-	# Header levels (1 = topmost)
-	h1 <- .as_header_string(header_level1)
-	h2 <- .as_header_string(header_level2)
-	h3 <- .as_header_string(header_level3)
-
-	# Add from lowest to highest so level 1 ends up on top
-	# add_header_lines() inserts ABOVE the existing header each time
-	for (line in na.omit(c(h3, h2, h1))) {
+	# Title lines (first element = topmost). add_header_lines() inserts ABOVE the
+	# existing header, so add them bottom-to-top to preserve the given order.
+	header_lines <- headerLines[!is.na(headerLines) & nzchar(headerLines)]
+	for (line in rev(header_lines)) {
 		ft <- flextable::add_header_lines(ft, values = line)
 	}
 
-	ft <- flextable::align(ft, align = "center", part = "header")
+	# Center the title lines; align the column-name row like the body.
+	n_title  <- length(header_lines)
+	name_row <- n_title + 1L                 # column-name row within the header
 
-	# Re-apply column-specific header alignment so it isn't overridden by the
-	# header re-centering above (which is needed for any header lines added via
-	# add_header_lines()).
-	if (!is.null(align_cols)) {
-		for (col_name in names(align_cols)) {
-			if (col_name %in% colnames(data.flex)) {
-				ft <- flextable::align(ft, j = col_name, align = align_cols[[col_name]], part = "header")
+	if (n_title > 0) {
+		ft <- flextable::align(ft, i = seq_len(n_title), align = "center", part = "header")
+	}
+
+	# Column-name row: mirror the body cascade (alignDefault -> alignGrouping -> alignCols).
+	ft <- flextable::align(ft, i = name_row, align = alignDefault, part = "header")
+
+	if (!is.null(groupingColumns) && !is.null(alignGrouping)) {
+		for (col in groupingColumns) {
+			ft <- flextable::align(ft, i = name_row, j = col, align = alignGrouping, part = "header")
+		}
+	}
+
+	if (!is.null(alignCols)) {
+		for (col_name in names(alignCols)) {
+			if (col_name %in% colnames(data)) {
+				ft <- flextable::align(ft, i = name_row, j = col_name, align = alignCols[[col_name]], part = "header")
 			}
 		}
 	}
@@ -1135,25 +1144,25 @@ style_tfl <- function(data.flex,
 	base_green  <- "#458B00"
 
 	# Default: pastel hex (good for docx/pptx and generally safe)
-	col_yellow <- .soften_hex(base_yellow, soften_amount)
-	col_orange <- .soften_hex(base_orange, soften_amount)
-	col_red    <- .soften_hex(base_red, soften_amount)
-	col_green  <- .soften_hex(base_green, soften_amount)
+	col_yellow <- .soften_hex(base_yellow, softenAmount)
+	col_orange <- .soften_hex(base_orange, softenAmount)
+	col_red    <- .soften_hex(base_red, softenAmount)
+	col_green  <- .soften_hex(base_green, softenAmount)
 
 	# If HTML output, optionally use rgba for transparency
 	if (.is_html_output()) {
-		col_yellow <- .hex_to_rgba(base_yellow, html_alpha)
-		col_orange <- .hex_to_rgba(base_orange, html_alpha)
-		col_red    <- .hex_to_rgba(base_red, html_alpha)
-		col_green  <- .hex_to_rgba(base_green, html_alpha)
+		col_yellow <- .hex_to_rgba(base_yellow, htmlAlpha)
+		col_orange <- .hex_to_rgba(base_orange, htmlAlpha)
+		col_red    <- .hex_to_rgba(base_red, htmlAlpha)
+		col_green  <- .hex_to_rgba(base_green, htmlAlpha)
 	}
 
 	# Best-model-per-step row shading (model building tables)
 	if (isTRUE(autoHighlight)) {
 		best_runs <- saved_attrs[["best_per_step"]]
-		if (length(best_runs) > 0 && "Run" %in% colnames(data.flex)) {
-			col_gray <- if (.is_html_output()) .hex_to_rgba("#808080", html_alpha) else "#ECECEC"
-			hl_rows  <- setdiff(which(as.character(data.flex$Run) %in% best_runs),
+		if (length(best_runs) > 0 && "Run" %in% colnames(data)) {
+			col_gray <- if (.is_html_output()) .hex_to_rgba("#808080", htmlAlpha) else "#ECECEC"
+			hl_rows  <- setdiff(which(as.character(data$Run) %in% best_runs),
 													section_header_rows)
 			if (length(hl_rows) > 0) {
 				ft <- flextable::bg(ft, i = hl_rows, bg = col_gray, part = "body")
@@ -1164,7 +1173,7 @@ style_tfl <- function(data.flex,
 	# Apply conditional background formatting for RSE columns
 	if (RSE.flag && length(RSE.cols) > 0) {
 		for (rse_col in RSE.cols) {
-			all_rows <- seq_len(nrow(data.flex))
+			all_rows <- seq_len(nrow(data))
 			data_row_indices <- if (length(section_header_rows) > 0) {
 				setdiff(all_rows, section_header_rows)
 			} else {
@@ -1172,7 +1181,7 @@ style_tfl <- function(data.flex,
 			}
 
 			for (row_idx in data_row_indices) {
-				rse_value <- as.numeric(data.flex[row_idx, rse_col])
+				rse_value <- as.numeric(data[row_idx, rse_col])
 
 				if (is.na(rse_value) || is.nan(rse_value)) {
 					next
