@@ -1250,11 +1250,13 @@ utils::globalVariables(c("."))
 .standardErrorsAvailable <- function(method = "") {
 	all_rse <- tryCatch(lixoftConnectors::getEstimatedStandardErrors(), error = function(e) NULL)
 
-	# No SE results at all (task not run)
+	# No SE results at all. The connector cannot tell a task that was not run
+	# from one that ran without producing results (getLaunchedTasks() reports
+	# both as not launched), so the message covers both.
 	if (is.null(all_rse) || length(all_rse) == 0) {
 		return(list(
 			available = FALSE,
-			reason    = "No standard error estimates available (standard error estimation task not run)."))
+			reason    = "No standard error estimates available (the standard error estimation task was not run or did not produce results)."))
 	}
 
 	# Requested method not among the available ones
