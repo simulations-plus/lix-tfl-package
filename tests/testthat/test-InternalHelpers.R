@@ -313,6 +313,42 @@ test_that("formatRounded leaves genuinely non-numeric input untouched", {
 							 c("a", "b"))
 })
 
+test_that("formatRounded pads zero like a value of 1 and drops the sign of -0", {
+	expect_equal(.formatRounded(c(0, 1), digits = 3, method = "monolixSuiteRounding", trailingZeros = TRUE),
+							 c("0.000", "1.000"))
+	expect_equal(.formatRounded(c(0, 1), digits = 3, method = "significantFigures", trailingZeros = TRUE),
+							 c("0.00", "1.00"))
+	expect_equal(.formatRounded(c(0, 1), digits = 3, method = "significantFiguresPreserved", trailingZeros = TRUE),
+							 c("0.00", "1.00"))
+	expect_equal(.formatRounded(0, digits = 3, method = "monolixSuiteRounding", trailingZeros = FALSE), "0")
+	expect_equal(.formatRounded(-0.0001, digits = 3, method = "significantFiguresPreserved", trailingZeros = TRUE),
+							 "-0.000100")
+	expect_equal(.formatRounded(-0.0004, digits = 3, method = "monolixSuiteRounding", trailingZeros = TRUE),
+							 "-0.000400")
+	expect_false(any(grepl("^-0[.]?0*$", .formatRounded(c(-0, round(-0.0001, 3)), digits = 3,
+																											method = "monolixSuiteRounding", trailingZeros = TRUE))))
+})
+
+test_that("formatRounded uses scientific notation for |x| >= 1e9 or < 1e-6", {
+	x <- c(2.92175983644145e+53, -7.45977e16, 1.23456e9, 34752480.634, 0.0000156, 1.17e-8, 2.22044604925031e-16)
+	expect_equal(.formatRounded(x, digits = 3, method = "monolixSuiteRounding", trailingZeros = TRUE),
+							 c("2.92e+53", "-7.46e+16", "1.23e+09", "34752480.634", "0.0000156", "1.17e-08", "2.22e-16"))
+	expect_equal(.formatRounded(x, digits = 3, method = "significantFigures", trailingZeros = TRUE),
+							 c("2.92e+53", "-7.46e+16", "1.23e+09", "34800000", "0.0000156", "1.17e-08", "2.22e-16"))
+	# minimal form strips trailing zeros of the mantissa only, never of the exponent
+	expect_equal(.formatRounded(c(1.2e10, 1e10), digits = 3, method = "monolixSuiteRounding", trailingZeros = FALSE),
+							 c("1.2e+10", "1e+10"))
+	expect_equal(.formatRounded(c(1.2e10, 1e10), digits = 3, method = "monolixSuiteRounding", trailingZeros = TRUE),
+							 c("1.20e+10", "1.00e+10"))
+	# boundaries and non-finite values
+	expect_equal(.formatRounded(c(999999999, 1e9), digits = 3, method = "significantFiguresPreserved", trailingZeros = TRUE),
+							 c("999999999", "1.00e+09"))
+	expect_equal(.formatRounded(c(Inf, NaN, NA), digits = 3, method = "monolixSuiteRounding", trailingZeros = TRUE),
+							 c("Inf", "NaN", NA_character_))
+	# "none" stays untouched
+	expect_equal(.formatRounded(1234567890.5, digits = 3, method = "none"), "1234567890.5")
+})
+
 ################################################################################
 # setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
 # testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-InternalHelpers.R")
