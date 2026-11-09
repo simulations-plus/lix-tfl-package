@@ -1,0 +1,128 @@
+<DATA_FORMATTING>
+
+[FILEINFO]
+file='data/units_BLQ_tags_data.csv'
+header={ID, TIME_h, CONC_mg_L, AGE, WT, STUDY, LLOQ_mg_L}
+
+[CONTENT]
+ID = {use=identifier}
+TIME_h = {use=time}
+
+[SETTINGS]
+LINES:
+header={0, 1}
+excluded={}
+
+[OPERATIONS]
+OBSERVATIONS:
+type=id
+duplicateInfo=true
+censoringTags={'BLQ'}
+'CONC_mg_L'={{censoring=interval, loq = {stratCov='STUDY', categories = {'SD_400mg'=0.01, 'SD_500mg'=0.1, 'SD_600mg'=0.1}}, limit = {constant=0}, tags={'BLQ'}}}
+
+TREATMENTS:
+occasionGeneration=false
+administrations={{times = {0}, amount = {stratCov='STUDY', categories = {'SD_400mg'=400, 'SD_500mg'=500, 'SD_600mg'=600}}}}
+
+<DATAFILE>
+
+[FILEINFO]
+file='data/units_BLQ_tags_data.csv'
+delimiter = comma
+header={ID, TIME_h, CONC_mg_L, AGE, WT, STUDY, LLOQ_mg_L, AMT, CENS, LIMIT}
+
+[CONTENT]
+ID = {use=identifier}
+TIME_h = {use=time}
+CONC_mg_L = {use=observation, type=continuous}
+AGE = {use=covariate, type=continuous}
+WT = {use=covariate, type=continuous}
+STUDY = {use=covariate, type=categorical}
+AMT = {use=amount}
+CENS = {use=censored}
+LIMIT = {use=limit}
+
+[SETTINGS]
+dataType = {'CONC_mg_L'=plasma}
+
+<MODEL>
+
+[COVARIATE]
+input = {AGE, WT, STUDY}
+
+STUDY = {type=categorical, categories={'SD_400mg', 'SD_500mg', 'SD_600mg'}}
+
+[INDIVIDUAL]
+input = {Cl_pop, omega_Cl, F1_pop, omega_F1, Tk01_pop, omega_Tk01, V_pop, omega_V, ka2_pop, omega_ka2, Tlag1_pop, omega_Tlag1}
+
+DEFINITION:
+Cl = {distribution=logNormal, typical=Cl_pop, sd=omega_Cl}
+F1 = {distribution=logitNormal, typical=F1_pop, sd=omega_F1}
+Tk01 = {distribution=logNormal, typical=Tk01_pop, sd=omega_Tk01}
+V = {distribution=logNormal, typical=V_pop, sd=omega_V}
+ka2 = {distribution=logNormal, typical=ka2_pop, sd=omega_ka2}
+Tlag1 = {distribution=logNormal, typical=Tlag1_pop, sd=omega_Tlag1}
+
+[LONGITUDINAL]
+input = {a, b}
+
+file = 'lib:oral0_oral1_seqAbs_1cpt_Tk01ka2F1Tlag1VCl.txt'
+
+DEFINITION:
+CONC_mg_L = {distribution=normal, prediction=Cc, errorModel=combined1(a, b)}
+
+<FIT>
+data = 'CONC_mg_L'
+model = CONC_mg_L
+
+<PARAMETER>
+Cl_pop = {value=4.461, method=MLE}
+F1_pop = {value=0.205, method=MLE}
+Tk01_pop = {value=5.297, method=MLE}
+Tlag1_pop = {value=1.231, method=MLE}
+V_pop = {value=46.8, method=MLE}
+a = {value=1, method=MLE}
+b = {value=0.3, method=MLE}
+c = {value=1, method=FIXED}
+ka2_pop = {value=0.334, method=MLE}
+omega_Cl = {value=1, method=MLE}
+omega_F1 = {value=1, method=MLE}
+omega_Tk01 = {value=1, method=MLE}
+omega_Tlag1 = {value=1, method=MLE}
+omega_V = {value=1, method=MLE}
+omega_ka2 = {value=1, method=MLE}
+
+<MONOLIX>
+
+[TASKS]
+populationParameters()
+individualParameters(method = {conditionalMean, conditionalMode })
+fim(run = false,method = StochasticApproximation)
+logLikelihood(run = false,method = ImportanceSampling)
+plotResult(method = {indfits, obspred, vpc, parameterdistribution, covariatemodeldiagnosis, randomeffects, covariancemodeldiagnosis, residualsscatter, residualsdistribution, saemresults })
+
+[SETTINGS]
+GLOBAL:
+exportpath = 'DoseAndLOQ_byCategory'
+
+[COMMENTS]
+; # Data Formatting: define dose or censoring values by categories
+; Monolix Data tab uses a formatted dataset with censoring and treatment information included in the dataset.
+; In case of censored data, there must be a column tagged as CENSORING with flags 0 for uncensored data and 1 for censored data. On each line corresponding to censored data, the value in the column tagged as OBSERVATION must contain the LLOQ.
+; The dataset must include a dose line for each dose with the dosing time, dose amount, infusion duration in case of infusion, and administration id in case of several types of administrations.
+; 
+; If censoring or treatment information is missing from the dataset, it can be added by Data formatting.
+; 
+; In this example, the dataset contains drug concentrations, with "BLQ" tags in the column of concentrations for censored data. We use Data formatting to replace BLQ tags by LLOQ, add columns for CENSORING and dose amount, and add dose lines. We define manually different LLOQ values and different dose amounts for the two studies in the dataset.
+; 
+; **To format the data:**
+; - We loaded the dataset in the "Data formatting" panel instead of "Data".
+; - In the Initialization tab of Data Formatting, we initialized the data formatting by selecting columns for ID and Time (if not already preselected). In addition, we set the second line, which contains column units, as a second header line.
+; - In the observations tab of Data Formatting, we selected the column CONC_mg_L containing the concentrations, with an interval-censoring for BLQ tags and a manual upper limit (LLOQ) by category based on the STUDY column. This allows to define different LLOQ for the two different studies. In addition, we set a manual lower limit to 0.
+; - In the treatments tab, we defined the treatment as a single dose at time 0 with a dose amount set manually by category based on the STUDY column. This allows to define different dose amounts for the two different studies. 
+; - When clicking Preview: the dataset is formatted and is loaded in the data tab. 
+; -  Data formatting creates three new columns: AMT containing dose amounts, CENS containing flags for censoring, and LIMIT containing lower limits of the censoring intervals.
+; - Most columns are tagged automatically in the Data tab based on their role in Data formatting. In particular, AMT is tagged as AMOUNT, CENS as CENSORING and LIMIT as LIMIT.
+; 
+; Note: It is possible to export the formatted dataset in the Export section of the top menu.
+

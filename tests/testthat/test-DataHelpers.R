@@ -362,6 +362,44 @@ test_that("listingDosingRegimen relabels split covariate columns with splitCovar
 	# Time/Amount rename still applies alongside the covariate relabel.
 	expect_true(all(c("Time", "Amount") %in% names(listing)))
 })
+
+################################################################################
+# listingExclusions() / tableExclusions() on Data Formatting projects
+# (fixtures: Monolix 2024R1 demos, without results)
+################################################################################
+df_units_project   = "test-projects/monolix/data_formatting/DoseAndLOQ_byCategory.mlxtran"
+df_doseocc_project = "test-projects/monolix/data_formatting/doseIntervals_as_Occ.mlxtran"
+
+test_that(".readRawDataFile skips additional header lines (units row)", {
+	units_file <- "test-projects/monolix/data_formatting/data/units_BLQ_tags_data.csv"
+	raw <- .readRawDataFile(units_file, headerLines = c(1, 2))
+	# 866 lines in the file = names row + units row + 864 data rows
+	expect_equal(nrow(raw), 864)
+	expect_equal(names(raw)[-1], c("TIME", "CONC", "AGE", "WT", "STUDY", "LLOQ"))
+	expect_true(is.numeric(raw$TIME))
+	expect_true(is.numeric(raw$LLOQ))
+
+	# a single header line is read exactly as with read.csv()
+	plain_file <- "test-projects/monolix/data_formatting/data/data_multidose.csv"
+	expect_equal(.readRawDataFile(plain_file, headerLines = 1), utils::read.csv(plain_file))
+})
+
+test_that("listingExclusions/tableExclusions handle a units row under the header", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	# used to fail with "non-numeric argument to binary operator"
+	listing <- suppressMessages(listingExclusions(df_units_project))
+	# every line is used by Monolix; BLQ tags are kept as censored, not excluded
+	expect_null(listing)
+	expect_null(suppressMessages(tableExclusions(df_units_project)))
+})
+
+test_that("listingExclusions handles occasions created from dose intervals", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	# DOSE_OCC has no source column in the raw file; used to fail with
+	# "replacement has length zero"
+	listing <- suppressMessages(listingExclusions(df_doseocc_project))
+	expect_null(listing)
+})
 ################################################################################
 # setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
 # testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-DataHelpers.R")
