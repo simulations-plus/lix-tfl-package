@@ -781,7 +781,7 @@ tableCovariateModelBuilding <- function(projectFile        = NULL,
 #'   uses long format where each parameter appears in its own row. Wide format creates sections:
 #'   Fixed effects | Random effects with split header, plus separate headers for Correlations and
 #'   Residual error.
-#' @param stdErrMethod Character string specifying the standard error method to use. Options: `""` (default, uses whichever method the project has, preferring linear if both), `"linear"`, or `"stochasticApproximation"`.
+#' @param stdErrMethod Standard error method. One of `""` (default; uses whichever method the project has, preferring linearization if both), `"linearization"`, or `"stochasticApproximation"`. Partial matching is allowed, so `"linear"` also selects linearization.
 #' @param roundDigits Integer specifying the number of digits to display. Default is 3. Interpretation depends on `roundMethod`.
 #' @param roundMethod Character string specifying the rounding method. Options:
 #'   - `"monolixSuiteRounding"` (default): Adaptive rounding where `digits` specifies the number
@@ -890,7 +890,7 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 																		includeFEcategory  = FALSE,
 																		includeBootstrap   = FALSE,
 																		useWideFormat      = FALSE,
-																		stdErrMethod       = "",
+																		stdErrMethod       = c("", "linearization", "stochasticApproximation"),
 																		roundDigits        = 3,
 																		roundMethod        = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 																		roundByParameter   = NULL,
@@ -898,7 +898,9 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 																		prettyLabels       = TRUE,
 																		mock               = FALSE) {
 
-	roundMethod <- match.arg(roundMethod)
+	roundMethod  <- match.arg(roundMethod)
+	# partial matching also accepts "linear" for "linearization"
+	stdErrMethod <- match.arg(stdErrMethod)
 
 	.checkProjectFile(projectFile, "monolix")
 	.ensureProjectLoaded(projectFile)
