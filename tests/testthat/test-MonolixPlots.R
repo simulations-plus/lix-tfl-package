@@ -44,3 +44,21 @@ test_that("plots accept a continuous covariate in split/color without groups", {
 		expect_no_error(suppressMessages(ggplot2::ggplot_build(p)))
 	}
 })
+
+################################################################################
+# plotQQStandardizedRandomEffects() legend / labels
+################################################################################
+test_that("plotQQStandardizedRandomEffects shows no shape key when points are coloured", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	.ensureProjectLoaded(mono_project_1)
+	shape_mapped <- function(p) any(vapply(p$layers, function(l) "shape" %in% names(l$mapping), logical(1)))
+
+	p_plain <- suppressMessages(plotQQStandardizedRandomEffects())
+	expect_true(shape_mapped(p_plain))   # single "Empirical quantiles" key
+	expect_equal(p_plain$labels$y, "Empirical quantiles of\nstandardized random effects")
+
+	# coloured: the colour keys identify the points, no black "Empirical quantiles" key
+	p_col <- suppressMessages(plotQQStandardizedRandomEffects(stratify = list(color = "SEX")))
+	expect_false(shape_mapped(p_col))
+	expect_no_message(ggplot2::ggplot_build(p_col))
+})

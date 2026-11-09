@@ -549,11 +549,14 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 
 	p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = theoretical_q, y = observed_q))
 
-	# Points: use color aesthetic when color stratification is active
+	# Points: use color aesthetic when color stratification is active. The colour
+	# keys then identify the points, so no separate (black) "Empirical quantiles"
+	# shape key is added (same as plotAbsIWRESScatterPlot in colour mode).
 	if (has_color_strat) {
 		p <- p +
-			ggplot2::geom_point(ggplot2::aes(colour = color, shape = "Empirical quantiles"),
-								 size = preferences$point$size)
+			ggplot2::geom_point(ggplot2::aes(colour = color),
+								 shape = 16,
+								 size  = preferences$point$size)
 	} else {
 		p <- p +
 			ggplot2::geom_point(ggplot2::aes(shape = "Empirical quantiles"),
@@ -573,7 +576,7 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 
 	p <- p +
 		ggplot2::labs(x        = "Theoretical quantiles",
-				 y        = "Emprirical quantiles of\nstandardized random effects",
+				 y        = "Empirical quantiles of\nstandardized random effects",
 				 colour   = NULL,
 				 linetype = NULL,
 				 shape    = NULL) +
@@ -621,12 +624,14 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 		}
 	}
 
-	# Apply scales
-	p <- p +
-		ggplot2::scale_shape_manual(
-			values = c("Empirical quantiles" = 16),
-			name   = NULL,
-			guide  = ggplot2::guide_legend(order = 1))
+	# Apply scales (shape is only mapped when the points are not coloured)
+	if (!has_color_strat) {
+		p <- p +
+			ggplot2::scale_shape_manual(
+				values = c("Empirical quantiles" = 16),
+				name   = NULL,
+				guide  = ggplot2::guide_legend(order = 1))
+	}
 
 	if (length(legend_linetypes) > 0) {
 		p <- p +
