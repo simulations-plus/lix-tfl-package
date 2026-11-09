@@ -227,15 +227,30 @@ tableNCAConcentration <- function(projectFile      = NULL,
 		roundDigits    = NULL,
 		roundMethod    = "none")
 
-	# Apply covariate and ID filters
-	raw_data <- .applyFilters(raw_data, filterCovariates, filterIds, id_col = "id")
-
-	# Keep full data for individual listing
-	raw_data_full <- raw_data
-
 	# Detect occasion variables from project
 	project_data <- lixoftConnectors::getData()
 	occ_vars <- project_data$header[project_data$headerTypes == "occ"]
+
+	# Pull non-split filter covariates from the covariate table (matched on id +
+	# occasion) so filterCovariates can filter them, then restore original columns.
+	orig_cols <- names(raw_data)
+	if (!is.null(filterCovariates)) {
+		cov_tbl      <- lixoftConnectors::getCovariateInformation()$covariate
+		missing_covs <- intersect(setdiff(names(filterCovariates), orig_cols), names(cov_tbl))
+		if (length(missing_covs) > 0) {
+			key_cols <- c("id", intersect(intersect(names(cov_tbl), occ_vars), orig_cols))
+			rk  <- do.call(paste, c(lapply(key_cols, function(k) as.character(raw_data[[k]])), sep = "\r"))
+			ck  <- do.call(paste, c(lapply(key_cols, function(k) as.character(cov_tbl[[k]])),  sep = "\r"))
+			idx <- match(rk, ck)
+			for (cv in missing_covs) raw_data[[cv]] <- cov_tbl[[cv]][idx]
+		}
+	}
+
+	raw_data <- .applyFilters(raw_data, filterCovariates, filterIds, id_col = "id")
+	raw_data <- raw_data[, orig_cols, drop = FALSE]
+
+	# Keep full data for individual listing
+	raw_data_full <- raw_data
 
 	# Apply time deviation filter only when:
 	# 1. Grouping by NominalTime (useNominalTime = TRUE)
