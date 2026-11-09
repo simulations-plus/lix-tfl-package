@@ -1273,27 +1273,44 @@ utils::globalVariables(c("."))
 
 #' Read the raw (unformatted) data file of a project
 #'
-#' Reads a CSV/TXT or Excel data file as stored on disk. With Data Formatting a
-#' dataset can have several header lines (e.g. a units row under the column
-#' names); `headerLines` gives their 1-based line numbers, as returned by
-#' `lixoftConnectors::getFormatting()$headerLines`. Column names are taken from
-#' the first header line and the data are read from the line after the last
-#' header line, so the extra header rows are not read as data (which would turn
-#' every column into character). With a single header line the file is read
-#' exactly as before.
+#' Reads the data file of a project as stored on disk: CSV/TXT, Excel
+#' (XLSX/XLS, via \pkg{readxl}) or SAS (`.sas7bdat` / `.xpt`, via \pkg{haven}).
+#' With Data Formatting a dataset can have several header lines (e.g. a units
+#' row under the column names); `headerLines` gives their 1-based line numbers,
+#' as returned by `lixoftConnectors::getFormatting()$headerLines`. Column names
+#' are taken from the first header line and the data are read from the line
+#' after the last header line, so the extra header rows are not read as data
+#' (which would turn every column into character). With a single header line
+#' the file is read exactly as before.
 #'
 #' @param dataFile Path to the data file.
 #' @param headerLines Integer vector of header line numbers. Default `1`.
+#'   Ignored for SAS files.
+#' @param sheet Excel sheet used by the project (`getData()$sheet` or
+#'   `getFormatting()$sheet`). `NULL` or `""` reads the first sheet. Ignored for
+#'   other formats.
 #' @return A data.frame with one row per data line of the file.
 #' @noRd
-.readRawDataFile <- function(dataFile, headerLines = 1) {
+.readRawDataFile <- function(dataFile, headerLines = 1, sheet = NULL) {
 	headerLines <- suppressWarnings(as.integer(headerLines))
 	headerLines <- sort(unique(headerLines[!is.na(headerLines) & headerLines >= 1L]))
 	if (length(headerLines) == 0) headerLines <- 1L
 	nameLine   <- headerLines[1]
 	lastHeader <- max(headerLines)
+	if (length(sheet) != 1 || is.na(sheet) || !nzchar(sheet)) sheet <- NULL
 
 	ext <- tolower(tools::file_ext(dataFile))
+
+	if (ext %in% c("sas7bdat", "xpt")) {
+		if (!requireNamespace("haven", quietly = TRUE)) {
+			stop("Reading SAS data files (.sas7bdat/.xpt) requires the 'haven' package. Install it with install.packages('haven').")
+		}
+		df <- if (ext == "xpt") haven::read_xpt(dataFile) else haven::read_sas(dataFile)
+		# drop SAS labels/formats so columns are plain numeric/character vectors
+		df <- haven::zap_formats(haven::zap_labels(df))
+		return(as.data.frame(df, stringsAsFactors = FALSE))
+	}
+
 	if (ext %in% c("csv", "txt")) {
 		sep <- .getDelim(dataFile)
 		if (lastHeader == 1L) {
@@ -1309,14 +1326,15 @@ utils::globalVariables(c("."))
 		if (!requireNamespace("readxl", quietly = TRUE)) {
 			stop("Reading Excel data files requires the 'readxl' package. Install it with install.packages('readxl').")
 		}
+		# Read the sheet the project uses (the first one only when none is recorded).
 		# as.data.frame() so downstream row/column indexing matches the read.csv path
 		if (lastHeader == 1L) {
-			return(as.data.frame(readxl::read_excel(dataFile), stringsAsFactors = FALSE))
+			return(as.data.frame(readxl::read_excel(dataFile, sheet = sheet), stringsAsFactors = FALSE))
 		}
-		colNames <- names(readxl::read_excel(dataFile, skip = nameLine - 1L, n_max = 0))
-		return(as.data.frame(readxl::read_excel(dataFile, skip = lastHeader, col_names = colNames),
+		colNames <- names(readxl::read_excel(dataFile, sheet = sheet, skip = nameLine - 1L, n_max = 0))
+		return(as.data.frame(readxl::read_excel(dataFile, sheet = sheet, skip = lastHeader, col_names = colNames),
 												 stringsAsFactors = FALSE))
 	}
 
-	stop("Only CSV, TXT, or Excel (XLSX/XLS) format is currently supported.")
+	stop("Only CSV, TXT, Excel (XLSX/XLS) or SAS (SAS7BDAT/XPT) format is currently supported.")
 }
