@@ -1247,3 +1247,53 @@ utils::globalVariables(c("."))
 
 	list(available = TRUE, reason = NULL)
 }
+
+#' Read the raw (unformatted) data file of a project
+#'
+#' Reads a CSV/TXT or Excel data file as stored on disk. With Data Formatting a
+#' dataset can have several header lines (e.g. a units row under the column
+#' names); `headerLines` gives their 1-based line numbers, as returned by
+#' `lixoftConnectors::getFormatting()$headerLines`. Column names are taken from
+#' the first header line and the data are read from the line after the last
+#' header line, so the extra header rows are not read as data (which would turn
+#' every column into character). With a single header line the file is read
+#' exactly as before.
+#'
+#' @param dataFile Path to the data file.
+#' @param headerLines Integer vector of header line numbers. Default `1`.
+#' @return A data.frame with one row per data line of the file.
+#' @noRd
+.readRawDataFile <- function(dataFile, headerLines = 1) {
+	headerLines <- suppressWarnings(as.integer(headerLines))
+	headerLines <- sort(unique(headerLines[!is.na(headerLines) & headerLines >= 1L]))
+	if (length(headerLines) == 0) headerLines <- 1L
+	nameLine   <- headerLines[1]
+	lastHeader <- max(headerLines)
+
+	ext <- tolower(tools::file_ext(dataFile))
+	if (ext %in% c("csv", "txt")) {
+		sep <- .getDelim(dataFile)
+		if (lastHeader == 1L) {
+			return(utils::read.csv(dataFile, header = TRUE, sep = sep))
+		}
+		colNames <- names(utils::read.csv(dataFile, header = TRUE, sep = sep,
+																			skip = nameLine - 1L, nrows = 1))
+		return(utils::read.csv(dataFile, header = FALSE, sep = sep,
+													 skip = lastHeader, col.names = colNames))
+	}
+
+	if (ext %in% c("xlsx", "xls")) {
+		if (!requireNamespace("readxl", quietly = TRUE)) {
+			stop("Reading Excel data files requires the 'readxl' package. Install it with install.packages('readxl').")
+		}
+		# as.data.frame() so downstream row/column indexing matches the read.csv path
+		if (lastHeader == 1L) {
+			return(as.data.frame(readxl::read_excel(dataFile), stringsAsFactors = FALSE))
+		}
+		colNames <- names(readxl::read_excel(dataFile, skip = nameLine - 1L, n_max = 0))
+		return(as.data.frame(readxl::read_excel(dataFile, skip = lastHeader, col_names = colNames),
+												 stringsAsFactors = FALSE))
+	}
+
+	stop("Only CSV, TXT, or Excel (XLSX/XLS) format is currently supported.")
+}

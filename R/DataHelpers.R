@@ -925,27 +925,20 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
 
     data <- lixoftConnectors::getData()
 
+    # With Data Formatting the raw file can have several header lines (e.g. a
+    # units row under the column names); their line numbers come from getFormatting().
+    headerLines <- 1
     if (nchar(data$dataFile) < 2) {
-        dataFileProject <- lixoftConnectors::getFormatting()$dataFile
+        formatting      <- lixoftConnectors::getFormatting()
+        dataFileProject <- formatting$dataFile
+        if (!is.null(formatting$headerLines)) headerLines <- formatting$headerLines
     } else {
         dataFileProject <- data$dataFile
     }
     if (is.null(dataFile)) {
         dataFile <- dataFileProject
-        dataFileExt <- tools::file_ext(dataFile)
-
-        # Read raw data, handling CSV/TXT and Excel (XLSX/XLS) formats
-        if (tolower(dataFileExt) %in% c("csv", "txt")) {
-            dataRaw <- utils::read.csv(dataFile, header = TRUE, sep = .getDelim(dataFile))
-        } else if (tolower(dataFileExt) %in% c("xlsx", "xls")) {
-            if (!requireNamespace("readxl", quietly = TRUE)) {
-                stop("Reading Excel data files requires the 'readxl' package. Install it with install.packages('readxl').")
-            }
-            # as.data.frame() so downstream row/column indexing matches the read.csv path
-            dataRaw <- as.data.frame(readxl::read_excel(dataFile), stringsAsFactors = FALSE)
-        } else {
-            stop("Only CSV, TXT, or Excel (XLSX/XLS) format is currently supported.")
-        }
+        # Read raw data (CSV/TXT or Excel), skipping any additional header lines
+        dataRaw  <- .readRawDataFile(dataFile, headerLines)
     } else {
         if (basename(dataFileProject) != basename(dataFile)) {
             stop("The basename of each data set file is not the same for each project.")
