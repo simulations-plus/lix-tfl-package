@@ -394,7 +394,7 @@ tableRunHistory <- function(sycomoreProjectFile,
 #'   strategies (COSSAC/SCM); for SAMBA and other runs without a `Step` column it
 #'   is ignored (with a message) and the full table is returned. The accepted
 #'   per-step winners are also recorded on the returned data.frame's
-#'   `best_per_step` attribute, which [style_tfl()] uses (via `autoHighlight`) to
+#'   `best_per_step` attribute, which [styleTFL()] uses (via `autoHighlight`) to
 #'   shade those rows. See [.modelBuildingBestPerStep()].
 #' @param roundDigits Integer specifying the number of digits for rounding
 #'   numeric values. Default is `2`.
@@ -699,7 +699,7 @@ tableCovariateModelBuilding <- function(projectFile        = NULL,
 
 	attr(df, "table_type")     <- "modelBuilding"
 	# Run labels of the accepted best model per step, for best-per-step row
-	# highlighting in style_tfl (autoHighlight). Restricted to rows still present
+	# highlighting in styleTFL (autoHighlight). Restricted to rows still present
 	# (e.g. after displayBestModelPerStep reduction). Empty for SAMBA.
 	attr(df, "best_per_step")  <- intersect(bestPerStep, df$Run)
 	attr(df, "project_source") <- if (!is.null(projectFile)) projectFile else
@@ -737,7 +737,7 @@ tableCovariateModelBuilding <- function(projectFile        = NULL,
 #' - `RES_ERR`: Residual error parameters
 #' - `LAT`: Latent covariate probabilities
 #'
-#' When used with [style_tfl()], these sections automatically generate visual section
+#' When used with [styleTFL()], these sections automatically generate visual section
 #' headers to improve table readability.
 #'
 #' @param projectFile Character string specifying the path to a Monolix .mlxtran project file, or `NULL` (default) to use the currently loaded project.
@@ -781,7 +781,7 @@ tableCovariateModelBuilding <- function(projectFile        = NULL,
 #'   uses long format where each parameter appears in its own row. Wide format creates sections:
 #'   Fixed effects | Random effects with split header, plus separate headers for Correlations and
 #'   Residual error.
-#' @param stdErrMethod Character string specifying the standard error method to use. Options: `""` (default, uses whichever method the project has, preferring linear if both), `"linear"`, or `"stochasticApproximation"`.
+#' @param stdErrMethod Standard error method. One of `""` (default; uses whichever method the project has, preferring linearization if both), `"linearization"`, or `"stochasticApproximation"`. Partial matching is allowed, so `"linear"` also selects linearization.
 #' @param roundDigits Integer specifying the number of digits to display. Default is 3. Interpretation depends on `roundMethod`.
 #' @param roundMethod Character string specifying the rounding method. Options:
 #'   - `"monolixSuiteRounding"` (default): Adaptive rounding where `digits` specifies the number
@@ -846,24 +846,24 @@ tableCovariateModelBuilding <- function(projectFile        = NULL,
 #'     \item{r_source}{Path of the R/Quarto/Rmd script that generated the table (auto-detected at table-creation time, see \code{.getRScriptPath()})}
 #'   }
 #'
-#'   These attributes are used by [style_tfl()] to automatically add
+#'   These attributes are used by [styleTFL()] to automatically add
 #'   section headers when rendering the table.
 #'
 #' @export
-#' @seealso [style_tfl()]
+#' @seealso [styleTFL()]
 #'
 #' @examples
 #' \dontrun{
 #' # Basic usage with default long format
 #' pop_table <- tablePopulationParameterEstimates()
-#' style_tfl(pop_table, color = c("RSE"))
+#' styleTFL(pop_table, colorBy = "RSE")
 #'
 #' # Wide format with IIV and CV%
 #' pop_table_wide <- tablePopulationParameterEstimates(
 #'   useWideFormat = TRUE,
 #'   includeIIV = TRUE,
 #'   includeCV = TRUE)
-#' style_tfl(pop_table_wide, color = c("RSE"), theme_fn = theme_booktabs)
+#' styleTFL(pop_table_wide, colorBy = "RSE", themeFn = flextable::theme_booktabs)
 #'
 #' # With custom aliases and units
 #' pop_table <- tablePopulationParameterEstimates(
@@ -890,7 +890,7 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 																		includeFEcategory  = FALSE,
 																		includeBootstrap   = FALSE,
 																		useWideFormat      = FALSE,
-																		stdErrMethod       = "",
+																		stdErrMethod       = c("", "linearization", "stochasticApproximation"),
 																		roundDigits        = 3,
 																		roundMethod        = c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none"),
 																		roundByParameter   = NULL,
@@ -898,7 +898,9 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 																		prettyLabels       = TRUE,
 																		mock               = FALSE) {
 
-	roundMethod <- match.arg(roundMethod)
+	roundMethod  <- match.arg(roundMethod)
+	# partial matching also accepts "linear" for "linearization"
+	stdErrMethod <- match.arg(stdErrMethod)
 
 	.checkProjectFile(projectFile, "monolix")
 	.ensureProjectLoaded(projectFile)
@@ -1027,7 +1029,7 @@ tablePopulationParameterEstimates <- function(projectFile        = NULL,
 		# Validate RSE availability with method
 		.validateProjectResultsAvailability(software = "monolix", resultType = "bootstrap", method = stdErrMethod)
 
-		boot_interval_level <- getBootstrapSettings()$level
+		boot_interval_level <- lixoftConnectors::getBootstrapSettings()$level
 
 		# Calculate percentiles based on interval level
 		boot_lower_p     <- (100 - boot_interval_level) / 2

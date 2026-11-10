@@ -38,6 +38,6 @@ later by flextable rendering functions. The conversion happens in two stages:
 \itemize{
 \item Table helpers should be presentation-agnostic (don't know about flextable)
 \item Placeholders serve as an intermediate format between HTML and flextable
-\item Actual rendering (as_sub(), as_sup()) happens in style_tfl()
+\item Actual rendering (as_sub(), as_sup()) happens in styleTFL()
 }
 }

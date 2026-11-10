@@ -17,7 +17,7 @@ tablePopulationParameterEstimates(
   includeFEcategory = FALSE,
   includeBootstrap = FALSE,
   useWideFormat = FALSE,
-  stdErrMethod = "",
+  stdErrMethod = c("", "linearization", "stochasticApproximation"),
   roundDigits = 3,
   roundMethod = c("monolixSuiteRounding", "significantFigures",
     "significantFiguresPreserved", "none"),
@@ -81,7 +81,7 @@ uses long format where each parameter appears in its own row. Wide format create
 Fixed effects | Random effects with split header, plus separate headers for Correlations and
 Residual error.}
 
-\item{stdErrMethod}{Character string specifying the standard error method to use. Options: \code{""} (default, uses whichever method the project has, preferring linear if both), \code{"linear"}, or \code{"stochasticApproximation"}.}
+\item{stdErrMethod}{Standard error method. One of \code{""} (default; uses whichever method the project has, preferring linearization if both), \code{"linearization"}, or \code{"stochasticApproximation"}. Partial matching is allowed, so \code{"linear"} also selects linearization.}
 
 \item{roundDigits}{Integer specifying the number of digits to display. Default is 3. Interpretation depends on \code{roundMethod}.}
 
@@ -157,7 +157,7 @@ The returned data frame includes attributes:
 \item{r_source}{Path of the R/Quarto/Rmd script that generated the table (auto-detected at table-creation time, see \code{.getRScriptPath()})}
 }
 
-These attributes are used by \code{\link[=style_tfl]{style_tfl()}} to automatically add
+These attributes are used by \code{\link[=styleTFL]{styleTFL()}} to automatically add
 section headers when rendering the table.
 }
 \description{
@@ -189,21 +189,21 @@ The \code{Section} column classifies parameters into categories:
 \item \code{LAT}: Latent covariate probabilities
 }
 
-When used with \code{\link[=style_tfl]{style_tfl()}}, these sections automatically generate visual section
+When used with \code{\link[=styleTFL]{styleTFL()}}, these sections automatically generate visual section
 headers to improve table readability.
 }
 \examples{
 \dontrun{
 # Basic usage with default long format
 pop_table <- tablePopulationParameterEstimates()
-style_tfl(pop_table, color = c("RSE"))
+styleTFL(pop_table, colorBy = "RSE")
 
 # Wide format with IIV and CV\%
 pop_table_wide <- tablePopulationParameterEstimates(
   useWideFormat = TRUE,
   includeIIV = TRUE,
   includeCV = TRUE)
-style_tfl(pop_table_wide, color = c("RSE"), theme_fn = theme_booktabs)
+styleTFL(pop_table_wide, colorBy = "RSE", themeFn = flextable::theme_booktabs)
 
 # With custom aliases and units
 pop_table <- tablePopulationParameterEstimates(
@@ -220,5 +220,5 @@ pop_table_simple <- tablePopulationParameterEstimates(prettyLabels = FALSE)
 }
 }
 \seealso{
-\code{\link[=style_tfl]{style_tfl()}}
+\code{\link[=styleTFL]{styleTFL()}}
 }

@@ -26,7 +26,7 @@
 #' **Design Philosophy:**
 #' - Table helpers should be presentation-agnostic (don't know about flextable)
 #' - Placeholders serve as an intermediate format between HTML and flextable
-#' - Actual rendering (as_sub(), as_sup()) happens in style_tfl()
+#' - Actual rendering (as_sub(), as_sup()) happens in styleTFL()
 #'
 #' @param df A data frame containing an "aliases" column with HTML-formatted text.
 #'   Typically obtained from getNCAParameterStatistics()$information
@@ -436,14 +436,14 @@
 #' @param data Data frame in long format containing at minimum an ID column and a value column.
 #' @param value_col Character string specifying the name of the value column to summarize.
 #' @param id_col Character string specifying the name of the ID/subject column.
-#'   Used for the occasion-aware N (see [.effectiveSampleSize()]) and SE, which
-#'   is derived from that N.
+#'   When `NULL`, SE is not computed. Occasion-invariant deflation (if wanted) is
+#'   done by the caller before calling this function.
 #' @param group_by Character vector or NULL specifying column names to group by.
 #'   Examples: `c("Time", "SEX")`, `c("Parameter")`, `NULL` for no grouping.
 #'
 #' @return A data frame with grouping columns (if any) and the following metrics:
-#'   N, Nobs, min, P05, Q1, mean, SD, SE, CV, median, Q3, P95, max,
-#'   geoMean, geoSD, geoCV, harmMean
+#'   N (pooled population), Nobs (non-missing), min, P05, Q1, mean, SD, SE, CV,
+#'   median, Q3, P95, max, geoMean, geoSD, geoCV, harmMean
 #'
 #' @keywords internal
 #'
@@ -467,11 +467,12 @@
 		}
 	}
 
-	# All metrics except N/SE (both depend on the occasion-aware effective N).
+	# N = pooled population (NTOT); Nobs = non-missing (NOBS).
 	stats <- data %>%
 		dplyr::group_by(dplyr::across(dplyr::all_of(group_by))) %>%
 		dplyr::summarise(
-			Nobs = dplyr::n(),
+			N    = dplyr::n(),
+			Nobs = sum(!is.na(.data[[value_col]])),
 			min = { v <- .data[[value_col]]; if (all(is.na(v))) NA_real_ else min(v, na.rm = TRUE) },
 			P05 = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE, type = 5),
 			Q1 = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE, type = 5),
@@ -507,73 +508,16 @@
 		) %>%
 		as.data.frame()
 
-	# Occasion-aware N (see .effectiveSampleSize()).
-	n_tbl <- .effectiveSampleSize(data, value_col, id_col, group_by)
-
-	out <- if (length(group_by) == 0) {
-		cbind(n_tbl, stats)
-	} else {
-		dplyr::left_join(n_tbl, stats, by = group_by)
-	}
-
-	# SE from the effective N (NA when no ID column is given).
+	# SE from the non-missing count (NA when no ID column is given).
+	out <- stats
 	out$SE <- if (is.null(id_col)) {
 		NA_real_
 	} else {
-		ifelse(!is.na(out$SD) & out$N > 0, out$SD / sqrt(out$N), NA_real_)
+		ifelse(!is.na(out$SD) & out$Nobs > 0, out$SD / sqrt(out$Nobs), NA_real_)
 	}
 
 	out %>%
 		dplyr::relocate("SE", .after = "SD") %>%
-		as.data.frame()
-}
-
-##################################################################################
-#' Occasion-aware effective sample size for descriptive statistics
-#'
-#' @description
-#' Computes the `N` for [.calculateDescriptiveStats()]. Per group: if the value
-#' varies across any subject's occasions (occasion-varying, e.g. NCA parameters),
-#' every non-missing record is counted; otherwise (occasion-invariant, e.g.
-#' height, or no occasions) each subject is counted once.
-#'
-#' @param data Long-format data frame (same input as [.calculateDescriptiveStats()]).
-#' @param value_col Character; name of the value column being summarized.
-#' @param id_col Character or NULL; subject/ID column. When NULL, `N` is the
-#'   number of rows per group.
-#' @param group_by Character vector or NULL; grouping columns.
-#'
-#' @return A data frame with the grouping columns (if any) and an `N` column.
-#'
-#' @keywords internal
-#'
-.effectiveSampleSize <- function(data, value_col, id_col, group_by) {
-	# No ID column: N is just the number of observations per group.
-	if (is.null(id_col)) {
-		return(
-			data %>%
-				dplyr::group_by(dplyr::across(dplyr::all_of(group_by))) %>%
-				dplyr::summarise(N = dplyr::n(), .groups = "drop") %>%
-				as.data.frame()
-		)
-	}
-
-	# Per (group, subject): distinct non-missing values and non-missing records.
-	per_id <- data %>%
-		dplyr::group_by(dplyr::across(dplyr::all_of(c(group_by, id_col)))) %>%
-		dplyr::summarise(
-			n_val = dplyr::n_distinct(.data[[value_col]][!is.na(.data[[value_col]])]),
-			n_rec = sum(!is.na(.data[[value_col]])),
-			.groups = "drop"
-		)
-
-	# dplyr::n() counts subjects (one row per subject in per_id).
-	per_id %>%
-		dplyr::group_by(dplyr::across(dplyr::all_of(group_by))) %>%
-		dplyr::summarise(
-			N = if (any(n_val > 1)) sum(n_rec) else dplyr::n(),
-			.groups = "drop"
-		) %>%
 		as.data.frame()
 }
 
@@ -2853,7 +2797,8 @@
 #'     rule covers every date datatype).
 #'   \item everything numeric (`time`, `observation`, `contcov`, `amount`, `rate`,
 #'     `mdv`, `cens`, `limit`, ...) and any unrecognized type -> numeric mask
-#'     (`"xx.xx"` at `digits` width); non-numeric text in such a column is kept.
+#'     (`"xx.xx"` at `digits` width); non-numeric text in such a column is kept,
+#'     unless `maskUntagged = TRUE` (see below).
 #' }
 #'
 #' @param df Data frame (one row per record) to mask.
@@ -2861,10 +2806,17 @@
 #'   `getData()`: `setNames(headerTypes, header)`). Columns not found default to the
 #'   numeric mask.
 #' @param digits Integer mask width for numeric columns (default 2 -> `"xx.xx"`).
+#' @param maskUntagged Logical; if `TRUE`, every column that is not one of the
+#'   relabeled kinds (id/obsid/adm/cat/occ/date) has its whole value replaced by
+#'   the numeric mask rather than only its digit runs. This masks free-text
+#'   columns that carry no digits and are therefore left untouched by digits-only
+#'   masking (e.g. an exclusion-reason column in `listingExclusions()`, typed
+#'   `NA`, `"ignore"` or `""`). Missing markers are still kept. Default `FALSE`
+#'   (digits-only masking, previous behaviour).
 #' @return `df` with masked columns (all returned as character).
 #' @keywords internal
 #' @noRd
-.mockDataListing <- function(df, colTypes, digits = 2) {
+.mockDataListing <- function(df, colTypes, digits = 2, maskUntagged = FALSE) {
 	num_mask <- if (digits > 0) paste0("xx.", strrep("x", digits)) else "xx"
 
 	relabel <- function(x, prefix) {
@@ -2881,6 +2833,14 @@
 		x <- as.character(x)
 		x <- gsub("[0-9]+\\.[0-9]+", num_mask, x)
 		x <- gsub("[0-9]+", num_mask, x)
+		x
+	}
+	# Whole-value mask for untagged free-text columns (no digits to catch);
+	# missing markers are kept.
+	mask_full <- function(x) {
+		x    <- as.character(x)
+		keep <- is.na(x) | !nzchar(x) | x == "."
+		x[!keep] <- num_mask
 		x
 	}
 	mask_date <- function(x) {
@@ -2903,6 +2863,12 @@
 		"num"
 	}
 
+	# Columns that are not one of the relabeled kinds fall to the numeric mask.
+	# When maskUntagged is set, use the whole-value mask there instead of the
+	# digits-only one, so free-text columns with no digits (and columns typed
+	# "ignore"/"" rather than NA) are masked too.
+	num_mask_fun <- if (isTRUE(maskUntagged)) mask_full else mask_num
+
 	for (col in names(df)) {
 		k <- kind_of(unname(colTypes[col]))
 		df[[col]] <- switch(k,
@@ -2912,7 +2878,7 @@
 			cat   = relabel(df[[col]], "Category "),
 			occ   = relabel(df[[col]], "occ"),
 			date  = mask_date(df[[col]]),
-			mask_num(df[[col]]))
+			num_mask_fun(df[[col]]))
 	}
 	df
 }
@@ -2987,15 +2953,15 @@
 
 		# Map headers to N counts
 		n_per_stratum <- df_prepared %>%
-			dplyr::distinct(header, Nobs) %>%
-			dplyr::mutate(header_N = paste0(header, "\n(N=", Nobs, ")"))
+			dplyr::distinct(header, N) %>%
+			dplyr::mutate(header_N = paste0(header, "\n(N=", N, ")"))
 
 		# Prepare overall data if provided
 		overall_prepared <- NULL
 		if (!is.null(overall_stats)) {
 			overall_prepared <- overall_stats %>%
-				dplyr::select(!!rlang::sym(param_col), Nobs, dplyr::all_of(selected_metrics)) %>%
-				dplyr::mutate(header_N = paste0("Overall\n(N=", Nobs, ")"))
+				dplyr::select(!!rlang::sym(param_col), N, dplyr::all_of(selected_metrics)) %>%
+				dplyr::mutate(header_N = paste0("Overall\n(N=", N, ")"))
 		}
 
 		# Use pivot helper
@@ -3008,8 +2974,8 @@
 		)
 	} else {
 		# No splitCovariates - just Overall with N
-		# Nobs may be character here (display formatting upstream); coerce for max().
-		max_n <- max(as.numeric(summary_stats$Nobs), na.rm = TRUE)
+		# N may be character here (display formatting upstream); coerce for max().
+		max_n <- max(as.numeric(summary_stats$N), na.rm = TRUE)
 
 		if (length(selected_metrics) > 1) {
 			result <- summary_stats %>%
@@ -3273,9 +3239,12 @@
 #' output. `prettyLabels` delegates naming to the shared `.prettyLabels()` helper
 #' (which maps `ActualTime` -> "Actual time", `NominalTime` -> "Nominal time",
 #' `UsedConc` -> "Used concentration"; `Concentration` / `Censoring` are already
-#' their pretty form). `units` appends the project unit in parentheses: the time
-#' columns use `getDataSettings()$units$time` and the concentration columns use
-#' amount-per-volume (`units$dose` / `units$volume`, e.g. "mg/L").
+#' their pretty form). For urine (excretion-rate) projects the value columns are
+#' instead labelled "Excretion Rate" / "Used Excretion Rate" and the time column
+#' "Interval Midpoint". `units` appends the project unit in parentheses: the time
+#' columns use `getDataSettings()$units$time` and the value columns use
+#' amount-per-volume (`units$dose` / `units$volume`, e.g. "mg/L"), or
+#' amount-per-time for urine (`units$dose` / `units$time`, e.g. "ng/h").
 #'
 #' The two flags are independent and compose freely:
 #' \itemize{
@@ -3312,10 +3281,19 @@
 	# so units can be appended by position regardless of the pretty rename.
 	time_idx <- which(names(df) %in% c("ActualTime", "NominalTime"))
 	conc_idx <- which(names(df) %in% c("Concentration", "UsedConc"))
+	fixed_idx <- c(time_idx, conc_idx)
+	raw_fixed <- names(df)[fixed_idx]
 
 	# Pretty names via the shared package helper (single source of truth)
 	if (isTRUE(prettyLabels)) {
 		df <- .prettyLabels(df)
+		# Urine data is excretion rate, not concentration: override the fixed labels
+		if (.isUrineProject()) {
+			for (k in seq_along(fixed_idx)) {
+				u_lab <- .urineNCAConcLabel(raw_fixed[k])
+				if (!is.null(u_lab)) names(df)[fixed_idx[k]] <- u_lab
+			}
+		}
 	}
 
 	# Append units onto the (now possibly pretty) labels by captured position
@@ -3336,9 +3314,11 @@
 #'
 #' @description
 #' Reads the project unit settings via `lixoftConnectors::getDataSettings()`.
-#' The time unit is taken directly from `$units$time`; the concentration unit is
-#' derived as amount per volume (`$units$dose` / `$units$volume`, e.g. "mg/L").
-#' Each component is passed through `.formatUnits()` for consistent display.
+#' The time unit is taken directly from `$units$time`; the value unit is derived
+#' as amount per volume (`$units$dose` / `$units$volume`, e.g. "mg/L") for
+#' concentration data, or amount per time (`$units$dose` / `$units$time`, e.g.
+#' "ng/h") for urine (excretion-rate) projects. Each component is passed through
+#' `.formatUnits()` for consistent display.
 #'
 #' Units are only returned when `enabled = TRUE` *and* units are enabled in the
 #' project (`$enableunits`); otherwise a warning is issued (when `enabled`) and
@@ -3370,13 +3350,45 @@
 		time_unit <- .formatUnits(u$time)
 	}
 
-	# Concentration is amount (dose) per volume
+	# Value unit: amount/volume for concentration data, amount/time for urine
+	# (excretion rate) data.
 	conc_unit <- ""
-	if (!is.null(u$dose) && !is.null(u$volume) && nzchar(u$dose) && nzchar(u$volume)) {
+	if (.isUrineProject()) {
+		if (!is.null(u$dose) && !is.null(u$time) && nzchar(u$dose) && nzchar(u$time)) {
+			conc_unit <- paste0(.formatUnits(u$dose), "/", .formatUnits(u$time))
+		}
+	} else if (!is.null(u$dose) && !is.null(u$volume) && nzchar(u$dose) && nzchar(u$volume)) {
 		conc_unit <- paste0(.formatUnits(u$dose), "/", .formatUnits(u$volume))
 	}
 
 	list(time = time_unit, concentration = conc_unit)
+}
+
+################################################################################
+#' Is the loaded PKanalix project urine (excretion-rate) data?
+#'
+#' @return TRUE when `getDataSettings()$datatype` is "urine".
+#' @keywords internal
+#' @noRd
+.isUrineProject <- function() {
+	dt <- tryCatch(lixoftConnectors::getDataSettings()$datatype, error = function(e) NULL)
+	isTRUE(any(dt == "urine"))
+}
+
+################################################################################
+#' Urine (excretion-rate) pretty label for a fixed NCA-concentration column
+#'
+#' @param rawName Raw column name (ActualTime/NominalTime/Concentration/UsedConc).
+#' @return Urine-specific pretty label, or NULL if the column has no urine override.
+#' @keywords internal
+#' @noRd
+.urineNCAConcLabel <- function(rawName) {
+	switch(rawName,
+		ActualTime    = "Interval Midpoint",
+		NominalTime   = "Nominal Interval Midpoint",
+		Concentration = "Excretion Rate",
+		UsedConc      = "Used Excretion Rate",
+		NULL)
 }
 
 ################################################################################

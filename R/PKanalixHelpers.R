@@ -191,6 +191,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	.time_dev_attrs <- NULL
 
 	unit_info   <- .getNCAConcentrationUnits(enabled = units)
+	is_urine    <- .isUrineProject()
 	# Tracks the current display name of the single time column (long formats),
 	# so mock masking and unit annotation can locate it after prettyLabels.
 	time_header <- NA_character_
@@ -226,15 +227,30 @@ tableNCAConcentration <- function(projectFile      = NULL,
 		roundDigits    = NULL,
 		roundMethod    = "none")
 
-	# Apply covariate and ID filters
-	raw_data <- .applyFilters(raw_data, filterCovariates, filterIds, id_col = "id")
-
-	# Keep full data for individual listing
-	raw_data_full <- raw_data
-
 	# Detect occasion variables from project
 	project_data <- lixoftConnectors::getData()
 	occ_vars <- project_data$header[project_data$headerTypes == "occ"]
+
+	# Pull non-split filter covariates from the covariate table (matched on id +
+	# occasion) so filterCovariates can filter them, then restore original columns.
+	orig_cols <- names(raw_data)
+	if (!is.null(filterCovariates)) {
+		cov_tbl      <- lixoftConnectors::getCovariateInformation()$covariate
+		missing_covs <- intersect(setdiff(names(filterCovariates), orig_cols), names(cov_tbl))
+		if (length(missing_covs) > 0) {
+			key_cols <- c("id", intersect(intersect(names(cov_tbl), occ_vars), orig_cols))
+			rk  <- do.call(paste, c(lapply(key_cols, function(k) as.character(raw_data[[k]])), sep = "\r"))
+			ck  <- do.call(paste, c(lapply(key_cols, function(k) as.character(cov_tbl[[k]])),  sep = "\r"))
+			idx <- match(rk, ck)
+			for (cv in missing_covs) raw_data[[cv]] <- cov_tbl[[cv]][idx]
+		}
+	}
+
+	raw_data <- .applyFilters(raw_data, filterCovariates, filterIds, id_col = "id")
+	raw_data <- raw_data[, orig_cols, drop = FALSE]
+
+	# Keep full data for individual listing
+	raw_data_full <- raw_data
 
 	# Apply time deviation filter only when:
 	# 1. Grouping by NominalTime (useNominalTime = TRUE)
@@ -335,7 +351,11 @@ tableNCAConcentration <- function(projectFile      = NULL,
 			if (isTRUE(prettyLabels)) {
 				dummy_t        <- as.data.frame(matrix(NA, nrow = 1, ncol = 1))
 				names(dummy_t) <- time_col
-				names(final_df)[time_idx] <- names(.prettyLabels(dummy_t))
+				pretty_t       <- names(.prettyLabels(dummy_t))
+				if (is_urine && !is.null(.urineNCAConcLabel(time_col))) {
+					pretty_t <- .urineNCAConcLabel(time_col)
+				}
+				names(final_df)[time_idx] <- pretty_t
 			}
 			time_header <- names(final_df)[time_idx]
 			if (isTRUE(units) && nzchar(unit_info$time)) {
@@ -434,9 +454,10 @@ tableNCAConcentration <- function(projectFile      = NULL,
 				exclude_cols <- c("Statistic", "Section", splitCovariates)
 				time_cols <- setdiff(names(final_df), exclude_cols)
 
-				# Apply "Time = " prefix to time columns
+				# Apply time prefix to time columns ("Interval Midpoint = " for urine)
 				if (length(time_cols) > 0) {
-					time_map <- setNames(paste0("Time = ", time_cols), time_cols)
+					time_prefix <- if (is_urine) "Interval Midpoint = " else "Time = "
+					time_map <- setNames(paste0(time_prefix, time_cols), time_cols)
 					cols_to_rename <- intersect(time_cols, names(final_df))
 					names(final_df)[names(final_df) %in% cols_to_rename] <- time_map[cols_to_rename]
 				}
@@ -466,7 +487,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 				}
 			}
 
-			# Set table attributes for style_tfl
+			# Set table attributes for styleTFL
 			attr(final_df, "table_type") <- "concentration"
 			attr(final_df, "format")     <- "wide"
 
@@ -492,6 +513,9 @@ tableNCAConcentration <- function(projectFile      = NULL,
 
 			if (isTRUE(prettyLabels)) {
 				final_df <- .prettyLabels(final_df)
+				if (is_urine && length(time_idx) == 1 && !is.null(.urineNCAConcLabel(time_col))) {
+					names(final_df)[time_idx] <- .urineNCAConcLabel(time_col)
+				}
 			}
 
 			# Track (possibly renamed) time col and append project time unit to header
@@ -545,7 +569,7 @@ tableNCAConcentration <- function(projectFile      = NULL,
 	}
 
 	# ==========================================================================
-	# SET ATTRIBUTES for style_tfl --> to identify NCA concentration table with sections
+	# SET ATTRIBUTES for styleTFL --> to identify NCA concentration table with sections
 	if (includeIds && "Section" %in% names(final_df)) {
 		attr(final_df, "table_type") <- "nca_concentration"
 		attr(final_df, "format")     <- "long"  # Always long when includeIds=TRUE
@@ -1505,7 +1529,7 @@ tableNCARatios <- function(projectFile           = NULL,
 			splitCovariate_labels = splitCovariateLabels)
 	}
 
-	# SET ATTRIBUTES for style_tfl --> identify NCA ratio table with sections
+	# SET ATTRIBUTES for styleTFL --> identify NCA ratio table with sections
 	if (includeIds && "Section" %in% names(summary_tbl)) {
 		attr(summary_tbl, "table_type") <- "nca_ratio"
 		attr(summary_tbl, "format")     <- "long"  # Always long when includeIds=TRUE
@@ -1897,13 +1921,15 @@ listingAbbreviation <- function(projectFile   = NULL,
 #' @param prettyLabels Logical; if `TRUE`, renames the fixed listing columns to
 #'   publication form: `ActualTime` -> "Actual time", `NominalTime` ->
 #'   "Nominal time", `Concentration` -> "Concentration", `UsedConc` ->
-#'   "Used concentration", `Censoring` -> "Censoring". Default `FALSE` (raw
-#'   column names are kept, e.g. for downstream processing).
+#'   "Used concentration", `Censoring` -> "Censoring". For urine (excretion-rate)
+#'   projects the value columns become "Excretion Rate" / "Used Excretion Rate"
+#'   and the time column "Interval Midpoint". Default `FALSE` (raw column names
+#'   are kept, e.g. for downstream processing).
 #'
 #' @param units Logical; if `TRUE` and units are enabled in the project,
-#'   appends the time unit to the time columns and the concentration unit
-#'   (amount/volume, e.g. "mg/L") to the concentration columns, e.g.
-#'   "Actual time (h)". Default `FALSE`.
+#'   appends the time unit to the time columns and the value unit to the value
+#'   columns: amount/volume (e.g. "mg/L") for concentration data, or amount/time
+#'   (e.g. "ng/h") for urine, e.g. "Actual time (h)". Default `FALSE`.
 #'
 #' @param roundDigits Integer specifying the number of decimal places for rounding
 #'   numeric values. Default is `3`.
@@ -2126,8 +2152,16 @@ listingNCAConcentration <- function(projectFile          = NULL,
 	}
 
 	# Get used concentrations & censoring flags (can't use getNCAData bc of bug)
-	UsedConc <- lixoftConnectors::getPointsIncludedForLambdaZ() %>%
-		dplyr::rename(Time = time, UsedConc = concentration) %>%
+	# Time/value columns: time/concentration (plasma) or intervalMidpoint/excretionRate (urine)
+	points_lambdaz <- lixoftConnectors::getPointsIncludedForLambdaZ()
+	time_src  <- intersect(c("time", "intervalMidpoint"), names(points_lambdaz))[1]
+	value_src <- intersect(c("concentration", "excretionRate"), names(points_lambdaz))[1]
+	if (is.na(time_src) || is.na(value_src)) {
+		stop("Unexpected getPointsIncludedForLambdaZ() columns: ",
+				 paste(names(points_lambdaz), collapse = ", "))
+	}
+	UsedConc <- points_lambdaz %>%
+		dplyr::rename(dplyr::all_of(c(Time = time_src, UsedConc = value_src))) %>%
 		dplyr::mutate(id = as.character(id))
 
 	# Handle occasion vars (if present: concat them into id)

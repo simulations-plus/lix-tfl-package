@@ -43,6 +43,52 @@ test_that("ensureProjectLoaded no project loaded, error to pass NULL", {
 #---------------------------------------------------------------------------------------------------
 # end of tests to comment out for code coverage
 
+test_that(".connectorCallOrStop turns a FALSE return / [ERROR] message into an R error", {
+	fails      <- function() { message("[ERROR] The file 'x.csv' does not exist."); FALSE }
+	fails_null <- function() { message("[ERROR] boom"); invisible(NULL) }
+	expect_error(suppressMessages(.connectorCallOrStop(fails(), "load project 'p'")),
+							 "Could not load project 'p': The file 'x.csv' does not exist.", fixed = TRUE)
+	expect_error(.connectorCallOrStop(FALSE, "do x"), "Could not do x.", fixed = TRUE)
+	expect_error(suppressMessages(.connectorCallOrStop(fails_null(), "do x")), "Could not do x: boom", fixed = TRUE)
+	# success: TRUE, or a non-TRUE value without an [ERROR] message (other messages pass through)
+	expect_true(.connectorCallOrStop(TRUE, "do x"))
+	expect_true(.connectorCallOrStop(invisible(NULL), "do x"))
+	expect_message(.connectorCallOrStop({ message("[INFO] loaded"); TRUE }, "do x"), "[INFO] loaded", fixed = TRUE)
+})
+
+test_that("ensureProjectLoaded errors when the project cannot be loaded", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	suppressMessages(.ensureProjectLoaded(mono_project_1))
+
+	# project file does not exist
+	expect_error(suppressMessages(.ensureProjectLoaded("test-projects/monolix/does_not_exist.mlxtran")),
+							 "Could not load project .*Cannot load the project")
+	# file is not a valid project
+	garbage <- withr::local_tempfile(fileext = ".mlxtran", lines = c("not", "a project"))
+	expect_error(suppressMessages(.ensureProjectLoaded(garbage)), "Could not load project .*Parsing failed")
+	# valid project whose data file is missing (relative data path does not resolve in tempdir)
+	no_data <- file.path(withr::local_tempdir(), "PK_run01.mlxtran")
+	file.copy(mono_project_1, no_data)
+	expect_error(suppressMessages(.ensureProjectLoaded(no_data)), "Could not load project .*does not exist")
+
+	# the previously loaded project is still the loaded one
+	expect_equal(normalizePath(lixoftConnectors::getProjectSettings()$project), normalizePath(mono_project_1))
+})
+
+test_that("public functions error instead of reporting the previously loaded project", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	suppressMessages(.ensureProjectLoaded(mono_project_1))
+	# used to return the PK_run01 estimates without an error
+	expect_error(suppressMessages(tablePopulationParameterEstimates("test-projects/monolix/does_not_exist.mlxtran")),
+							 "Could not load project")
+	expect_error(suppressMessages(tableContinuousCovariateSummary("test-projects/monolix/does_not_exist.mlxtran")),
+							 "Could not load project")
+	# PKanalix: same through the software switch
+	expect_error(suppressMessages(tableNCAParameters("test-projects/pkanalix/does_not_exist.pkx")),
+							 "Could not load project .*Cannot load the project")
+	suppressMessages(.ensureProjectLoaded(mono_project_1))  # back to Monolix for later tests
+})
+
 test_that("ensureProjectLoaded same project loaded", {
 	withr::local_options(TFLMonolixSuite.verbose = TRUE)
 	expect_message(.ensureProjectLoaded(mono_project_1), "project")
@@ -73,9 +119,9 @@ test_that("ensureProjectLoaded NULL keeps same project loaded", {
 
 test_that("ensureProjectLoaded bad input", {
 	withr::local_options(TFLMonolixSuite.verbose = TRUE)
-	expect_message(
-		expect_message(.ensureProjectLoaded("fileDoesNotExist.mlxtran"), "ERROR"),
-		"new project")
+	# the connector only reports "[ERROR] ..." as a message; this is now an R error
+	expect_error(suppressMessages(.ensureProjectLoaded("fileDoesNotExist.mlxtran")),
+							 "Could not load project 'fileDoesNotExist.mlxtran': Cannot load the project", fixed = TRUE)
 	expect_error(.ensureProjectLoaded("badExtension.mlx"), "Unknown file type")
 	expect_error(.ensureProjectLoaded("noExtension"), "Unknown file type")
 	expect_error(.ensureProjectLoaded(""), "Unknown file type")
@@ -311,6 +357,42 @@ test_that("formatRounded none passes values through without rounding", {
 test_that("formatRounded leaves genuinely non-numeric input untouched", {
 	expect_equal(.formatRounded(c("a", "b"), digits = 3, method = "monolixSuiteRounding"),
 							 c("a", "b"))
+})
+
+test_that("formatRounded pads zero like a value of 1 and drops the sign of -0", {
+	expect_equal(.formatRounded(c(0, 1), digits = 3, method = "monolixSuiteRounding", trailingZeros = TRUE),
+							 c("0.000", "1.000"))
+	expect_equal(.formatRounded(c(0, 1), digits = 3, method = "significantFigures", trailingZeros = TRUE),
+							 c("0.00", "1.00"))
+	expect_equal(.formatRounded(c(0, 1), digits = 3, method = "significantFiguresPreserved", trailingZeros = TRUE),
+							 c("0.00", "1.00"))
+	expect_equal(.formatRounded(0, digits = 3, method = "monolixSuiteRounding", trailingZeros = FALSE), "0")
+	expect_equal(.formatRounded(-0.0001, digits = 3, method = "significantFiguresPreserved", trailingZeros = TRUE),
+							 "-0.000100")
+	expect_equal(.formatRounded(-0.0004, digits = 3, method = "monolixSuiteRounding", trailingZeros = TRUE),
+							 "-0.000400")
+	expect_false(any(grepl("^-0[.]?0*$", .formatRounded(c(-0, round(-0.0001, 3)), digits = 3,
+																											method = "monolixSuiteRounding", trailingZeros = TRUE))))
+})
+
+test_that("formatRounded uses scientific notation for |x| >= 1e9 or < 1e-6", {
+	x <- c(2.92175983644145e+53, -7.45977e16, 1.23456e9, 34752480.634, 0.0000156, 1.17e-8, 2.22044604925031e-16)
+	expect_equal(.formatRounded(x, digits = 3, method = "monolixSuiteRounding", trailingZeros = TRUE),
+							 c("2.92e+53", "-7.46e+16", "1.23e+09", "34752480.634", "0.0000156", "1.17e-08", "2.22e-16"))
+	expect_equal(.formatRounded(x, digits = 3, method = "significantFigures", trailingZeros = TRUE),
+							 c("2.92e+53", "-7.46e+16", "1.23e+09", "34800000", "0.0000156", "1.17e-08", "2.22e-16"))
+	# minimal form strips trailing zeros of the mantissa only, never of the exponent
+	expect_equal(.formatRounded(c(1.2e10, 1e10), digits = 3, method = "monolixSuiteRounding", trailingZeros = FALSE),
+							 c("1.2e+10", "1e+10"))
+	expect_equal(.formatRounded(c(1.2e10, 1e10), digits = 3, method = "monolixSuiteRounding", trailingZeros = TRUE),
+							 c("1.20e+10", "1.00e+10"))
+	# boundaries and non-finite values
+	expect_equal(.formatRounded(c(999999999, 1e9), digits = 3, method = "significantFiguresPreserved", trailingZeros = TRUE),
+							 c("999999999", "1.00e+09"))
+	expect_equal(.formatRounded(c(Inf, NaN, NA), digits = 3, method = "monolixSuiteRounding", trailingZeros = TRUE),
+							 c("Inf", "NaN", NA_character_))
+	# "none" stays untouched
+	expect_equal(.formatRounded(1234567890.5, digits = 3, method = "none"), "1234567890.5")
 })
 
 ################################################################################

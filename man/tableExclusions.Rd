@@ -12,6 +12,7 @@ tableExclusions(
   filterIds = NULL,
   useWideFormat = TRUE,
   maxSubjectRatio = 0.5,
+  prettyLabels = TRUE,
   mock = FALSE
 )
 }
@@ -44,6 +45,12 @@ pivoted into rows (long, Statistic-Value format).}
 \item{maxSubjectRatio}{Ratio (n_modalities / n_subjects) above which a
 chosen grouping variable triggers a "might not be a suitable grouping
 variable" warning. Default 0.5.}
+
+\item{prettyLabels}{Logical; if \code{TRUE} (default), the summary metrics are
+shown with report-ready labels (\code{nbSbj} -> "Nb. of Subjects", \code{totalNbObs}
+-> "Total Nb. of Obs.", \code{meanNbObsPerSbj} -> "Mean Nb. of Obs./Subject",
+\code{minNbObsPerSbj}/\code{maxNbObsPerSbj} -> "Min."/"Max. Nb. of Obs./Subject"). If
+\code{FALSE}, the generic metric keys are kept.}
 
 \item{mock}{Logical; if \code{TRUE}, masks the table for documentation / example
 outputs: the count/summary values become placeholders (e.g. \code{"xx.xx"}) and

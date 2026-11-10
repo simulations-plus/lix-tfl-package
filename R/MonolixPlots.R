@@ -243,7 +243,7 @@
 
 	#-----------------------------------------------------------------------------
 	# Retrieve population parameters omegas to standardize random effects
-	pop_params <- getEstimatedPopulationParameters()
+	pop_params <- lixoftConnectors::getEstimatedPopulationParameters()
 
 	# Standardizing SD per parameter. For a selected level (simulated with a
 	# variabilityLevel) the eta is a single random effect, so its SD is the single
@@ -545,50 +545,53 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 
 	#-----------------------------------------------------------------------------
 	# Create plot
-	base_theme <- if (settings$grid) theme_minimal() else theme_classic()
+	base_theme <- if (settings$grid) ggplot2::theme_minimal() else ggplot2::theme_classic()
 
-	p <- ggplot(plot_data, aes(x = theoretical_q, y = observed_q))
+	p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = theoretical_q, y = observed_q))
 
-	# Points: use color aesthetic when color stratification is active
+	# Points: use color aesthetic when color stratification is active. The colour
+	# keys then identify the points, so no separate (black) "Empirical quantiles"
+	# shape key is added (same as plotAbsIWRESScatterPlot in colour mode).
 	if (has_color_strat) {
 		p <- p +
-			geom_point(aes(colour = color, shape = "Empirical quantiles"),
-								 size = preferences$point$size)
+			ggplot2::geom_point(ggplot2::aes(colour = color),
+								 shape = 16,
+								 size  = preferences$point$size)
 	} else {
 		p <- p +
-			geom_point(aes(shape = "Empirical quantiles"),
+			ggplot2::geom_point(ggplot2::aes(shape = "Empirical quantiles"),
 								 color = preferences$point$color,
 								 size  = preferences$point$size)
 	}
 
 	# Faceting: use facet_grid when split is active, otherwise facet_wrap by parameter
 	if (has_split) {
-		p <- p + facet_grid(split ~ parameter, scales = "free",
+		p <- p + ggplot2::facet_grid(split ~ parameter, scales = "free",
 												axes = "all", axis.labels = "all_y")
 	} else {
-		p <- p + facet_wrap(~ parameter, ncol = settings$ncol, scales = "free",
+		p <- p + ggplot2::facet_wrap(~ parameter, ncol = settings$ncol, scales = "free",
 												strip.position = "bottom",
 												axes = "all", axis.labels = "all_y")
 	}
 
 	p <- p +
-		labs(x        = "Theoretical quantiles",
-				 y        = "Emprirical quantiles of\nstandardized random effects",
+		ggplot2::labs(x        = "Theoretical quantiles",
+				 y        = "Empirical quantiles of\nstandardized random effects",
 				 colour   = NULL,
 				 linetype = NULL,
 				 shape    = NULL) +
 		base_theme +
-		theme(legend.position  = if (settings$legend) "bottom" else "none",
+		ggplot2::theme(legend.position  = if (settings$legend) "bottom" else "none",
 					legend.direction = "vertical",
-					axis.line   = element_line(color = "black"),
-					axis.ticks  = element_line(color = "black"),
+					axis.line   = ggplot2::element_line(color = "black"),
+					axis.ticks  = ggplot2::element_line(color = "black"),
 					strip.placement = "outside",
-					strip.background = element_blank())
+					strip.background = ggplot2::element_blank())
 
 	# Add identity line
 	if (settings$identityLine) {
-		p <- p + geom_abline(
-			aes(intercept = 0, slope = 1,
+		p <- p + ggplot2::geom_abline(
+			ggplot2::aes(intercept = 0, slope = 1,
 					linetype = preferences$identityLine$label),
 			color     = preferences$identityLine$color,
 			linewidth = preferences$identityLine$linewidth,
@@ -600,41 +603,43 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 		if (parsed$mergedSplits && has_color_strat) {
 			# mergedSplits: per-group CIs colored to match their group
 			p <- p +
-				geom_line(aes(y        = ci_lower,
+				ggplot2::geom_line(ggplot2::aes(y        = ci_lower,
 											colour   = color,
 											linetype = preferences$confidenceInterval$label),
 									linewidth = preferences$confidenceInterval$linewidth) +
-				geom_line(aes(y        = ci_upper,
+				ggplot2::geom_line(ggplot2::aes(y        = ci_upper,
 											colour   = color,
 											linetype = preferences$confidenceInterval$label),
 									linewidth = preferences$confidenceInterval$linewidth)
 		} else {
 			p <- p +
-				geom_line(aes(y        = ci_lower,
+				ggplot2::geom_line(ggplot2::aes(y        = ci_lower,
 											linetype = preferences$confidenceInterval$label),
 									color     = preferences$confidenceInterval$color,
 									linewidth = preferences$confidenceInterval$linewidth) +
-				geom_line(aes(y        = ci_upper,
+				ggplot2::geom_line(ggplot2::aes(y        = ci_upper,
 											linetype = preferences$confidenceInterval$label),
 									color     = preferences$confidenceInterval$color,
 									linewidth = preferences$confidenceInterval$linewidth)
 		}
 	}
 
-	# Apply scales
-	p <- p +
-		scale_shape_manual(
-			values = c("Empirical quantiles" = 16),
-			name   = NULL,
-			guide  = guide_legend(order = 1))
+	# Apply scales (shape is only mapped when the points are not coloured)
+	if (!has_color_strat) {
+		p <- p +
+			ggplot2::scale_shape_manual(
+				values = c("Empirical quantiles" = 16),
+				name   = NULL,
+				guide  = ggplot2::guide_legend(order = 1))
+	}
 
 	if (length(legend_linetypes) > 0) {
 		p <- p +
-			scale_linetype_manual(
+			ggplot2::scale_linetype_manual(
 				values = legend_linetypes,
 				breaks = names(legend_linetypes),
 				name   = NULL,
-				guide  = guide_legend(
+				guide  = ggplot2::guide_legend(
 					order = 2,
 					override.aes = list(
 						linewidth = unname(override_linewidths),
@@ -644,9 +649,9 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 	if (has_color_strat) {
 		strat_colors <- stratify$colors
 		if (!is.null(strat_colors) && length(strat_colors) >= length(unique(plot_data$color))) {
-			p <- p + scale_colour_manual(values = strat_colors, name = NULL)
+			p <- p + ggplot2::scale_colour_manual(values = strat_colors, name = NULL)
 		} else {
-			p <- p + scale_colour_discrete(name = NULL)
+			p <- p + ggplot2::scale_colour_discrete(name = NULL)
 		}
 	}
 
@@ -661,8 +666,8 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 							 if (!is.null(rsrc) && nzchar(rsrc)) paste0("R source: ", rsrc))
 		if (length(lines))
 			p <- p +
-				labs(caption = paste(lines, collapse = "\n")) +
-				theme(plot.caption = element_text(size = 7, face = "italic", hjust = 0))
+				ggplot2::labs(caption = paste(lines, collapse = "\n")) +
+				ggplot2::theme(plot.caption = ggplot2::element_text(size = 7, face = "italic", hjust = 0))
 	}
 
 	return(p)
@@ -1342,7 +1347,7 @@ plotAbsIWRESScatterPlot <- function(
 
 	has_split  <- length(unique(point_df$split)) > 1
 	has_color  <- length(unique(point_df$color)) > 1
-	base_theme <- if (settings$grid) theme_minimal() else theme_classic()
+	base_theme <- if (settings$grid) ggplot2::theme_minimal() else ggplot2::theme_classic()
 	interp     <- isTRUE(settings$linearInterpolation)
 	lowerPct   <- 100 - settings$higherPercentile
 	upperPct   <- settings$higherPercentile
@@ -1362,7 +1367,7 @@ plotAbsIWRESScatterPlot <- function(
 	lt_val  <- character(0); lt_col <- character(0)
 	fill_val <- character(0)
 
-	p <- ggplot()
+	p <- ggplot2::ggplot()
 
 	# prediction-interval bands: interpolated ribbons or stepped rectangles.
 	# The outer band carries the (single) fill legend entry with a composite key;
@@ -1373,20 +1378,20 @@ plotAbsIWRESScatterPlot <- function(
 		if (interp) {
 			d <- .extendToEdges(df)
 			if (mapped)
-				p + geom_ribbon(data = d, aes(x = x, ymin = ci_lower, ymax = ci_upper,
+				p + ggplot2::geom_ribbon(data = d, ggplot2::aes(x = x, ymin = ci_lower, ymax = ci_upper,
 																			fill = fill_label, group = interaction(perc, split, xaxis)),
 												alpha = alpha, key_glyph = keyglyph)
 			else
-				p + geom_ribbon(data = d, aes(x = x, ymin = ci_lower, ymax = ci_upper,
+				p + ggplot2::geom_ribbon(data = d, ggplot2::aes(x = x, ymin = ci_lower, ymax = ci_upper,
 																			group = interaction(perc, split, xaxis)),
 												fill = fill_fixed, alpha = alpha)
 		} else {
 			if (mapped)
-				p + geom_rect(data = df, aes(xmin = xlo, xmax = xhi, ymin = ci_lower, ymax = ci_upper,
+				p + ggplot2::geom_rect(data = df, ggplot2::aes(xmin = xlo, xmax = xhi, ymin = ci_lower, ymax = ci_upper,
 																		 fill = fill_label, group = interaction(perc, bin)),
 											alpha = alpha, key_glyph = keyglyph)
 			else
-				p + geom_rect(data = df, aes(xmin = xlo, xmax = xhi, ymin = ci_lower, ymax = ci_upper,
+				p + ggplot2::geom_rect(data = df, ggplot2::aes(xmin = xlo, xmax = xhi, ymin = ci_lower, ymax = ci_upper,
 																		 group = interaction(perc, bin)),
 											fill = fill_fixed, alpha = alpha)
 		}
@@ -1416,12 +1421,12 @@ plotAbsIWRESScatterPlot <- function(
 			oa <- .fineGrid(.extendToEdges(summ_df))
 			a  <- preferences$outlierArea$alpha
 			p  <- p +
-				geom_ribbon(data = oa,
-										aes(x = x, ymin = ci_upper, ymax = pmax(empirical, ci_upper),
+				ggplot2::geom_ribbon(data = oa,
+										ggplot2::aes(x = x, ymin = ci_upper, ymax = pmax(empirical, ci_upper),
 												fill = L_OUTAREA, group = interaction(perc, split, xaxis)),
 										alpha = a) +
-				geom_ribbon(data = oa,
-										aes(x = x, ymin = pmin(empirical, ci_lower), ymax = ci_lower,
+				ggplot2::geom_ribbon(data = oa,
+										ggplot2::aes(x = x, ymin = pmin(empirical, ci_lower), ymax = ci_lower,
 												fill = L_OUTAREA, group = interaction(perc, split, xaxis)),
 										alpha = a)
 		} else {
@@ -1432,8 +1437,8 @@ plotAbsIWRESScatterPlot <- function(
 			oa$amax <- ifelse(above, oa$empirical, ifelse(below, oa$ci_lower, NA_real_))
 			oa <- oa[!is.na(oa$amin), , drop = FALSE]
 			if (nrow(oa))
-				p <- p + geom_rect(data = oa,
-													 aes(xmin = xlo, xmax = xhi, ymin = amin, ymax = amax,
+				p <- p + ggplot2::geom_rect(data = oa,
+													 ggplot2::aes(xmin = xlo, xmax = xhi, ymin = amin, ymax = amax,
 													 		fill = L_OUTAREA, group = interaction(perc, bin)),
 													 alpha = preferences$outlierArea$alpha)
 		}
@@ -1445,18 +1450,18 @@ plotAbsIWRESScatterPlot <- function(
 	if (settings$residuals) {
 		if (has_color) {
 			# covariate colour grouping takes the colour aesthetic; censored not split
-			p <- p + geom_point(data = point_df, aes(x = x, y = absiwres, colour = color),
+			p <- p + ggplot2::geom_point(data = point_df, ggplot2::aes(x = x, y = absiwres, colour = color),
 													size = preferences$point$size)
 		} else {
 			obs_pts  <- point_df[!point_df$censored, , drop = FALSE]
 			cens_pts <- point_df[ point_df$censored, , drop = FALSE]
 			if (nrow(obs_pts)) {
-				p <- p + geom_point(data = obs_pts, aes(x = x, y = absiwres, shape = L_OBS),
+				p <- p + ggplot2::geom_point(data = obs_pts, ggplot2::aes(x = x, y = absiwres, shape = L_OBS),
 														colour = preferences$point$color, size = preferences$point$size)
 				shp_val[L_OBS] <- 16L; shp_col[L_OBS] <- preferences$point$color
 			}
 			if (nrow(cens_pts)) {
-				p <- p + geom_point(data = cens_pts, aes(x = x, y = absiwres, shape = L_CENS),
+				p <- p + ggplot2::geom_point(data = cens_pts, ggplot2::aes(x = x, y = absiwres, shape = L_CENS),
 														colour = preferences$censored$color, size = preferences$censored$size)
 				shp_val[L_CENS] <- 16L; shp_col[L_CENS] <- preferences$censored$color
 			}
@@ -1467,13 +1472,13 @@ plotAbsIWRESScatterPlot <- function(
 	if (settings$empPercentiles && !is.null(summ_df)) {
 		lw  <- preferences$empPercentile$linewidth
 		if (interp)
-			p <- p + geom_line(data = .extendToEdges(summ_df),
-												 aes(x = x, y = empirical, linetype = L_EMP,
+			p <- p + ggplot2::geom_line(data = .extendToEdges(summ_df),
+												 ggplot2::aes(x = x, y = empirical, linetype = L_EMP,
 												 		group = interaction(perc, split, xaxis)),
 												 colour = preferences$empPercentile$color, linewidth = lw)
 		else
-			p <- p + geom_segment(data = summ_df,
-														aes(x = xlo, xend = xhi, y = empirical, yend = empirical,
+			p <- p + ggplot2::geom_segment(data = summ_df,
+														ggplot2::aes(x = xlo, xend = xhi, y = empirical, yend = empirical,
 																linetype = L_EMP, group = interaction(perc, bin)),
 														colour = preferences$empPercentile$color, linewidth = lw)
 		lt_val[L_EMP] <- "solid"; lt_col[L_EMP] <- preferences$empPercentile$color
@@ -1481,8 +1486,8 @@ plotAbsIWRESScatterPlot <- function(
 
 	# predicted (half-normal) percentiles: constant in x -> full-width segments
 	if (settings$predPercentiles && !is.null(summ_df)) {
-		p <- p + geom_segment(data = summ_df,
-													aes(x = xlo, xend = xhi, y = predicted, yend = predicted,
+		p <- p + ggplot2::geom_segment(data = summ_df,
+													ggplot2::aes(x = xlo, xend = xhi, y = predicted, yend = predicted,
 															linetype = L_PRED, group = interaction(perc, bin)),
 													colour = preferences$predPercentile$color,
 													linewidth = preferences$predPercentile$linewidth)
@@ -1492,14 +1497,14 @@ plotAbsIWRESScatterPlot <- function(
 
 	# outlier dots (empirical percentile falling outside its prediction interval)
 	if (settings$outlierDots && !is.null(out_df) && nrow(out_df)) {
-		p <- p + geom_point(data = out_df, aes(x = x, y = empirical, shape = L_OUT),
+		p <- p + ggplot2::geom_point(data = out_df, ggplot2::aes(x = x, y = empirical, shape = L_OUT),
 												colour = preferences$outlier$color, size = preferences$outlier$size)
 		shp_val[L_OUT] <- 16L; shp_col[L_OUT] <- preferences$outlier$color
 	}
 
 	if (settings$spline) {
-		p <- p + geom_smooth(data = point_df,
-												 aes(x = x, y = absiwres, linetype = L_SPLINE),
+		p <- p + ggplot2::geom_smooth(data = point_df,
+												 ggplot2::aes(x = x, y = absiwres, linetype = L_SPLINE),
 												 method = "loess", se = FALSE, key_glyph = "path",
 												 color = preferences$spline$color,
 												 linewidth = preferences$spline$linewidth)
@@ -1513,7 +1518,7 @@ plotAbsIWRESScatterPlot <- function(
 		bl  <- do.call(rbind, lapply(split(summ_df, key), function(g)
 			data.frame(xaxis = g$xaxis[1], split = g$split[1],
 								 edge = sort(unique(c(g$xlo, g$xhi))), stringsAsFactors = FALSE)))
-		p <- p + geom_vline(data = bl, aes(xintercept = edge, linetype = L_BINLIM),
+		p <- p + ggplot2::geom_vline(data = bl, ggplot2::aes(xintercept = edge, linetype = L_BINLIM),
 												color = preferences$binLimit$color,
 												linewidth = preferences$binLimit$linewidth,
 												key_glyph = "path")
@@ -1522,51 +1527,51 @@ plotAbsIWRESScatterPlot <- function(
 	}
 
 	# faceting: xaxis labels placed BELOW the panels, at the axis, with nice titles
-	xaxis_lab <- labeller(xaxis = c(time = "Time", prediction = "Individual predictions"))
+	xaxis_lab <- ggplot2::labeller(xaxis = c(time = "Time", prediction = "Individual predictions"))
 	if (has_split)
-		p <- p + facet_grid(split ~ xaxis, scales = facet_scales, switch = "x",
+		p <- p + ggplot2::facet_grid(split ~ xaxis, scales = facet_scales, switch = "x",
 												labeller = xaxis_lab)
 	else
-		p <- p + facet_wrap(~ xaxis, ncol = settings$ncol, scales = facet_scales,
+		p <- p + ggplot2::facet_wrap(~ xaxis, ncol = settings$ncol, scales = facet_scales,
 												strip.position = "bottom", labeller = xaxis_lab)
 
 	# scales: stratification colour (if any) + shape + linetype legends
 	if (has_color) {
 		cols <- stratify$colors
 		if (!is.null(cols) && length(cols) >= length(unique(point_df$color)))
-			p <- p + scale_colour_manual(values = cols, name = NULL)
+			p <- p + ggplot2::scale_colour_manual(values = cols, name = NULL)
 		else
-			p <- p + scale_colour_discrete(name = NULL)
+			p <- p + ggplot2::scale_colour_discrete(name = NULL)
 	}
 	# NB: pin `breaks` to the insertion order so each guide's override.aes colours
 	# line up with the keys (ggplot otherwise sorts discrete breaks alphabetically).
 	if (length(shp_val))
-		p <- p + scale_shape_manual(
+		p <- p + ggplot2::scale_shape_manual(
 			values = shp_val, name = NULL, breaks = names(shp_val),
-			guide  = guide_legend(order = 1,
+			guide  = ggplot2::guide_legend(order = 1,
 														override.aes = list(colour = unname(shp_col[names(shp_val)]),
 																								size   = preferences$point$size + 1)))
 	if (length(lt_val))
-		p <- p + scale_linetype_manual(
+		p <- p + ggplot2::scale_linetype_manual(
 			values = lt_val, name = NULL, breaks = names(lt_val),
-			guide  = guide_legend(order = 2,
+			guide  = ggplot2::guide_legend(order = 2,
 														override.aes = list(colour = unname(lt_col[names(lt_val)]))))
 	# fill legend: prediction-interval band (composite key from its layer) and the
 	# outlier areas. Each label's key is drawn by its own layer, so no override.
 	if (length(fill_val))
-		p <- p + scale_fill_manual(values = fill_val, name = NULL, breaks = names(fill_val),
-															 guide = guide_legend(order = 3))
+		p <- p + ggplot2::scale_fill_manual(values = fill_val, name = NULL, breaks = names(fill_val),
+															 guide = ggplot2::guide_legend(order = 3))
 
 	p <- p +
-		labs(x = NULL, y = "|IWRES|") +
+		ggplot2::labs(x = NULL, y = "|IWRES|") +
 		base_theme +
-		theme(legend.position  = if (settings$legend) "bottom" else "none",
+		ggplot2::theme(legend.position  = if (settings$legend) "bottom" else "none",
 					legend.box       = "vertical",     # stack the guides vertically
 					legend.direction = "vertical",     # stack keys within each guide
-					axis.line        = element_line(color = "black"),  # theme_minimal omits axes
-					axis.ticks       = element_line(color = "black"),
+					axis.line        = ggplot2::element_line(color = "black"),  # theme_minimal omits axes
+					axis.ticks       = ggplot2::element_line(color = "black"),
 					strip.placement  = "outside",      # xaxis strip sits below the axis
-					strip.background  = element_blank())
+					strip.background  = ggplot2::element_blank())
 
 	# optional source footnote below the plot (and below the legend), styled like
 	# the flextable footers (small, italic, left-aligned). Uses plot.caption so it
@@ -1579,8 +1584,8 @@ plotAbsIWRESScatterPlot <- function(
 							 if (!is.null(rsrc) && nzchar(rsrc)) paste0("R source: ", rsrc))
 		if (length(lines))
 			p <- p +
-				labs(caption = paste(lines, collapse = "\n")) +
-				theme(plot.caption = element_text(size = 7, face = "italic", hjust = 0))
+				ggplot2::labs(caption = paste(lines, collapse = "\n")) +
+				ggplot2::theme(plot.caption = ggplot2::element_text(size = 7, face = "italic", hjust = 0))
 	}
 
 	p

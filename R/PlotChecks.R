@@ -5,7 +5,7 @@
     return(split)
   }
   
-  covariates <- getCovariateInformation()$covariate
+  covariates <- lixoftConnectors::getCovariateInformation()$covariate
   covNames <- .getCovariates(continuous = TRUE, categorical = TRUE)
 
   # When only one output --> create a list of output
@@ -55,8 +55,8 @@
       if (is.null(covariates)) {
         covariates <- unique(do.call(
           rbind,
-          lapply(getObservationInformation()$name,
-                 function(obs) unique(getObservationInformation()[[obs]][intersect(.getSubjocc(), names(getObservationInformation()[[obs]]))]))
+          lapply(lixoftConnectors::getObservationInformation()$name,
+                 function(obs) unique(lixoftConnectors::getObservationInformation()[[obs]][intersect(.getSubjocc(), names(lixoftConnectors::getObservationInformation()[[obs]]))]))
         ))
       }
 
@@ -87,9 +87,16 @@
     # continuous splits
     if (covtypes[[sname]] == "continuous") {
       .check_list(s, argname = paste("Continuous ", argname, " element", sname),
-                  listNames = c("name", "breaks"))
+                  listNames = "name",
+                  optionalNames = "breaks")
       .check_vector_of_double(s$breaks, paste("breaks field in ", argname, " element", sname))
-      s$breaks <- unique(sort(c(min(covariates[[sname]]), s$breaks, max(covariates[[sname]]))))
+      covValues <- covariates[[sname]]
+      # No groups defined for this covariate --> default to two groups with the
+      # same number of individuals, i.e. split at the median.
+      if (is.null(s$breaks)) {
+        s$breaks <- stats::median(covValues, na.rm = TRUE)
+      }
+      s$breaks <- unique(sort(c(min(covValues, na.rm = TRUE), s$breaks, max(covValues, na.rm = TRUE))))
       split[[i]] <- s[names(s) %in% c("name", "breaks")]
     }
   }
@@ -128,7 +135,7 @@
     return(filter)
   }
   
-  cov <- getCovariateInformation()$covariate
+  cov <- lixoftConnectors::getCovariateInformation()$covariate
   covNames <- .getCovariates(continuous = TRUE, categorical = TRUE)
 
   # When only one output --> create a list of output

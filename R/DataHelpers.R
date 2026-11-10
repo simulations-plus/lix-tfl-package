@@ -682,6 +682,11 @@ tableCategoricalCovariateSummary <- function(projectFile           = NULL,
 #' @param maxSubjectRatio Ratio (n_modalities / n_subjects) above which a
 #'   chosen grouping variable triggers a "might not be a suitable grouping
 #'   variable" warning. Default 0.5.
+#' @param prettyLabels Logical; if `TRUE` (default), the summary metrics are
+#'   shown with report-ready labels (`nbSbj` -> "Nb. of Subjects", `totalNbObs`
+#'   -> "Total Nb. of Obs.", `meanNbObsPerSbj` -> "Mean Nb. of Obs./Subject",
+#'   `minNbObsPerSbj`/`maxNbObsPerSbj` -> "Min."/"Max. Nb. of Obs./Subject"). If
+#'   `FALSE`, the generic metric keys are kept.
 #' @param mock Logical; if `TRUE`, masks the table for documentation / example
 #'   outputs: the count/summary values become placeholders (e.g. `"xx.xx"`) and
 #'   `splitCovariates` grouping values become generic labels (`"Category 1"`, ...).
@@ -715,6 +720,7 @@ tableExclusions <- function(projectFile          = NULL,
 														filterIds            = NULL,
 														useWideFormat        = TRUE,
 														maxSubjectRatio      = 0.5,
+														prettyLabels         = TRUE,
 														mock                 = FALSE) {
 
 	.checkProjectFile(projectFile, c("pkanalix", "monolix"))
@@ -809,11 +815,11 @@ tableExclusions <- function(projectFile          = NULL,
 		summary_tbl <- as.data.frame(per_subject) %>%
 			dplyr::group_by(dplyr::across(dplyr::all_of(splitCovariates))) %>%
 			dplyr::summarise(
-				`Nb. of Subjects`          = dplyr::n_distinct(.data[[id]]),
-				`Total Nb. of Obs.`        = sum(n_obs),
-				`Mean Nb. of Obs./Subject` = round(mean(n_obs), 2),
-				`Min. Nb. of Obs./Subject` = min(n_obs),
-				`Max. Nb. of Obs./Subject` = max(n_obs),
+				nbSbj           = dplyr::n_distinct(.data[[id]]),
+				totalNbObs      = sum(n_obs),
+				meanNbObsPerSbj = round(mean(n_obs), 2),
+				minNbObsPerSbj  = min(n_obs),
+				maxNbObsPerSbj  = max(n_obs),
 				.groups = "drop") %>%
 			dplyr::relocate(dplyr::all_of(splitCovariates), .before = 1) %>%
 			dplyr::arrange(dplyr::across(dplyr::all_of(splitCovariates)))
@@ -821,11 +827,11 @@ tableExclusions <- function(projectFile          = NULL,
 		# Overall summary (no grouping)
 		summary_tbl <- as.data.frame(per_subject) %>%
 			dplyr::summarise(
-				`Nb. of Subjects`          = dplyr::n_distinct(.data[[id]]),
-				`Total Nb. of Obs.`        = sum(n_obs),
-				`Mean Nb. of Obs./Subject` = round(mean(n_obs), 2),
-				`Min. Nb. of Obs./Subject` = min(n_obs),
-				`Max. Nb. of Obs./Subject` = max(n_obs)) %>%
+				nbSbj           = dplyr::n_distinct(.data[[id]]),
+				totalNbObs      = sum(n_obs),
+				meanNbObsPerSbj = round(mean(n_obs), 2),
+				minNbObsPerSbj  = min(n_obs),
+				maxNbObsPerSbj  = max(n_obs)) %>%
 			dplyr::arrange(dplyr::across(dplyr::all_of(splitCovariates)))
 	}
 
@@ -855,6 +861,18 @@ tableExclusions <- function(projectFile          = NULL,
 			naFillAxis   = if (useWideFormat) "column" else "row")
 	}
 
+	if (isTRUE(prettyLabels)) {
+		if (!useWideFormat && "Statistic" %in% names(summary_tbl)) {
+			keys  <- unique(summary_tbl$Statistic)
+			dummy <- as.data.frame(stats::setNames(as.list(rep(NA, length(keys))), keys),
+														 check.names = FALSE, stringsAsFactors = FALSE)
+			label_map <- stats::setNames(names(.prettyLabels(dummy)), keys)
+			summary_tbl$Statistic <- unname(label_map[summary_tbl$Statistic])
+		} else {
+			summary_tbl <- .prettyLabels(summary_tbl)
+		}
+	}
+
 	if (length(splitCovariates) > 0) {
 		summary_tbl <- .applyCovariateColumnLabels(
 			df                    = summary_tbl,
@@ -882,8 +900,9 @@ tableExclusions <- function(projectFile          = NULL,
 #'   outputs, by column data type (from `getData()`): id -> `"id1"`, obsid ->
 #'   `"obsid1"`, categorical covariates -> `"Category 1"`, occasions -> `"occ1"`,
 #'   dates -> `"xx/xx/xxxx"`, and all numeric columns (times, observations,
-#'   continuous covariates, ...) -> `"xx.xx"`. Missing markers (`"."`) are kept.
-#'   Default `FALSE`.
+#'   continuous covariates, ...) -> `"xx.xx"`. Untagged columns with no header
+#'   type (e.g. an added exclusion-reason column) are masked as `"xx.xx"` too.
+#'   Missing markers (`"."`) are kept. Default `FALSE`.
 #'
 #' @return If exclusions are found, returns a data frame containing the excluded rows from
 #'         the raw dataset. If no exclusions are found, returns NULL and outputs a message.
@@ -906,27 +925,23 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
 
     data <- lixoftConnectors::getData()
 
+    # With Data Formatting the raw file can have several header lines (e.g. a
+    # units row under the column names); their line numbers come from getFormatting().
+    # The Excel sheet in use is recorded in getFormatting() (Data Formatting) or getData().
+    headerLines <- 1
     if (nchar(data$dataFile) < 2) {
-        dataFileProject <- lixoftConnectors::getFormatting()$dataFile
+        formatting      <- lixoftConnectors::getFormatting()
+        dataFileProject <- formatting$dataFile
+        if (!is.null(formatting$headerLines)) headerLines <- formatting$headerLines
+        dataSheet       <- formatting$sheet
     } else {
         dataFileProject <- data$dataFile
+        dataSheet       <- data$sheet
     }
     if (is.null(dataFile)) {
         dataFile <- dataFileProject
-        dataFileExt <- tools::file_ext(dataFile)
-
-        # Read raw data, handling CSV/TXT and Excel (XLSX/XLS) formats
-        if (tolower(dataFileExt) %in% c("csv", "txt")) {
-            dataRaw <- utils::read.csv(dataFile, header = TRUE, sep = .getDelim(dataFile))
-        } else if (tolower(dataFileExt) %in% c("xlsx", "xls")) {
-            if (!requireNamespace("readxl", quietly = TRUE)) {
-                stop("Reading Excel data files requires the 'readxl' package. Install it with install.packages('readxl').")
-            }
-            # as.data.frame() so downstream row/column indexing matches the read.csv path
-            dataRaw <- as.data.frame(readxl::read_excel(dataFile), stringsAsFactors = FALSE)
-        } else {
-            stop("Only CSV, TXT, or Excel (XLSX/XLS) format is currently supported.")
-        }
+        # Read raw data (CSV/TXT, Excel sheet in use, or SAS), skipping any additional header lines
+        dataRaw  <- .readRawDataFile(dataFile, headerLines, sheet = dataSheet)
     } else {
         if (basename(dataFileProject) != basename(dataFile)) {
             stop("The basename of each data set file is not the same for each project.")
@@ -941,20 +956,28 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
     iTime    <- which(data$headerTypes == "time")
     iOcc     <- which(data$headerTypes == "occ")
     iMdv     <- which(data$headerTypes == "mdv")
-    iOccUsed <- iOcc
     colNameDataRaw <- names(dataRaw)
 
-    # check if the occasion were created using the data formatting
-    if (length(iOcc) > 0) {
-        for (indexOcc in 1:length(iOcc)) {
-            nameOcc <- data$header[iOcc[indexOcc]]
-            if (!(nameOcc %in% colNameDataRaw)) { # The OCC column was created by data formatting
-                iOcc[indexOcc]     <- which(colNameDataRaw == sub(x = nameOcc, pattern = "_OCC", ""))
-                iOccUsed[indexOcc] <- which(names(dataUsed) == colNameDataRaw[iOcc[indexOcc]])
-            }
-            iOccUsed[indexOcc] <- which(names(dataUsed) == colNameDataRaw[iOcc[indexOcc]])
+    # Map each occasion level to its column in the raw data (iOcc) and in the
+    # interpreted data (iOccUsed). Occasion columns created by Data Formatting are
+    # not in the raw file:
+    #  - "<col>_OCC" is built from the raw column <col> --> match on <col>;
+    #  - occasions without a source column (e.g. "dose intervals as occasions",
+    #    which creates DOSE_OCC) cannot be compared with the raw data, so that
+    #    level is left out of the matching (id, time and observation still are).
+    occRaw  <- integer(0)
+    occUsed <- integer(0)
+    for (nameOcc in data$header[iOcc]) {
+        srcName <- if (nameOcc %in% colNameDataRaw) nameOcc else sub("_OCC$", "", nameOcc)
+        rawIdx  <- match(srcName, colNameDataRaw)
+        usedIdx <- match(srcName, names(dataUsed))
+        if (!is.na(rawIdx) && !is.na(usedIdx)) {
+            occRaw  <- c(occRaw, rawIdx)
+            occUsed <- c(occUsed, usedIdx)
         }
     }
+    iOcc       <- occRaw
+    iOccUsed   <- occUsed
     nbOccLevel <- length(iOcc)
 
     iObs <- which(data$headerTypes == "observation")
@@ -1085,7 +1108,7 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
 
         if (isTRUE(mock)) {
             col_types <- stats::setNames(data$headerTypes, data$header)
-            excl <- .mockDataListing(excl, colTypes = col_types)
+            excl <- .mockDataListing(excl, colTypes = col_types, maskUntagged = TRUE)
         }
 
         attr(excl, "project_source") <- lixoftConnectors::getProjectSettings()$directory
