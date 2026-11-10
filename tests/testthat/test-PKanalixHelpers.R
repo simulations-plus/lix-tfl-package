@@ -459,6 +459,17 @@ test_that("tableNCAParameters with specific metrics", {
 	expect_true(length(metric_cols) > 0)
 })
 
+test_that("tableNCAParameters N is the pooled population, not deflated by constant parameters", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	# Regression: with occasions, a parameter constant across occasions (e.g. Tlast,
+	# flags) must not deflate N to the subject count. Every parameter row shares the
+	# same pooled-population N; N >= Nobs (equal when nothing is uncomputable).
+	tbl <- tableNCAParameters(projectFile = pkx_project_5, prettyLabels = FALSE,
+	                          roundMethod = "none", metrics = c("N", "Nobs", "mean"))
+	expect_equal(length(unique(as.numeric(tbl$N))), 1L)
+	expect_true(all(as.numeric(tbl$N) >= as.numeric(tbl$Nobs)))
+})
+
 test_that("tableNCAParameters with stratification (stratifyColumns = FALSE)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 

@@ -17,7 +17,7 @@ tablePopulationParameterEstimates(
   includeFEcategory = FALSE,
   includeBootstrap = FALSE,
   useWideFormat = FALSE,
-  stdErrMethod = "",
+  stdErrMethod = c("", "linearization", "stochasticApproximation"),
   roundDigits = 3,
   roundMethod = c("monolixSuiteRounding", "significantFigures",
     "significantFiguresPreserved", "none"),
@@ -81,7 +81,7 @@ uses long format where each parameter appears in its own row. Wide format create
 Fixed effects | Random effects with split header, plus separate headers for Correlations and
 Residual error.}
 
-\item{stdErrMethod}{Character string specifying the standard error method to use. Options: \code{""} (default, uses whichever method the project has, preferring linear if both), \code{"linear"}, or \code{"stochasticApproximation"}.}
+\item{stdErrMethod}{Standard error method. One of \code{""} (default; uses whichever method the project has, preferring linearization if both), \code{"linearization"}, or \code{"stochasticApproximation"}. Partial matching is allowed, so \code{"linear"} also selects linearization.}
 
 \item{roundDigits}{Integer specifying the number of digits to display. Default is 3. Interpretation depends on \code{roundMethod}.}
 
