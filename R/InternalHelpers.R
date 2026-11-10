@@ -157,18 +157,56 @@ utils::globalVariables(c("."))
 			same_software <- project_software == current_software
 		}
 
-		# Load project only if it differs or none loaded
+		# Load project only if it differs or none loaded. Both connector calls report
+		# failure by returning FALSE (not an R error), which would otherwise leave the
+		# previously loaded project in place and silently return its results.
 		if (!same_project) {
 			if (!same_software) {
-				lixoftConnectors::initializeLixoftConnectors(software = project_software, force = TRUE)
+				.connectorCallOrStop(
+					lixoftConnectors::initializeLixoftConnectors(software = project_software, force = TRUE),
+					paste0("initialize lixoftConnectors for ", project_software))
 			}
 			.TFL_message("Loading new project: ", projectFile)
-			lixoftConnectors::loadProject(projectFile = projectFile)
+			.connectorCallOrStop(
+				lixoftConnectors::loadProject(projectFile = projectFile),
+				paste0("load project '", projectFile, "'"))
 		}
 		else {
 			.TFL_message("Project already loaded: ", current_project)
 		}
 	}
+}
+
+#' Run a lixoftConnectors call that reports failure through its return value
+#'
+#' `loadProject()` and `initializeLixoftConnectors()` do not raise R errors: on
+#' failure they return `FALSE` and report the reason as an `"[ERROR] ..."`
+#' message (e.g. project file not found, file not a valid project, data file
+#' missing, unknown software). This helper evaluates such a call and turns a
+#' failure into an R error that includes the connector's error text.
+#'
+#' A call counts as failed when it returns `FALSE`, or when it returns anything
+#' other than `TRUE` together with an `"[ERROR]"` message. The return value is
+#' the primary signal; the message text is only used to explain the error.
+#' Messages are not muffled, so the connector output is still shown (or hidden
+#' by an outer `suppressMessages()`).
+#'
+#' @param expr The connector call (evaluated inside the function).
+#' @param what Short description for the error, e.g. `"load project 'x.pkx'"`.
+#' @return `invisible(TRUE)` on success; otherwise an error.
+#' @noRd
+.connectorCallOrStop <- function(expr, what) {
+	errs <- character()
+	ok <- withCallingHandlers(expr, message = function(m) {
+		txt <- trimws(conditionMessage(m))
+		if (startsWith(txt, "[ERROR]")) errs <<- c(errs, trimws(sub("^\\[ERROR\\]", "", txt)))
+	})
+	if (isFALSE(ok) || (!isTRUE(ok) && length(errs) > 0)) {
+		stop("Could not ", what,
+				 if (length(errs)) paste0(": ", paste(errs, collapse = " ")) else ".",
+				 call. = FALSE)
+	}
+	invisible(TRUE)
 }
 
 #' Gets the software corresponding to the project file extension
