@@ -4781,16 +4781,16 @@ test_that("listingNCAConcentration prettyLabels renames the nominal time column"
 })
 
 ################################################################################
-# N / Nobs / SE exclude missing values (as PKanalix Nobs)
+# N is the pooled population; Nobs and SE exclude missing values (PKanalix Nobs)
 ################################################################################
-test_that(".calculateDescriptiveStats counts only non-missing values in N, Nobs and SE", {
+test_that(".calculateDescriptiveStats: N is the pooled count; Nobs and SE exclude missing", {
 	d <- data.frame(id = 1:5, value = c(1, 2, 3, NA, NA))
 	s <- .calculateDescriptiveStats(d, value_col = "value", id_col = "id", group_by = NULL)
-	expect_equal(s$N, 3)
+	expect_equal(s$N, 5)
 	expect_equal(s$Nobs, 3)
 	expect_equal(s$SE, stats::sd(c(1, 2, 3)) / sqrt(3))
-	# without an ID column N is the number of non-missing rows
-	expect_equal(.calculateDescriptiveStats(d, value_col = "value", id_col = NULL, group_by = NULL)$N, 3)
+	# without an ID column N is the pooled row count
+	expect_equal(.calculateDescriptiveStats(d, value_col = "value", id_col = NULL, group_by = NULL)$N, 5)
 })
 
 test_that("tableNCAParameters N and SE match PKanalix when some subjects have missing values", {
@@ -4803,7 +4803,8 @@ test_that("tableNCAParameters N and SE match PKanalix when some subjects have mi
 	st <- lixoftConnectors::getNCAParameterStatistics()$statistics
 	expect_true(any(st$Nmiss > 0))   # the fixture really has missing values
 	m <- merge(tb, st, by = "parameter", suffixes = c(".tfl", ".pkx"))
-	expect_equal(as.numeric(m$N), as.numeric(m$Nobs.pkx))
+	# N is the pooled population (PKanalix Ntot = Nobs + Nmiss); Nobs excludes missing
+	expect_equal(as.numeric(m$N), as.numeric(m$Nobs.pkx) + as.numeric(m$Nmiss))
 	expect_equal(as.numeric(m$Nobs.tfl), as.numeric(m$Nobs.pkx))
 	expect_equal(as.numeric(m$SE.tfl), m$SE.pkx, tolerance = 1e-6)
 	expect_equal(as.numeric(m$mean.tfl), m$mean.pkx, tolerance = 1e-6)

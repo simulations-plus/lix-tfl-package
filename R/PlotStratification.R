@@ -196,6 +196,7 @@
       if (length(strat$breaks) < 2) {
         # Constant covariate (min == max): a single group. cut() would read a
         # single break as a number of intervals and create empty groups.
+        # No NA handling needed: MonolixSuite covariates have no missing records.
         factor <- factor(rep(paste0(cov, ": ", strat$breaks[1], " "), nrow(covData)))
       } else {
         factor <- cut(covData[[cov]], breaks = strat$breaks, include.lowest=TRUE, right = FALSE)
