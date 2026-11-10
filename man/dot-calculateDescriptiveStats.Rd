@@ -12,16 +12,16 @@
 \item{value_col}{Character string specifying the name of the value column to summarize.}
 
 \item{id_col}{Character string specifying the name of the ID/subject column.
-Used for the occasion-aware N (see \code{\link[=.effectiveSampleSize]{.effectiveSampleSize()}}) and SE, which
-is derived from that N.}
+When \code{NULL}, SE is not computed. Occasion-invariant deflation (if wanted) is
+done by the caller before calling this function.}
 
 \item{group_by}{Character vector or NULL specifying column names to group by.
 Examples: \code{c("Time", "SEX")}, \code{c("Parameter")}, \code{NULL} for no grouping.}
 }
 \value{
 A data frame with grouping columns (if any) and the following metrics:
-N, Nobs, min, P05, Q1, mean, SD, SE, CV, median, Q3, P95, max,
-geoMean, geoSD, geoCV, harmMean
+N (pooled population), Nobs (non-missing), min, P05, Q1, mean, SD, SE, CV,
+median, Q3, P95, max, geoMean, geoSD, geoCV, harmMean
 }
 \description{
 A simple internal helper that calculates descriptive statistics from

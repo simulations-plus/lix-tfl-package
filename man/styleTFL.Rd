@@ -45,7 +45,8 @@ case-insensitive. \code{NULL} (default) applies no colouring.
 Options include:
 \describe{
 \item{"RSE"}{Colors any column with "RSE" in its name based on thresholds:
-50-100 (yellow), 100-200 (orange), >200 (red)}
+50-100 (yellow), 100-200 (orange), >200 (red). A NaN value (precision
+could not be computed) is also colored red; a plain NA is left blank.}
 \item{"PVAL"}{Colors \code{p.value} column: <=0.01 (red), 0.01-0.05 (orange), 0.05-0.09 (yellow)}
 \item{"BE"}{Colors \code{Conclusion} column for bioequivalence: "Bioequivalent" (green), "Not bioequivalent" (red)}
 \item{"DP"}{Colors \code{Conclusion} column for dose proportionality: "Proportional" (green),
