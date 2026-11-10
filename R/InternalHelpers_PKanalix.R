@@ -436,14 +436,14 @@
 #' @param data Data frame in long format containing at minimum an ID column and a value column.
 #' @param value_col Character string specifying the name of the value column to summarize.
 #' @param id_col Character string specifying the name of the ID/subject column.
-#'   Used for the occasion-aware N (see [.effectiveSampleSize()]) and SE, which
-#'   is derived from that N.
+#'   When `NULL`, SE is not computed. Occasion-invariant deflation (if wanted) is
+#'   done by the caller before calling this function.
 #' @param group_by Character vector or NULL specifying column names to group by.
 #'   Examples: `c("Time", "SEX")`, `c("Parameter")`, `NULL` for no grouping.
 #'
 #' @return A data frame with grouping columns (if any) and the following metrics:
-#'   N, Nobs, min, P05, Q1, mean, SD, SE, CV, median, Q3, P95, max,
-#'   geoMean, geoSD, geoCV, harmMean
+#'   N (pooled population), Nobs (non-missing), min, P05, Q1, mean, SD, SE, CV,
+#'   median, Q3, P95, max, geoMean, geoSD, geoCV, harmMean
 #'
 #' @keywords internal
 #'
@@ -467,11 +467,12 @@
 		}
 	}
 
-	# All metrics except N/SE (both depend on the occasion-aware effective N).
+	# N = pooled population (NTOT); Nobs = non-missing (NOBS).
 	stats <- data %>%
 		dplyr::group_by(dplyr::across(dplyr::all_of(group_by))) %>%
 		dplyr::summarise(
-			Nobs = dplyr::n(),
+			N    = dplyr::n(),
+			Nobs = sum(!is.na(.data[[value_col]])),
 			min = { v <- .data[[value_col]]; if (all(is.na(v))) NA_real_ else min(v, na.rm = TRUE) },
 			P05 = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE, type = 5),
 			Q1 = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE, type = 5),
@@ -507,73 +508,16 @@
 		) %>%
 		as.data.frame()
 
-	# Occasion-aware N (see .effectiveSampleSize()).
-	n_tbl <- .effectiveSampleSize(data, value_col, id_col, group_by)
-
-	out <- if (length(group_by) == 0) {
-		cbind(n_tbl, stats)
-	} else {
-		dplyr::left_join(n_tbl, stats, by = group_by)
-	}
-
-	# SE from the effective N (NA when no ID column is given).
+	# SE from the non-missing count (NA when no ID column is given).
+	out <- stats
 	out$SE <- if (is.null(id_col)) {
 		NA_real_
 	} else {
-		ifelse(!is.na(out$SD) & out$N > 0, out$SD / sqrt(out$N), NA_real_)
+		ifelse(!is.na(out$SD) & out$Nobs > 0, out$SD / sqrt(out$Nobs), NA_real_)
 	}
 
 	out %>%
 		dplyr::relocate("SE", .after = "SD") %>%
-		as.data.frame()
-}
-
-##################################################################################
-#' Occasion-aware effective sample size for descriptive statistics
-#'
-#' @description
-#' Computes the `N` for [.calculateDescriptiveStats()]. Per group: if the value
-#' varies across any subject's occasions (occasion-varying, e.g. NCA parameters),
-#' every non-missing record is counted; otherwise (occasion-invariant, e.g.
-#' height, or no occasions) each subject is counted once.
-#'
-#' @param data Long-format data frame (same input as [.calculateDescriptiveStats()]).
-#' @param value_col Character; name of the value column being summarized.
-#' @param id_col Character or NULL; subject/ID column. When NULL, `N` is the
-#'   number of rows per group.
-#' @param group_by Character vector or NULL; grouping columns.
-#'
-#' @return A data frame with the grouping columns (if any) and an `N` column.
-#'
-#' @keywords internal
-#'
-.effectiveSampleSize <- function(data, value_col, id_col, group_by) {
-	# No ID column: N is just the number of observations per group.
-	if (is.null(id_col)) {
-		return(
-			data %>%
-				dplyr::group_by(dplyr::across(dplyr::all_of(group_by))) %>%
-				dplyr::summarise(N = dplyr::n(), .groups = "drop") %>%
-				as.data.frame()
-		)
-	}
-
-	# Per (group, subject): distinct non-missing values and non-missing records.
-	per_id <- data %>%
-		dplyr::group_by(dplyr::across(dplyr::all_of(c(group_by, id_col)))) %>%
-		dplyr::summarise(
-			n_val = dplyr::n_distinct(.data[[value_col]][!is.na(.data[[value_col]])]),
-			n_rec = sum(!is.na(.data[[value_col]])),
-			.groups = "drop"
-		)
-
-	# dplyr::n() counts subjects (one row per subject in per_id).
-	per_id %>%
-		dplyr::group_by(dplyr::across(dplyr::all_of(group_by))) %>%
-		dplyr::summarise(
-			N = if (any(n_val > 1)) sum(n_rec) else dplyr::n(),
-			.groups = "drop"
-		) %>%
 		as.data.frame()
 }
 
@@ -3009,15 +2953,15 @@
 
 		# Map headers to N counts
 		n_per_stratum <- df_prepared %>%
-			dplyr::distinct(header, Nobs) %>%
-			dplyr::mutate(header_N = paste0(header, "\n(N=", Nobs, ")"))
+			dplyr::distinct(header, N) %>%
+			dplyr::mutate(header_N = paste0(header, "\n(N=", N, ")"))
 
 		# Prepare overall data if provided
 		overall_prepared <- NULL
 		if (!is.null(overall_stats)) {
 			overall_prepared <- overall_stats %>%
-				dplyr::select(!!rlang::sym(param_col), Nobs, dplyr::all_of(selected_metrics)) %>%
-				dplyr::mutate(header_N = paste0("Overall\n(N=", Nobs, ")"))
+				dplyr::select(!!rlang::sym(param_col), N, dplyr::all_of(selected_metrics)) %>%
+				dplyr::mutate(header_N = paste0("Overall\n(N=", N, ")"))
 		}
 
 		# Use pivot helper
@@ -3030,8 +2974,8 @@
 		)
 	} else {
 		# No splitCovariates - just Overall with N
-		# Nobs may be character here (display formatting upstream); coerce for max().
-		max_n <- max(as.numeric(summary_stats$Nobs), na.rm = TRUE)
+		# N may be character here (display formatting upstream); coerce for max().
+		max_n <- max(as.numeric(summary_stats$N), na.rm = TRUE)
 
 		if (length(selected_metrics) > 1) {
 			result <- summary_stats %>%
