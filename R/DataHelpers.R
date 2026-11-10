@@ -927,18 +927,21 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
 
     # With Data Formatting the raw file can have several header lines (e.g. a
     # units row under the column names); their line numbers come from getFormatting().
+    # The Excel sheet in use is recorded in getFormatting() (Data Formatting) or getData().
     headerLines <- 1
     if (nchar(data$dataFile) < 2) {
         formatting      <- lixoftConnectors::getFormatting()
         dataFileProject <- formatting$dataFile
         if (!is.null(formatting$headerLines)) headerLines <- formatting$headerLines
+        dataSheet       <- formatting$sheet
     } else {
         dataFileProject <- data$dataFile
+        dataSheet       <- data$sheet
     }
     if (is.null(dataFile)) {
         dataFile <- dataFileProject
-        # Read raw data (CSV/TXT or Excel), skipping any additional header lines
-        dataRaw  <- .readRawDataFile(dataFile, headerLines)
+        # Read raw data (CSV/TXT, Excel sheet in use, or SAS), skipping any additional header lines
+        dataRaw  <- .readRawDataFile(dataFile, headerLines, sheet = dataSheet)
     } else {
         if (basename(dataFileProject) != basename(dataFile)) {
             stop("The basename of each data set file is not the same for each project.")

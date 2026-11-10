@@ -1,0 +1,48 @@
+<DATAFILE>
+
+[FILEINFO]
+file={path='data/data_covariates.sas7bdat'}
+delimiter = tab
+header={ID, TIME, DV, AMT, SEX, WEIGHT}
+
+[CONTENT]
+ID = {use=identifier}
+TIME = {use=time}
+DV = {use=observation, type=continuous}
+AMT = {use=amount}
+SEX = {use=covariate, type=categorical}
+WEIGHT = {use=covariate, type=continuous}
+
+<MODEL>
+
+[COVARIATE]
+input = {WEIGHT, SEX}
+
+SEX = {type=categorical, categories={'F', 'M'}}
+
+<PKANALIX>
+
+[TASKS]
+bioequivalence(run=false)
+
+[SETTINGS]
+GLOBAL:
+dataNextToProject = yes
+
+NCA:
+obsIdToUse = 'DV'
+administrationType = {1 = extravascular}
+startTimeNotBefore = {use=no, value=0}
+partialAUCTime = {use=no, value={{0, 24}}}
+addSteadyState = {use=no, value=24}
+computedParameters = {{value = Lambda_z}, {value = Lambda_z_intercept}, {value = No_points_lambda_z}, {value = Rsq}, {value = Rsq_adjusted}, {value = Tmax}, {value = Tmax_SS}, {value = Cmax}, {value = Cmax_SS}, {value = Tlast}, {value = Clast}, {value = AUClast}, {value = AUCINF_obs}, {value = Vz_F_obs}, {value = Cl_F_obs}, {value = Vz_obs}, {value = Cl_obs}, {value = Ctau}, {value = AUC_TAU}, {value = Vz_F}, {value = CLss_F}, {value = Tmax_Rate}, {value = Max_Rate}, {value = Rate_last}, {value = AURC_last}, {value = AURC_INF_obs}, {value = AUC_Int, partialInt = 0}, {value = AUC_Int_D, partialInt = 0}, {value = AURC_Int, partialInt = 0}, {value = AURC_Int_D, partialInt = 0}}
+sparseDataCensoring = {type = singlerule, rule = zero, checkMeanSamples = {no, {loq = 0, blqBeforeTmax = zero, blqAfterTmax = missing}}}
+
+CA:
+initialvalues = {}
+
+BIOEQUIVALENCE:
+computedParameters = {{value = AUClast, log = yes}, {value = AUCINF_obs, log = yes}, {value = Max_Rate, log = yes}, {value = AURC_last, log = yes}}
+design = parallel
+factors = {formulation={'SEX'}, reference={'F'}}
+

@@ -400,6 +400,49 @@ test_that("listingExclusions handles occasions created from dose intervals", {
 	listing <- suppressMessages(listingExclusions(df_doseocc_project))
 	expect_null(listing)
 })
+
+################################################################################
+# listingExclusions() data file formats: Excel sheet in use, SAS (.xpt/.sas7bdat)
+# (fixtures: PKanalix 2024R1 demos, without results; the Excel file is the
+#  project_excel_sheets demo data with the "doses" sheet moved first)
+################################################################################
+xlsx_sheets_project = "test-projects/pkanalix/excel_sheets/project_excel_sheets_doses_first.pkx"
+xpt_project         = "test-projects/pkanalix/sas_formats/project_covariates_xpt.pkx"
+sas_project         = "test-projects/pkanalix/sas_formats/project_covariates_sas7bdat.pkx"
+
+test_that(".readRawDataFile reads the requested Excel sheet and SAS files", {
+	skip_if_not_installed("readxl")
+	skip_if_not_installed("haven")
+	xlsx <- "test-projects/pkanalix/excel_sheets/data/data_sheets_doses_first.xlsx"
+	expect_equal(names(.readRawDataFile(xlsx)), c("ID", "TIME", "AMT"))           # first sheet = doses
+	conc <- .readRawDataFile(xlsx, sheet = "concentrations")
+	expect_equal(names(conc), c("ID", "TIME", "DV", "SEX", "WEIGHT"))
+	expect_equal(nrow(conc), 650)
+	expect_equal(names(.readRawDataFile(xlsx, sheet = "")), c("ID", "TIME", "AMT"))  # "" = first sheet
+
+	xpt <- .readRawDataFile("test-projects/pkanalix/sas_formats/data/data_covariates.xpt")
+	sas <- .readRawDataFile("test-projects/pkanalix/sas_formats/data/data_covariates.sas7bdat")
+	expect_s3_class(xpt, "data.frame")
+	expect_equal(nrow(xpt), 700)
+	expect_equal(dim(sas), dim(xpt))
+	expect_false(any(vapply(xpt, function(x) inherits(x, "haven_labelled"), logical(1))))
+})
+
+test_that("listingExclusions reads the Excel sheet used by the project", {
+	skip_if_not_installed("readxl")
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	# used to read the first sheet ("doses") and report 50 dose rows as excluded
+	expect_null(suppressMessages(listingExclusions(xlsx_sheets_project)))
+})
+
+test_that("listingExclusions/tableExclusions support SAS data files (.xpt, .sas7bdat)", {
+	skip_if_not_installed("haven")
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	# used to fail with "Only CSV, TXT, or Excel (XLSX/XLS) format is currently supported."
+	expect_null(suppressMessages(listingExclusions(xpt_project)))
+	expect_null(suppressMessages(listingExclusions(sas_project)))
+	expect_null(suppressMessages(tableExclusions(xpt_project)))
+})
 ################################################################################
 # setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
 # testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-DataHelpers.R")

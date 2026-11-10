@@ -157,18 +157,56 @@ utils::globalVariables(c("."))
 			same_software <- project_software == current_software
 		}
 
-		# Load project only if it differs or none loaded
+		# Load project only if it differs or none loaded. Both connector calls report
+		# failure by returning FALSE (not an R error), which would otherwise leave the
+		# previously loaded project in place and silently return its results.
 		if (!same_project) {
 			if (!same_software) {
-				lixoftConnectors::initializeLixoftConnectors(software = project_software, force = TRUE)
+				.connectorCallOrStop(
+					lixoftConnectors::initializeLixoftConnectors(software = project_software, force = TRUE),
+					paste0("initialize lixoftConnectors for ", project_software))
 			}
 			.TFL_message("Loading new project: ", projectFile)
-			lixoftConnectors::loadProject(projectFile = projectFile)
+			.connectorCallOrStop(
+				lixoftConnectors::loadProject(projectFile = projectFile),
+				paste0("load project '", projectFile, "'"))
 		}
 		else {
 			.TFL_message("Project already loaded: ", current_project)
 		}
 	}
+}
+
+#' Run a lixoftConnectors call that reports failure through its return value
+#'
+#' `loadProject()` and `initializeLixoftConnectors()` do not raise R errors: on
+#' failure they return `FALSE` and report the reason as an `"[ERROR] ..."`
+#' message (e.g. project file not found, file not a valid project, data file
+#' missing, unknown software). This helper evaluates such a call and turns a
+#' failure into an R error that includes the connector's error text.
+#'
+#' A call counts as failed when it returns `FALSE`, or when it returns anything
+#' other than `TRUE` together with an `"[ERROR]"` message. The return value is
+#' the primary signal; the message text is only used to explain the error.
+#' Messages are not muffled, so the connector output is still shown (or hidden
+#' by an outer `suppressMessages()`).
+#'
+#' @param expr The connector call (evaluated inside the function).
+#' @param what Short description for the error, e.g. `"load project 'x.pkx'"`.
+#' @return `invisible(TRUE)` on success; otherwise an error.
+#' @noRd
+.connectorCallOrStop <- function(expr, what) {
+	errs <- character()
+	ok <- withCallingHandlers(expr, message = function(m) {
+		txt <- trimws(conditionMessage(m))
+		if (startsWith(txt, "[ERROR]")) errs <<- c(errs, trimws(sub("^\\[ERROR\\]", "", txt)))
+	})
+	if (isFALSE(ok) || (!isTRUE(ok) && length(errs) > 0)) {
+		stop("Could not ", what,
+				 if (length(errs)) paste0(": ", paste(errs, collapse = " ")) else ".",
+				 call. = FALSE)
+	}
+	invisible(TRUE)
 }
 
 #' Gets the software corresponding to the project file extension
@@ -382,6 +420,10 @@ utils::globalVariables(c("."))
 #'   \item monolixSuiteRounding: `d = n` for |x| >= 1 (n decimal places), else
 #'     `n - floor(log10(|x|)) - 1` (n significant figures)
 #' }
+#' Zero gets the decimals of a value of 1 (`"0.000"` for monolixSuiteRounding
+#' and n = 3, `"0.00"` for the significant-figure methods). Values with
+#' |x| >= 1e9 or 0 < |x| < 1e-6 are shown in scientific notation with n
+#' significant figures (e.g. `"2.92e+53"`), for every method except "none".
 #' `NA` is preserved as `NA_character_` and `NaN` as `"NaN"` so flextable's
 #' `na_str`/`nan_str` defaults still apply downstream.
 #'
@@ -427,19 +469,36 @@ utils::globalVariables(c("."))
 		"monolixSuiteRounding" = ifelse(ax >= 1, digits, pmax(0, digits - mag - 1))
 	)
 
-	# Guard non-finite magnitudes (zeros, NA, Inf).
-	d[!is.finite(d)]          <- 0
-	d[ax == 0 | !is.finite(ax)] <- 0
+	# Guard non-finite magnitudes (NA, Inf).
+	d[!is.finite(d)]   <- 0
+	d[!is.finite(ax)]  <- 0
+	# Zero has no magnitude: give it the decimals a value of 1 gets, so it pads
+	# like its neighbours ("(0.000; 1.000)" rather than "(0; 1.000)").
+	is_zero    <- which(ax == 0)
+	d[is_zero] <- if (method == "monolixSuiteRounding") digits else max(0, digits - 1)
+	xr[is_zero] <- 0   # drop the sign of -0 (e.g. round(-0.0001, 3)) so it never shows as "-0.000"
 	d <- as.integer(d)
 
 	# sprintf vectorises over both the precision (.*) and the value.
 	out <- sprintf("%.*f", d, xr)
 
+	# Very large / very small magnitudes: scientific notation with `digits`
+	# significant figures. Fixed notation is unreadable there (e.g. an RSE of
+	# 2.92e+53 printed as a 54-digit number) and beyond ~1e15 shows
+	# floating-point noise digits.
+	is_sci <- which(is.finite(ax) & ax != 0 & (ax >= 1e9 | ax < 1e-6))
+	if (length(is_sci)) {
+		out[is_sci] <- sprintf("%.*e", as.integer(max(0, digits - 1)), xr[is_sci])
+	}
+
 	# Minimal form: strip trailing zeros and any dangling decimal point.
 	if (!isTRUE(trailingZeros)) {
-		has_dot        <- grepl(".", out, fixed = TRUE)
+		is_fixed       <- !seq_along(out) %in% is_sci
+		has_dot        <- is_fixed & grepl(".", out, fixed = TRUE)
 		out[has_dot]   <- sub("0+$", "", out[has_dot])
 		out[has_dot]   <- sub("\\.$", "", out[has_dot])
+		# scientific: strip trailing zeros of the mantissa only ("1.20e+05" -> "1.2e+05")
+		out[is_sci]    <- sub("\\.?0+e", "e", out[is_sci])
 	}
 
 	# Preserve missing/NaN for downstream na_str / nan_str handling.
@@ -1229,11 +1288,13 @@ utils::globalVariables(c("."))
 .standardErrorsAvailable <- function(method = "") {
 	all_rse <- tryCatch(lixoftConnectors::getEstimatedStandardErrors(), error = function(e) NULL)
 
-	# No SE results at all (task not run)
+	# No SE results at all. The connector cannot tell a task that was not run
+	# from one that ran without producing results (getLaunchedTasks() reports
+	# both as not launched), so the message covers both.
 	if (is.null(all_rse) || length(all_rse) == 0) {
 		return(list(
 			available = FALSE,
-			reason    = "No standard error estimates available (standard error estimation task not run)."))
+			reason    = "No standard error estimates available (the standard error estimation task was not run or did not produce results)."))
 	}
 
 	# Requested method not among the available ones
@@ -1250,27 +1311,44 @@ utils::globalVariables(c("."))
 
 #' Read the raw (unformatted) data file of a project
 #'
-#' Reads a CSV/TXT or Excel data file as stored on disk. With Data Formatting a
-#' dataset can have several header lines (e.g. a units row under the column
-#' names); `headerLines` gives their 1-based line numbers, as returned by
-#' `lixoftConnectors::getFormatting()$headerLines`. Column names are taken from
-#' the first header line and the data are read from the line after the last
-#' header line, so the extra header rows are not read as data (which would turn
-#' every column into character). With a single header line the file is read
-#' exactly as before.
+#' Reads the data file of a project as stored on disk: CSV/TXT, Excel
+#' (XLSX/XLS, via \pkg{readxl}) or SAS (`.sas7bdat` / `.xpt`, via \pkg{haven}).
+#' With Data Formatting a dataset can have several header lines (e.g. a units
+#' row under the column names); `headerLines` gives their 1-based line numbers,
+#' as returned by `lixoftConnectors::getFormatting()$headerLines`. Column names
+#' are taken from the first header line and the data are read from the line
+#' after the last header line, so the extra header rows are not read as data
+#' (which would turn every column into character). With a single header line
+#' the file is read exactly as before.
 #'
 #' @param dataFile Path to the data file.
 #' @param headerLines Integer vector of header line numbers. Default `1`.
+#'   Ignored for SAS files.
+#' @param sheet Excel sheet used by the project (`getData()$sheet` or
+#'   `getFormatting()$sheet`). `NULL` or `""` reads the first sheet. Ignored for
+#'   other formats.
 #' @return A data.frame with one row per data line of the file.
 #' @noRd
-.readRawDataFile <- function(dataFile, headerLines = 1) {
+.readRawDataFile <- function(dataFile, headerLines = 1, sheet = NULL) {
 	headerLines <- suppressWarnings(as.integer(headerLines))
 	headerLines <- sort(unique(headerLines[!is.na(headerLines) & headerLines >= 1L]))
 	if (length(headerLines) == 0) headerLines <- 1L
 	nameLine   <- headerLines[1]
 	lastHeader <- max(headerLines)
+	if (length(sheet) != 1 || is.na(sheet) || !nzchar(sheet)) sheet <- NULL
 
 	ext <- tolower(tools::file_ext(dataFile))
+
+	if (ext %in% c("sas7bdat", "xpt")) {
+		if (!requireNamespace("haven", quietly = TRUE)) {
+			stop("Reading SAS data files (.sas7bdat/.xpt) requires the 'haven' package. Install it with install.packages('haven').")
+		}
+		df <- if (ext == "xpt") haven::read_xpt(dataFile) else haven::read_sas(dataFile)
+		# drop SAS labels/formats so columns are plain numeric/character vectors
+		df <- haven::zap_formats(haven::zap_labels(df))
+		return(as.data.frame(df, stringsAsFactors = FALSE))
+	}
+
 	if (ext %in% c("csv", "txt")) {
 		sep <- .getDelim(dataFile)
 		if (lastHeader == 1L) {
@@ -1286,14 +1364,15 @@ utils::globalVariables(c("."))
 		if (!requireNamespace("readxl", quietly = TRUE)) {
 			stop("Reading Excel data files requires the 'readxl' package. Install it with install.packages('readxl').")
 		}
+		# Read the sheet the project uses (the first one only when none is recorded).
 		# as.data.frame() so downstream row/column indexing matches the read.csv path
 		if (lastHeader == 1L) {
-			return(as.data.frame(readxl::read_excel(dataFile), stringsAsFactors = FALSE))
+			return(as.data.frame(readxl::read_excel(dataFile, sheet = sheet), stringsAsFactors = FALSE))
 		}
-		colNames <- names(readxl::read_excel(dataFile, skip = nameLine - 1L, n_max = 0))
-		return(as.data.frame(readxl::read_excel(dataFile, skip = lastHeader, col_names = colNames),
+		colNames <- names(readxl::read_excel(dataFile, sheet = sheet, skip = nameLine - 1L, n_max = 0))
+		return(as.data.frame(readxl::read_excel(dataFile, sheet = sheet, skip = lastHeader, col_names = colNames),
 												 stringsAsFactors = FALSE))
 	}
 
-	stop("Only CSV, TXT, or Excel (XLSX/XLS) format is currently supported.")
+	stop("Only CSV, TXT, Excel (XLSX/XLS) or SAS (SAS7BDAT/XPT) format is currently supported.")
 }
