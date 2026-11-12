@@ -379,36 +379,43 @@
 		dplyr::summarise(
 			N    = dplyr::n(),
 			Nobs = sum(!is.na(.data[[value_col]])),
-			min = { v <- .data[[value_col]]; if (all(is.na(v))) NA_real_ else min(v, na.rm = TRUE) },
-			P05 = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE, type = 5),
-			Q1 = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE, type = 5),
+			min  = { v <- .data[[value_col]]; if (all(is.na(v))) NA_real_ else min(v, na.rm = TRUE) },
+			P05  = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE, type = 5),
+			Q1   = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE, type = 5),
 			mean = mean(.data[[value_col]], na.rm = TRUE),
-			SD = stats::sd(.data[[value_col]], na.rm = TRUE),
-			CV = {
+			SD   = stats::sd(.data[[value_col]], na.rm = TRUE),
+			CV   = {
 				m <- mean(.data[[value_col]], na.rm = TRUE)
 				s <- stats::sd(.data[[value_col]], na.rm = TRUE)
 				if (!is.na(m) && m != 0 && !is.na(s)) 100 * s / m else NA_real_
 			},
 			median = stats::median(.data[[value_col]], na.rm = TRUE),
-			Q3 = stats::quantile(.data[[value_col]], 0.75, na.rm = TRUE, type = 5),
-			P95 = stats::quantile(.data[[value_col]], 0.95, na.rm = TRUE, type = 5),
-			max = { v <- .data[[value_col]]; if (all(is.na(v))) NA_real_ else max(v, na.rm = TRUE) },
+			Q3     = stats::quantile(.data[[value_col]], 0.75, na.rm = TRUE, type = 5),
+			P95    = stats::quantile(.data[[value_col]], 0.95, na.rm = TRUE, type = 5),
+			max    = { v <- .data[[value_col]]; if (all(is.na(v))) NA_real_ else max(v, na.rm = TRUE) },
 			geoMean = {
-				vals <- .data[[value_col]][.data[[value_col]] > 0 & is.finite(.data[[value_col]])]
-				if (length(vals) > 0) exp(mean(log(vals))) else NA_real_
+				vals <- .data[[value_col]][is.finite(.data[[value_col]])]
+				if (length(vals) == 0) NA_real_
+				else if (any(vals <= 0)) NaN
+				else exp(mean(log(vals)))
 			},
 			geoSD = {
-				vals <- .data[[value_col]][.data[[value_col]] > 0 & is.finite(.data[[value_col]])]
-				if (length(vals) > 1) exp(stats::sd(log(vals))) else NA_real_
+				vals <- .data[[value_col]][is.finite(.data[[value_col]])]
+				if (length(vals) == 0) NA_real_
+				else if (any(vals <= 0)) NaN
+				else if (length(vals) > 1) exp(stats::sd(log(vals))) else NA_real_
 			},
 			geoCV = {
-				vals <- .data[[value_col]][.data[[value_col]] > 0 & is.finite(.data[[value_col]])]
-				sdlog <- if (length(vals) > 1) stats::sd(log(vals)) else NA_real_
-				if (!is.na(sdlog)) 100 * sqrt(exp(sdlog^2) - 1) else NA_real_
+				vals <- .data[[value_col]][is.finite(.data[[value_col]])]
+				if (length(vals) == 0) NA_real_
+				else if (any(vals <= 0)) NaN
+				else if (length(vals) > 1) 100 * sqrt(exp(stats::sd(log(vals))^2) - 1) else NA_real_
 			},
 			harmMean = {
-				vals <- .data[[value_col]][.data[[value_col]] > 0 & is.finite(.data[[value_col]])]
-				if (length(vals) > 0) length(vals) / sum(1 / vals) else NA_real_
+				vals <- .data[[value_col]][is.finite(.data[[value_col]])]
+				if (length(vals) == 0) NA_real_
+				else if (any(vals <= 0)) NaN
+				else length(vals) / sum(1 / vals)
 			},
 			.groups = "drop"
 		) %>%
