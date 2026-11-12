@@ -15,14 +15,14 @@
 Modified flextable object with subscripts applied
 }
 \description{
-Processes [\link{sub:...}] markers in both body cells and column headers, converting
+Processes \verb{[[sub:...]]} markers in both body cells and column headers, converting
 them to properly formatted subscripts using flextable::compose().
 }
 \details{
 This function handles two cases:
 \itemize{
-\item \strong{Body cells}: Processes [\link{sub:...}] markers in data values (horizontal = TRUE format)
-\item \strong{Column headers}: Processes [\link{sub:...}] markers in column names (horizontal = FALSE format)
+\item \strong{Body cells}: Processes \verb{[[sub:...]]} markers in data values (horizontal = TRUE format)
+\item \strong{Column headers}: Processes \verb{[[sub:...]]} markers in column names (horizontal = FALSE format)
 }
 
 The parsing logic extracts subscript text from markers and uses flextable::as_sub()

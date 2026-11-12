@@ -13,7 +13,7 @@ Typically obtained from getNCAParameterStatistics()$information}
 \value{
 A data frame identical to input but with the "aliases" column transformed:
 \itemize{
-\item HTML subscript tags converted to [\link{sub:...}] placeholders
+\item HTML subscript tags converted to \verb{[[sub:...]]} placeholders
 \item All other HTML tags removed
 \item Plain text preserved as-is
 }
@@ -30,7 +30,7 @@ logic.
 This function converts HTML markup to neutral placeholders that can be decoded
 later by flextable rendering functions. The conversion happens in two stages:
 \enumerate{
-\item HTML tags → Placeholders: \if{html}{\out{<sub>}}text\if{html}{\out{</sub>}} becomes [\link{sub:text}]
+\item HTML tags → Placeholders: \verb{<sub>text</sub>} becomes \verb{[[sub:text]]}
 \item Cleanup: Any remaining HTML tags are stripped
 }
 

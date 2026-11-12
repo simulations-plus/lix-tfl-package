@@ -1589,7 +1589,7 @@ tableNCARatios <- function(projectFile           = NULL,
 #'   (e.g., "ln(AUClast) (h*ng/mL)"). Units are retrieved from project settings.
 #'
 #' @param aliases Logical; if `TRUE` (default), uses parameter aliases instead of
-#'   raw parameter names (e.g., "AUC[[sub:0-tlast]]" instead of "AUClast").
+#'   raw parameter names (e.g., `"AUC[[sub:0-tlast]]"` instead of "AUClast").
 #'
 #' @param customUnits Named vector or 2-column dataframe mapping parameter names
 #'   to custom unit labels. Example: `c(Cmax = "ng/mL", AUClast = "h*ng/mL")`.
