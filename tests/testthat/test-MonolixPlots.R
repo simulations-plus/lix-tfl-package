@@ -62,3 +62,24 @@ test_that("plotQQStandardizedRandomEffects shows no shape key when points are co
 	expect_false(shape_mapped(p_col))
 	expect_no_message(ggplot2::ggplot_build(p_col))
 })
+
+################################################################################
+# Stratification by an occasion in a project without covariates
+# (fixture: doseIntervals_as_Occ, occasion DOSE_OCC from Data Formatting, no
+#  covariates; no results needed for the stratification helpers)
+################################################################################
+test_that("occasion split works in a project without covariates", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	suppressMessages(.ensureProjectLoaded("test-projects/monolix/data_formatting/doseIntervals_as_Occ.mlxtran"))
+	expect_null(lixoftConnectors::getCovariateInformation()$covariate)   # precondition
+
+	# used to fail with 'could not find function ".getSubjocc"'
+	split <- .checkSplit(list(list(name = "DOSE_OCC")), "split")
+	expect_equal(split[[1]]$name, "DOSE_OCC")
+
+	strat <- .stratifyCovariates(split = list(list(name = "DOSE_OCC")))
+	expect_gt(nlevels(strat$split), 1)
+	expect_true(all(grepl("^DOSE_OCC: ", levels(strat$split))))
+
+	suppressMessages(.ensureProjectLoaded(mono_project_1))   # back to the project used above
+})

@@ -388,14 +388,14 @@ utils::globalVariables(c("."))
 #-------------------------------------------------------------------------------
 #' Round a numeric vector and format it as a display string
 #'
-#' Display-layer companion to [.round_num()]. Rounds `x` with the given
-#' `digits`/`method` (so the result is canonical and matches [.round_num()]),
+#' Display-layer companion to `.round_num()`. Rounds `x` with the given
+#' `digits`/`method` (so the result is canonical and matches `.round_num()`),
 #' then renders each value as a character string at the precision that
 #' `digits`/`method` imply. This is where trailing-zero display is handled: a
 #' numeric cannot carry trailing zeros, so the padded form (`1.20`, `0.010`) only
 #' exists as a string.
 #'
-#' Keep this separate from [.round_num()] / [.applyRounding()], which must stay
+#' Keep this separate from `.round_num()` / `.applyRounding()`, which must stay
 #' numeric for mid-pipeline work (ordering, merging, combined metrics). Apply
 #' `.formatRounded()` only at the display boundary, once per (digits, method)
 #' group — for per-parameter overrides, call it with each parameter's own config.
@@ -509,14 +509,14 @@ utils::globalVariables(c("."))
 #-------------------------------------------------------------------------------
 #' Round a data frame with optional per-parameter overrides
 #'
-#' Wraps [.round_num()]. When `overrides` is NULL it is identical to
+#' Wraps `.round_num()`. When `overrides` is NULL it is identical to
 #' `.round_num()`, so it is a drop-in replacement at existing call sites.
 #' Otherwise every parameter listed in `overrides` is rounded with its own
 #' digits/method and everything else keeps the global `digits`/`method`.
 #'
 #' @param df data frame to round
 #' @param digits global number of digits
-#' @param method global rounding method (see [.round_num()])
+#' @param method global rounding method (see `.round_num()`)
 #' @param exclude descriptor columns never rounded
 #' @param overrides canonical data.frame(parameter, digits, method), or NULL
 #' @param paramCol for `paramAxis = "row"`, the column holding the parameter id
@@ -525,8 +525,8 @@ utils::globalVariables(c("."))
 #' @param format Logical. If `FALSE` (default) the non-excluded numeric columns
 #'   are rounded and returned **numeric** (original behaviour, for mid-pipeline
 #'   use). If `TRUE` they are rounded and rendered as **character** display
-#'   strings via [.formatRounded()] - use only at the display boundary.
-#' @param trailingZeros Logical, passed to [.formatRounded()] when
+#'   strings via `.formatRounded()` - use only at the display boundary.
+#' @param trailingZeros Logical, passed to `.formatRounded()` when
 #'   `format = TRUE` (ignored otherwise). `TRUE` (default) pads each value to the
 #'   precision its `digits`/`method` imply; `FALSE` shows the minimal form.
 #'
@@ -1278,7 +1278,7 @@ utils::globalVariables(c("."))
 
 #' Check (non-fatally) whether standard error estimates are available
 #'
-#' Like the `"rse"` branch of [.validateProjectResultsAvailability()] but returns
+#' Like the `"rse"` branch of `.validateProjectResultsAvailability()` but returns
 #' a status list instead of throwing, so callers can drop RSE/CI columns and warn
 #' when the standard error estimation task has not been run.
 #'

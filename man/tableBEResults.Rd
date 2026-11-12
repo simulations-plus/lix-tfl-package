@@ -69,7 +69,7 @@ at its own precision.}
 (e.g., "ln(AUClast) (h*ng/mL)"). Units are retrieved from project settings.}
 
 \item{aliases}{Logical; if \code{TRUE} (default), uses parameter aliases instead of
-raw parameter names (e.g., "AUC[\link{sub:0-tlast}]" instead of "AUClast").}
+raw parameter names (e.g., \code{"AUC[[sub:0-tlast]]"} instead of "AUClast").}
 
 \item{customUnits}{Named vector or 2-column dataframe mapping parameter names
 to custom unit labels. Example: \code{c(Cmax = "ng/mL", AUClast = "h*ng/mL")}.

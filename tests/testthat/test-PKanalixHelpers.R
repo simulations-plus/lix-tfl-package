@@ -4793,6 +4793,34 @@ test_that(".calculateDescriptiveStats: N is the pooled count; Nobs and SE exclud
 	expect_equal(.calculateDescriptiveStats(d, value_col = "value", id_col = NULL, group_by = NULL)$N, 5)
 })
 
+test_that(".calculateDescriptiveStats: geometric/harmonic means are NaN when any value <= 0 (PKanalix)", {
+	# PKanalix returns NaN for GEOMEAN/GEOSD/GEOCV/HARMMEAN whenever a group
+	# contains a non-positive value (e.g. flag parameters with zeros), instead of
+	# averaging the positive subset.
+	with_zero <- .calculateDescriptiveStats(
+		data.frame(id = 1:4, value = c(0, 1, 2, 4)),
+		value_col = "value", id_col = "id", group_by = NULL)
+	expect_true(is.nan(with_zero$geoMean))
+	expect_true(is.nan(with_zero$geoSD))
+	expect_true(is.nan(with_zero$geoCV))
+	expect_true(is.nan(with_zero$harmMean))
+
+	# Negative values are treated the same way.
+	with_neg <- .calculateDescriptiveStats(
+		data.frame(id = 1:3, value = c(-1, 2, 4)),
+		value_col = "value", id_col = "id", group_by = NULL)
+	expect_true(is.nan(with_neg$geoMean))
+	expect_true(is.nan(with_neg$harmMean))
+
+	# All-positive groups still compute; missing values are excluded (not NaN).
+	pos <- .calculateDescriptiveStats(
+		data.frame(id = 1:4, value = c(1, 2, 4, NA)),
+		value_col = "value", id_col = "id", group_by = NULL)
+	expect_equal(pos$geoMean, exp(mean(log(c(1, 2, 4)))))
+	expect_equal(pos$harmMean, 3 / sum(1 / c(1, 2, 4)))
+	expect_false(is.nan(pos$geoMean))
+})
+
 test_that("tableNCAParameters N and SE match PKanalix when some subjects have missing values", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	# project_steadystate_infusion: AUCINF_obs etc. are missing for subjects where

@@ -1009,17 +1009,56 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
     # Initialize a vector to store indices of filtered rows
     indexFiltered <- integer(0)
 
+    # ---------------------------------------------------------------------------
+    # Authoritative "row was kept" signal via LINE_NUMBER.
+    # getInterpretedData() returns a LINE_NUMBER column holding the 1-based *file*
+    # line of each source row. The raw file is read starting after the last header
+    # line, so raw row i sits on file line i + lastHeader (lastHeader == 1 for a
+    # plain single header-row CSV; larger when Data Formatting adds e.g. a units
+    # row). If a raw row's file line is present in the interpreted data, the
+    # analysis kept that row and it is NOT an exclusion.
+    #
+    # Matching by line number rather than by re-comparing ID/TIME/observation
+    # values avoids false exclusions from how the interpreted data is stored:
+    # interpreted TIME is rounded to 6 significant digits (e.g. raw 14.12227 ->
+    # 14.1223, a ~2e-6 relative change exceeding the 1e-6 time tolerance) and
+    # observations are reformatted. The value-based matching below is kept only as
+    # a fallback for when LINE_NUMBER is unavailable (e.g. older connectors).
+    hl         <- suppressWarnings(as.integer(headerLines))
+    hl         <- hl[!is.na(hl) & hl >= 1L]
+    lastHeader <- if (length(hl)) max(hl) else 1L
+    lineCol    <- grep("^LINE_NUMBER$", names(dataUsed), ignore.case = TRUE)[1]
+    rawRowKept <- logical(nrow(dataRaw))
+    if (!is.na(lineCol)) {
+        usedLines  <- suppressWarnings(as.integer(dataUsed[[lineCol]]))
+        rawRowKept <- (seq_len(nrow(dataRaw)) + lastHeader) %in% usedLines
+    }
+
     # Loop through each row in the raw data to identify filtered rows
     for (indexRaw in seq_len(nrow(dataRaw))) {
         rawLine <- dataRaw[indexRaw, ]
 
-        # First check if this row has MDV=1 (or equivalent ignored flag)
-        isMdvFiltered <- FALSE
-        if (!is.null(iMdv) && length(iMdv) > 0) {
-            mdvValue <- suppressWarnings(as.numeric(rawLine[iMdv]))
-            if (!is.na(mdvValue) && mdvValue == 1) {
-                isMdvFiltered <- TRUE
+        # Ignored observation: MDV = 1 on a row that carries an observation value.
+        # Such rows stay in the interpreted data (with the observation blanked), so
+        # this check must come before the LINE_NUMBER shortcut below. Dose-only rows
+        # have MDV = 1 by convention and are not exclusions; they go through the
+        # normal matching.
+        # (Columns created by Data Formatting lie beyond the raw columns and are skipped.)
+        iObsRaw <- iObs[iObs <= ncol(dataRaw)]
+        if (length(iMdv) > 0 && iMdv[1] <= ncol(dataRaw) && length(iObsRaw) > 0) {
+            mdvValue <- suppressWarnings(as.numeric(rawLine[[iMdv[1]]]))
+            rawObs   <- trimws(vapply(iObsRaw, function(j) as.character(rawLine[[j]]), character(1)))
+            hasObs   <- any(!is.na(rawObs) & !(rawObs %in% c("", ".")))
+            if (!is.na(mdvValue) && mdvValue == 1 && hasObs) {
+                indexFiltered <- c(indexFiltered, indexRaw)
+                next
             }
+        }
+
+        # Row confirmed present in the interpreted data (matched by file line): the
+        # analysis kept it, so it is not an exclusion -- skip the value matching.
+        if (rawRowKept[indexRaw]) {
+            next
         }
 
         # Create logical vector to find matching rows in interpreted dataset.
@@ -1042,12 +1081,6 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
 
         indexInter <- which(bInter)
 
-        # If this is an MDV=1 row and no match found in interpreted data, it's filtered
-        if (isMdvFiltered) {
-            indexFiltered <- c(indexFiltered, indexRaw)
-            next # Skip to next row
-        }
-
         # If no match is found in interpreted data, mark as filtered
         if (length(indexInter) == 0) {
             # No match in id#Occ#OCC between the raw data and the used data
@@ -1067,14 +1100,16 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
                 interpValueNum <- suppressWarnings(as.numeric(interpValue))
 
                 if (!is.na(obsValue) && !is.na(interpValueNum)) {
-                    # Both are numeric - compare with scaling and tolerance
+                    # Both are numeric - compare with scaling and tolerance.
+                    # abs() on the tolerance base so negative observations (e.g.
+                    # log-transformed DV) are not forced to fail the comparison.
                     if (software == "pkanalix") {
-                        if (abs(interpValueNum - obsValue * gainConc) <= (obsValue * gainConc) * 1e-4) {
+                        if (abs(interpValueNum - obsValue * gainConc) <= abs(obsValue * gainConc) * 1e-4) {
                             foundMatch <- TRUE
                             break
                         }
                     } else if (software == "monolix") {
-                        if (abs(interpValueNum - obsValue) <= obsValue * 1e-4) {
+                        if (abs(interpValueNum - obsValue) <= abs(obsValue) * 1e-4) {
                             foundMatch <- TRUE
                             break
                         }
