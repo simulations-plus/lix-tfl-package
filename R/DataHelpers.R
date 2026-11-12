@@ -1038,19 +1038,27 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
     for (indexRaw in seq_len(nrow(dataRaw))) {
         rawLine <- dataRaw[indexRaw, ]
 
+        # Ignored observation: MDV = 1 on a row that carries an observation value.
+        # Such rows stay in the interpreted data (with the observation blanked), so
+        # this check must come before the LINE_NUMBER shortcut below. Dose-only rows
+        # have MDV = 1 by convention and are not exclusions; they go through the
+        # normal matching.
+        # (Columns created by Data Formatting lie beyond the raw columns and are skipped.)
+        iObsRaw <- iObs[iObs <= ncol(dataRaw)]
+        if (length(iMdv) > 0 && iMdv[1] <= ncol(dataRaw) && length(iObsRaw) > 0) {
+            mdvValue <- suppressWarnings(as.numeric(rawLine[[iMdv[1]]]))
+            rawObs   <- trimws(vapply(iObsRaw, function(j) as.character(rawLine[[j]]), character(1)))
+            hasObs   <- any(!is.na(rawObs) & !(rawObs %in% c("", ".")))
+            if (!is.na(mdvValue) && mdvValue == 1 && hasObs) {
+                indexFiltered <- c(indexFiltered, indexRaw)
+                next
+            }
+        }
+
         # Row confirmed present in the interpreted data (matched by file line): the
         # analysis kept it, so it is not an exclusion -- skip the value matching.
         if (rawRowKept[indexRaw]) {
             next
-        }
-
-        # First check if this row has MDV=1 (or equivalent ignored flag)
-        isMdvFiltered <- FALSE
-        if (!is.null(iMdv) && length(iMdv) > 0) {
-            mdvValue <- suppressWarnings(as.numeric(rawLine[iMdv]))
-            if (!is.na(mdvValue) && mdvValue == 1) {
-                isMdvFiltered <- TRUE
-            }
         }
 
         # Create logical vector to find matching rows in interpreted dataset.
@@ -1072,12 +1080,6 @@ listingExclusions <- function(projectFile = NULL, mock = FALSE) {
         }
 
         indexInter <- which(bInter)
-
-        # If this is an MDV=1 row and no match found in interpreted data, it's filtered
-        if (isMdvFiltered) {
-            indexFiltered <- c(indexFiltered, indexRaw)
-            next # Skip to next row
-        }
 
         # If no match is found in interpreted data, mark as filtered
         if (length(indexInter) == 0) {
