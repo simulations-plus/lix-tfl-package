@@ -52,11 +52,15 @@
                   listNames = "name",
                   optionalNames = "groups")
 
+      # No covariate table (project without covariates): build the subject/occasion
+      # table from the observations, as in .stratifyCovariates(). Reached e.g. when
+      # splitting by an occasion in a project without covariates.
       if (is.null(covariates)) {
+        observations <- lixoftConnectors::getObservationInformation()
         covariates <- unique(do.call(
           rbind,
-          lapply(lixoftConnectors::getObservationInformation()$name,
-                 function(obs) unique(lixoftConnectors::getObservationInformation()[[obs]][intersect(.getSubjocc(), names(lixoftConnectors::getObservationInformation()[[obs]]))]))
+          lapply(observations$name,
+                 function(obs) unique(observations[[obs]][intersect(c("id", .getOccasions()), names(observations[[obs]]))]))
         ))
       }
 
