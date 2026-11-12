@@ -8,7 +8,7 @@
 }
 \arguments{
 \item{df}{A data frame containing columns named \code{mean}, \code{SD}, \code{geoMean},
-\code{geoCV}, and \code{geoSD}. Typically the output from \code{.summarizeStats()}.}
+\code{geoCV}, and \code{geoSD}. Typically the output from \code{.calculateDescriptiveStats()}.}
 }
 \value{
 The input data frame with three additional columns: \code{MeanSD}, \code{GeomCV},

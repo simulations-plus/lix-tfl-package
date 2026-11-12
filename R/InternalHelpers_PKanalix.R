@@ -20,7 +20,7 @@
 #' This function converts HTML markup to neutral placeholders that can be decoded
 #' later by flextable rendering functions. The conversion happens in two stages:
 #'
-#' 1. HTML tags → Placeholders: <sub>text</sub> becomes [[sub:text]]
+#' 1. HTML tags → Placeholders: `<sub>text</sub>` becomes `[[sub:text]]`
 #' 2. Cleanup: Any remaining HTML tags are stripped
 #'
 #' **Design Philosophy:**
@@ -32,7 +32,7 @@
 #'   Typically obtained from getNCAParameterStatistics()$information
 #'
 #' @return A data frame identical to input but with the "aliases" column transformed:
-#'   - HTML subscript tags converted to [[sub:...]] placeholders
+#'   - HTML subscript tags converted to `[[sub:...]]` placeholders
 #'   - All other HTML tags removed
 #'   - Plain text preserved as-is
 #'
@@ -329,100 +329,6 @@
 
 
 ##################################################################################
-#' summarizeStats
-#'
-#' Calculates comprehensive descriptive statistics for a numeric variable,
-#' including arithmetic, geometric, and harmonic means, standard deviation,
-#' coefficient of variation, quantiles, and percentiles. Supports grouped
-#' summaries by one or more categorical variables.
-#'
-#' @param df A data frame containing the data to summarize.
-#' @param group_vars Character vector of column names to group by. If `NULL`,
-#'   statistics are calculated for the entire dataset without grouping.
-#' @param value_col Character string specifying the name of the numeric column
-#'   to summarize. Default is `"value"`.
-#' @param id_col Character string specifying the name of the ID column for
-#'   counting distinct subjects/individuals. If `NULL`, row count is used instead.
-#'   Default is `NULL`.
-#'
-#' @details
-#' This function computes a comprehensive set of summary statistics:
-#' \itemize{
-#'   \item **N**: Number of distinct IDs (if `id_col` provided) or row count
-#'   \item **Arithmetic statistics**: mean, SD, CV (coefficient of variation as percentage)
-#'   \item **Quantiles**: min, P05 (5th percentile), Q1, median, Q3, P95 (95th percentile), max
-#'   \item **Geometric statistics**: geoMean, geoSD, geoCV (calculated on log scale)
-#'   \item **Harmonic mean**: harmMean
-#' }
-#'
-#' **Geometric Statistics**: Only positive, finite values are used. The geometric mean
-#' is calculated as `exp(mean(log(x)))`, geometric SD as `exp(sd(log(x)))`, and
-#' geometric CV as `100 * sqrt(exp(sd(log(x))^2) - 1)`.
-#'
-#' **Harmonic Mean**: Only positive, finite values are used. Calculated as
-#' `n / sum(1/x)` where n is the count of valid values.
-#'
-#' @return A data frame with one row per group (or one row total if ungrouped)
-#'   containing all calculated statistics as columns.
-#'
-#' @keywords internal
-#'
-#' @examples
-#' # df_long <- data.frame(parameter = rep(c("AUC", "Cmax"), each = 10),
-#' #                       value = c(rnorm(10, 100, 20), rnorm(10, 50, 10)),
-#' #                       id = rep(1:10, 2))
-#' # .summarizeStats(df_long, group_vars = "parameter", value_col = "value", id_col = "id")
-#'
-.summarizeStats <- function(df,
-														group_vars = NULL,
-														value_col = "value",
-														id_col = NULL) {
-	# Ensure the value column exists
-	if (!(value_col %in% names(df))) {
-		stop("Value column '", value_col, "' not found in input data.")
-	}
-
-	df %>%
-		dplyr::group_by(dplyr::across(dplyr::all_of(group_vars))) %>%
-		dplyr::summarise(
-			N = if (!is.null(id_col)) dplyr::n_distinct(.data[[id_col]]) else dplyr::n(),
-			min = min(.data[[value_col]], na.rm = TRUE),
-			P05 = stats::quantile(.data[[value_col]], 0.05, na.rm = TRUE, type = 5),
-			Q1 = stats::quantile(.data[[value_col]], 0.25, na.rm = TRUE, type = 5),
-			mean = mean(.data[[value_col]], na.rm = TRUE),
-			SD = stats::sd(.data[[value_col]], na.rm = TRUE),
-			CV = if (is.na(mean) || mean == 0) NA_real_ else 100 * SD / mean,
-			median = stats::median(.data[[value_col]], na.rm = TRUE),
-			Q3 = stats::quantile(.data[[value_col]], 0.75, na.rm = TRUE, type = 5),
-			P95 = stats::quantile(.data[[value_col]], 0.95, na.rm = TRUE, type = 5),
-			max = max(.data[[value_col]], na.rm = TRUE),
-
-			# geometric mean / sd / cv
-			geoMean = {
-				mask <- is.finite(.data[[value_col]]) & .data[[value_col]] > 0
-				if (sum(mask) > 0) exp(mean(log(.data[[value_col]][mask]), na.rm = TRUE)) else NA_real_
-			},
-			geoSD = {
-				mask <- is.finite(.data[[value_col]]) & .data[[value_col]] > 0
-				sdlog <- if (sum(mask) > 1) stats::sd(log(.data[[value_col]][mask]), na.rm = TRUE) else NA_real_
-				if (is.na(sdlog)) NA_real_ else exp(sdlog)
-			},
-			geoCV = {
-				mask <- is.finite(.data[[value_col]]) & .data[[value_col]] > 0
-				sdlog <- if (sum(mask) > 1) stats::sd(log(.data[[value_col]][mask]), na.rm = TRUE) else NA_real_
-				if (is.na(sdlog)) NA_real_ else 100 * sqrt(exp(sdlog^2) - 1)
-			},
-
-			# harmonic mean
-			harmMean = {
-				mask <- is.finite(.data[[value_col]]) & .data[[value_col]] > 0
-				if (any(mask, na.rm = TRUE)) length(.data[[value_col]][mask]) / sum(1 / .data[[value_col]][mask]) else NA_real_
-			},
-			.groups = "drop"
-		)
-}
-
-##################################################################################
 #' Calculate Descriptive Statistics for Longitudinal Data
 #'
 #' @description
@@ -529,7 +435,7 @@
 #' summary tables to present central tendency and variability together.
 #'
 #' @param df A data frame containing columns named `mean`, `SD`, `geoMean`,
-#'   `geoCV`, and `geoSD`. Typically the output from `.summarizeStats()`.
+#'   `geoCV`, and `geoSD`. Typically the output from `.calculateDescriptiveStats()`.
 #'
 #' @details
 #' The function creates three new combined columns:
@@ -1592,10 +1498,10 @@
 #' Validate roundByParameter keys against the available parameters
 #'
 #' Drops keys that are not available parameters (rather than only flagging them),
-#' notifying via `message()` to match [.validateNCAParametersSelection()]. Never
+#' notifying via `message()` to match `.validateNCAParametersSelection()`. Never
 #' stops -- a rounding typo must not kill the table.
 #'
-#' @param overrides Canonical overrides from [.normalizeRoundOverrides()], or NULL.
+#' @param overrides Canonical overrides from `.normalizeRoundOverrides()`, or NULL.
 #' @param available Character vector of available parameter names.
 #' @param context Label used in the message (e.g. the calling function name).
 #'
@@ -1713,13 +1619,13 @@
 #' @param roundMethod Rounding method ("monolixSuiteRounding", "significantFigures",
 #'   "significantFiguresPreserved", or "none")
 #' @param roundOverrides Optional canonical per-parameter rounding overrides from
-#'   [.normalizeRoundOverrides()] (data.frame with columns parameter/digits/method),
+#'   `.normalizeRoundOverrides()` (data.frame with columns parameter/digits/method),
 #'   or NULL. When supplied, the individual values are rounded per parameter via
-#'   [.applyRounding()] so they match the per-parameter rounding applied to the
+#'   `.applyRounding()` so they match the per-parameter rounding applied to the
 #'   summary rows. Keys must use the original (non-aliased) parameter names.
 #'   Only honored for resultType "ncaParameters"/"ncaRatio". Default NULL (global rounding).
 #' @param format Logical; when TRUE the individual values are rendered as character
-#'   display strings (via [.applyRounding()] `format = TRUE`) instead of numeric, so
+#'   display strings (via `.applyRounding()` `format = TRUE`) instead of numeric, so
 #'   they match the formatted summary rows. Default FALSE (numeric, legacy behavior).
 #' @param trailingZeros Logical; passed through to the display formatting when
 #'   `format = TRUE` (ignored otherwise). Default TRUE.
@@ -2216,200 +2122,6 @@
 		composite_id_created = TRUE,
 		occasion_cols = varying_occ_cols
 	))
-}
-
-
-##################################################################################
-#' Internal helper to fetch and prepare NCA & Conecntration summary stats
-#'
-#' @description
-#' This internal function acts as the backend data pipeline for NCA summary tables and listings.
-#' It retrieves data, calculates statistics, applies rounding, handles stratification,
-#' and formats labels based on settings inherited from the calling function.
-#'
-#' It operates in two distinct modes:
-#' \itemize{
-#'   \item **Parameter Mode** (`by_time = FALSE`): Retrieves and summarizes NCA parameters (e.g., Cmax, AUC).
-#'   \item **Concentration Mode** (`by_time = TRUE`): Retrieves and summarizes concentration data grouped by timepoint.
-#' }
-#'
-#' @param project A character string representing the path to the PKanalix project file (.pkx).
-#' @param selectParameters A character vector of NCA parameter names to filter by.
-#'   If `NULL`, all available parameters are retrieved.
-#'   \emph{Applicable only when `by_time = FALSE`.}
-#' @param splitCovariates A character vector of covariate names to stratify the results by.
-#'   If `NULL`, overall (non-stratified) statistics are calculated.
-#' @param roundDigits Integer. The rounding precision (number of digits).
-#'   Inherited from the parent table/listing function settings.
-#' @param roundMethod Character string. The rounding method (e.g., "monolixSuiteRounding",
-#'   "significantFigures", or "significantFiguresPreserved"). Inherited from the parent
-#'   table/listing function settings.
-#' @param units Logical. If `TRUE`, units are appended to parameter names or values.
-#'   \emph{Applicable only when `by_time = FALSE` (NCA Parameter summaries).}
-#' @param aliases Logical. If `TRUE`, parameter aliases (friendly names) are used.
-#'   \emph{Applicable only when `by_time = FALSE` (NCA Parameter summaries).}
-#' @param by_time Logical. Toggles the function mode:
-#'   \itemize{
-#'     \item `FALSE` (default): Prepares NCA Parameter statistics.
-#'     \item `TRUE`: Prepares Concentration summary statistics by timepoint.
-#'   }
-#' @param useNominalTime Logical. If `TRUE`, attempts to use Nominal Time for grouping concentrations.
-#'   If unavailable, falls back to Actual Time with a warning.
-#'   \emph{Applicable only when `by_time = TRUE` (Concentration summaries).}
-#'
-#' @return A data frame containing the summarized statistics (Mean, SD, Median, etc.)
-#'   and combined metrics (MeanSD, GeomCV), formatted and rounded according to the inputs.
-#'   Returns `NULL` if the required NCA results are not available.
-#'
-#' @keywords internal
-#'
-.prepareNCASummaryStats <- function(projectFile,
-																		selectParameters = NULL,
-																		splitCovariates = NULL,
-																		roundDigits,
-																		roundMethod,
-																		units = TRUE,
-																		aliases = TRUE,
-																		by_time = FALSE,
-																		useNominalTime = TRUE) {
-
-
-	if (by_time) {
-		# CONCENTRATION MODE: Calculate stats by timepoint
-		# Set Stratification
-		lixoftConnectors::setNCAResultsStratification() # reset
-		if (!is.null(splitCovariates)) {
-			lixoftConnectors::setNCAResultsStratification(split = splitCovariates)
-		}
-
-		# Check if nominal time exists
-		has_nomtime <- FALSE
-		if (useNominalTime) {
-			data <- lixoftConnectors::getData()
-			has_nomtime <- any(data$headerTypes == "nominaltime")
-			if (!has_nomtime) {
-				warning("No nominal time available in project; Actual time will be used instead.")
-			}
-		}
-
-		# Get concentration data
-		df <- lixoftConnectors::getNCAConcentrations(useNominalTime = has_nomtime)
-
-		if (is.null(df)) {
-			return(NULL)
-		}
-
-		# Fix column swap bug
-		df_fixed <- .fixNCAConcentrationsColumnSwap(df, splitCovariates)
-
-		# Choose label column
-		stat_col <- if ("metric" %in% names(df_fixed)) "metric" else "subject"
-
-		# Keep only summary stats (filter out individual subjects)
-		summary_only <- df_fixed %>%
-			dplyr::filter(!grepl("^\\d+$", !!rlang::sym(stat_col)))
-
-		# Pivot time columns to rows
-		cols_to_pivot <- setdiff(names(df_fixed), c(splitCovariates, stat_col))
-
-		summary_long <- summary_only %>%
-			tidyr::pivot_longer(
-				cols      = dplyr::all_of(cols_to_pivot),
-				names_to  = "Time",
-				values_to = "Value")
-
-		# Convert to numeric for proper rounding
-		summary_long$Value <- suppressWarnings(as.numeric(summary_long$Value))
-
-		# Pivot metrics to columns
-		summary_stats <- summary_long %>%
-			tidyr::pivot_wider(names_from = !!rlang::sym(stat_col), values_from = "Value") %>%
-			dplyr::arrange(dplyr::across(dplyr::any_of(splitCovariates)), as.numeric(Time)) %>%
-			dplyr::mutate(dplyr::across(dplyr::any_of(splitCovariates), as.character))
-
-		# Apply Rounding
-		summary_stats <- .round_num(
-			to_round        = summary_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = c("Time", splitCovariates))
-
-		# Add Combined Metrics
-		summary_stats <- .combinedStats(summary_stats)
-
-		# Note: units and aliases are not applicable for concentration data
-
-		return(summary_stats)
-	} else {
-		# PARAMETER MODE: Original logic (calculate stats by parameter)
-		# Set Stratification
-		lixoftConnectors::setNCAResultsStratification() # reset
-		if (!is.null(splitCovariates)) {
-			lixoftConnectors::setNCAResultsStratification(split = splitCovariates)
-		}
-
-		# Get Summary Stats (from getNCAParameterStatistics)
-		summary_stats <- lixoftConnectors::getNCAParameterStatistics(parameters = selectParameters)$statistics
-		if (is.null(summary_stats)) {
-			# Return NULL if no stats, parent function will handle
-			return(NULL)
-		}
-		summary_stats$parameter <- as.character(summary_stats$parameter)
-
-		# Get Individual Parameters & Stats
-		indiv <- lixoftConnectors::getNCAIndividualParameters()$parameters
-
-		# Identify grouping and pivoting structure
-		grouping_vars <- c("id", splitCovariates)
-
-		# Keep only numeric columns + splitCovariates + id
-		indiv_long <- indiv %>%
-			dplyr::select(dplyr::all_of(grouping_vars), dplyr::where(is.numeric)) %>%
-			tidyr::pivot_longer(
-				cols = -dplyr::all_of(grouping_vars),
-				names_to = "parameter",
-				values_to = "value") %>%
-			dplyr::relocate(dplyr::any_of(splitCovariates), id, parameter, value)
-
-		# Summarize (handles stats automatically)
-		if (is.null(splitCovariates)) {
-			descr_stats <- .summarizeStats(
-				df         = indiv_long,
-				group_vars = "parameter",
-				value_col  = "value",
-				id_col     = "id") %>%
-				dplyr::select("parameter", P05, Q1, median, Q3, P95, max) %>%
-				dplyr::arrange(parameter)
-		} else {
-			descr_stats <- .summarizeStats(
-				df         = indiv_long,
-				group_vars = c(splitCovariates, "parameter"),
-				value_col  = "value",
-				id_col     = "id") %>%
-				dplyr::select(dplyr::all_of(c(splitCovariates, "parameter")), P05, Q1, median, Q3, P95, max) %>%
-				dplyr::arrange(dplyr::across(dplyr::all_of(c(splitCovariates, "parameter"))))
-		}
-
-		# Merge Summaries
-		join_cols <- c("parameter", splitCovariates)
-		summary_stats <- dplyr::left_join(summary_stats, descr_stats, by = join_cols)
-
-		# Apply Rounding & Combining
-		summary_stats <- .round_num(
-			to_round        = summary_stats,
-			digits          = roundDigits,
-			rounding_method = roundMethod,
-			exclude         = c("parameter", splitCovariates))
-
-		summary_stats <- .combinedStats(summary_stats)
-
-		# Apply Labels (Units/Aliases only)
-		if (isTRUE(units) || isTRUE(aliases)) {
-			summary_stats <- .addUnitsAliases(summary_stats, add_units = units, add_aliases = aliases)
-		}
-
-		return(summary_stats)
-	}
 }
 
 

@@ -46,7 +46,7 @@
 ################################################################################
 #' .apply_alias_subscripts: Apply subscript formatting to flextables
 #'
-#' Processes [[sub:...]] markers in both body cells and column headers, converting
+#' Processes `[[sub:...]]` markers in both body cells and column headers, converting
 #' them to properly formatted subscripts using flextable::compose().
 #'
 #' @param ft Flextable object to apply subscript formatting to
@@ -56,8 +56,8 @@
 #'
 #' @details
 #' This function handles two cases:
-#' - **Body cells**: Processes [[sub:...]] markers in data values (horizontal = TRUE format)
-#' - **Column headers**: Processes [[sub:...]] markers in column names (horizontal = FALSE format)
+#' - **Body cells**: Processes `[[sub:...]]` markers in data values (horizontal = TRUE format)
+#' - **Column headers**: Processes `[[sub:...]]` markers in column names (horizontal = FALSE format)
 #'
 #' The parsing logic extracts subscript text from markers and uses flextable::as_sub()
 #' to render them correctly in the final output.
