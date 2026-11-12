@@ -443,6 +443,35 @@ test_that("listingExclusions/tableExclusions support SAS data files (.xpt, .sas7
 	expect_null(suppressMessages(listingExclusions(sas_project)))
 	expect_null(suppressMessages(tableExclusions(xpt_project)))
 })
+
+################################################################################
+# listingExclusions() / tableExclusions(): observations ignored through MDV = 1
+# (pkx_project_1 = project_remifentanil_excl: 8 observations with a DV value and
+#  MDV = 1, plus 65 dose rows with MDV = 1, which are not exclusions)
+################################################################################
+test_that("listingExclusions lists observations ignored through MDV = 1, not dose rows", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	listing <- suppressMessages(listingExclusions(pkx_project_1))
+	# no listing at all after the LINE_NUMBER change (the ignored rows are still in
+	# getInterpretedData() with DV blanked); dose rows were listed before that
+	expect_s3_class(listing, "data.frame")
+	expect_equal(nrow(listing), 8)
+	expect_true(all(listing$MDV == 1))
+	expect_true(all(trimws(as.character(listing$DV)) != "."))     # each row carries an observation
+	expect_false(any(trimws(as.character(listing$AMT)) != "."))   # no dose rows
+	expect_equal(sort(unique(listing$ID)), c(3, 4, 11))
+	expect_true(any(listing$ID == 3 & abs(listing$TIME - 18.07) < 1e-8 & as.numeric(listing$DV) == 41.4))
+})
+
+test_that("tableExclusions summarizes the ignored observations", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	tbl <- suppressMessages(tableExclusions(pkx_project_1, prettyLabels = FALSE))
+	expect_s3_class(tbl, "data.frame")
+	expect_equal(nrow(tbl), 1)
+	vals <- unlist(tbl[1, ])
+	expect_true(any(as.numeric(vals) == 3, na.rm = TRUE))   # 3 subjects
+	expect_true(any(as.numeric(vals) == 8, na.rm = TRUE))   # 8 observations
+})
 ################################################################################
 # setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
 # testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-DataHelpers.R")
