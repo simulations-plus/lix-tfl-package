@@ -9,11 +9,19 @@ pkx_project_notime  = "test-projects/pkanalix/project_noactual_time.pkx" # nomin
 ################################################################################
 # tableNCAConcentration
 
+
+# Speed: load each project once per contiguous same-project group (see group
+# loadProject() calls below) and pass projectFile = NULL to the helpers, which
+# then act on the currently loaded project. Initialize PKanalix up front so the
+# raw loadProject() calls work no matter which app the prior test file left active.
+suppressMessages(lixoftConnectors::initializeLixoftConnectors(software = "pkanalix", force = TRUE))
+
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("tableNCAConcentration basic wide format (default)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test basic functionality with no covariates - default is wide format
-	table <- tableNCAConcentration(projectFile = pkx_project_1)
+	table <- tableNCAConcentration(projectFile = NULL)
 
 	# Verify structure
 	expect_true(is.data.frame(table))
@@ -32,7 +40,7 @@ test_that("tableNCAConcentration basic long format (useWideFormat = FALSE)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test long format (raw column names for the time-column assertion below)
-	table <- tableNCAConcentration(projectFile = pkx_project_1, useWideFormat = FALSE,
+	table <- tableNCAConcentration(projectFile = NULL, useWideFormat = FALSE,
 																 prettyLabels = FALSE, units = FALSE)
 
 	# Verify structure
@@ -52,7 +60,7 @@ test_that("tableNCAConcentration with covariates (stratifyColumns = FALSE)", {
 
 	# Test with covariates but no column stratification - use long format to get Time column
 	table <- tableNCAConcentration(
-		projectFile      = pkx_project_1,
+		projectFile      = NULL,
 		splitCovariates  = "TINFCAT",
 		stratifyColumns = FALSE,
 		useWideFormat  = FALSE,
@@ -73,7 +81,7 @@ test_that("tableNCAConcentration with column stratification (stratifyColumns = T
 	# Test with covariates and column stratification
 	# Note: stratifyColumns = TRUE requires useWideFormat = FALSE
 	table <- tableNCAConcentration(
-		projectFile      = pkx_project_1,
+		projectFile      = NULL,
 		splitCovariates  = "TINFCAT",
 		stratifyColumns = TRUE,
 		useWideFormat  = FALSE,
@@ -103,7 +111,7 @@ test_that("tableNCAConcentration stratified columns sort integer modalities nume
 	# TINFCAT has integer modalities (e.g. 4, 5, 7, 8, 10, 14, 20). Columns must
 	# appear in ascending numeric order, not lexicographic ("10", "14", "4", ...).
 	table <- tableNCAConcentration(
-		projectFile     = pkx_project_1,
+		projectFile     = NULL,
 		splitCovariates = "TINFCAT",
 		stratifyColumns = TRUE,
 		useWideFormat   = FALSE)
@@ -122,7 +130,7 @@ test_that("tableNCAConcentration with specific metrics (single metric)", {
 
 	# Test with single metric
 	table <- tableNCAConcentration(
-		projectFile      = pkx_project_1,
+		projectFile      = NULL,
 		splitCovariates  = "TINFCAT",
 		stratifyColumns = TRUE,
 		useWideFormat  = FALSE,
@@ -140,7 +148,7 @@ test_that("tableNCAConcentration with specific metrics (multiple metrics)", {
 
 	# Test with multiple metrics
 	table <- tableNCAConcentration(
-		projectFile      = pkx_project_1,
+		projectFile      = NULL,
 		splitCovariates  = "TINFCAT",
 		stratifyColumns = TRUE,
 		useWideFormat  = FALSE,
@@ -156,13 +164,14 @@ test_that("tableNCAConcentration with specific metrics (multiple metrics)", {
 									all(grepl("Mean.*SD|Geometric.*CV", table$Statistic))))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_2))
 test_that("tableNCAConcentration with useNominalTime", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with nominal time (project_occasions2 likely has nominal time)
 	# If no nominal time available, should fall back to actual time
 	table <- tableNCAConcentration(
-		projectFile     = pkx_project_2,
+		projectFile     = NULL,
 		useNominalTime  = TRUE,
 		useWideFormat = FALSE,
 		prettyLabels = FALSE, units = FALSE)
@@ -173,12 +182,13 @@ test_that("tableNCAConcentration with useNominalTime", {
 	expect_gt(nrow(table), 0)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("tableNCAConcentration with splitCovariateLabels", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with custom covariate labels
 	table <- tableNCAConcentration(
-		projectFile      = pkx_project_1,
+		projectFile      = NULL,
 		splitCovariates  = "TINFCAT",
 		splitCovariateLabels = "Infusion Category",
 		stratifyColumns = TRUE,
@@ -195,7 +205,7 @@ test_that("tableNCAConcentration non-stratified relabels the split covariate col
 	# When stratifyColumns = FALSE the covariate is a literal column; the label
 	# should rename that column (raw covariate name gone, label present).
 	table <- tableNCAConcentration(
-		projectFile          = pkx_project_1,
+		projectFile          = NULL,
 		splitCovariates      = "TINFCAT",
 		splitCovariateLabels = "Infusion Category",
 		stratifyColumns      = FALSE,
@@ -210,22 +220,22 @@ test_that("tableNCAConcentration rounding methods", {
 
 	# Test different rounding methods
 	table_monolix <- tableNCAConcentration(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		roundDigits = 2,
 		roundMethod = "monolixSuiteRounding")
 
 	table_signif <- tableNCAConcentration(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		roundDigits = 2,
 		roundMethod = "significantFigures")
 
 	table_signif_preserved <- tableNCAConcentration(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		roundDigits = 2,
 		roundMethod = "significantFiguresPreserved")
 
 	table_none <- tableNCAConcentration(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		roundMethod = "none")
 
 	# Verify all tables are valid
@@ -243,8 +253,8 @@ test_that("tableNCAConcentration rounding methods", {
 test_that("tableNCAConcentration mock = TRUE masks output", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	table_real <- tableNCAConcentration(projectFile = pkx_project_1, mock = FALSE)
-	table_mock <- tableNCAConcentration(projectFile = pkx_project_1, mock = TRUE)
+	table_real <- tableNCAConcentration(projectFile = NULL, mock = FALSE)
+	table_mock <- tableNCAConcentration(projectFile = NULL, mock = TRUE)
 
 	expect_true(is.data.frame(table_mock))
 	# Masking must not change the table's shape
@@ -258,12 +268,12 @@ test_that("tableNCAConcentration prettyLabels", {
 
 	# Test with pretty labels enabled
 	table_pretty <- tableNCAConcentration(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		prettyLabels = TRUE)
 
 	# Test with pretty labels disabled
 	table_raw <- tableNCAConcentration(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		prettyLabels = FALSE)
 
 	# Verify both tables are valid
@@ -281,14 +291,14 @@ test_that("tableNCAConcentration errors", {
 	# Test with invalid metrics
 	expect_error(
 		tableNCAConcentration(
-			projectFile = pkx_project_1,
+			projectFile = NULL,
 			metrics = c("InvalidMetric1", "InvalidMetric2")),
 		"metric")
 
 	# Test with invalid covariates (this should error or warn)
 	expect_error(
 		tableNCAConcentration(
-			projectFile = pkx_project_1,
+			projectFile = NULL,
 			splitCovariates = "NONEXISTENT_COVARIATE"
 		)
 	)
@@ -297,6 +307,7 @@ test_that("tableNCAConcentration errors", {
 # tableNCAConcentration: maxTimeDeviation feature
 # Uses NCA_complex.pkx which carries BOTH nominal and actual time.
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_complex))
 test_that("tableNCAConcentration maxTimeDeviation excludes observations and attaches footnote attributes", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_complex), "Test project not available")
@@ -304,7 +315,7 @@ test_that("tableNCAConcentration maxTimeDeviation excludes observations and atta
 	# Reproduces the documented example: threshold 20% excludes the deviating obs.
 	expect_message(
 		tb_conc <- tableNCAConcentration(
-			projectFile      = pkx_project_complex,
+			projectFile      = NULL,
 			metrics          = c("min", "MeanSD", "max"),
 			splitCovariates  = "ATRTNCA",
 			includeIds        = TRUE,
@@ -337,10 +348,10 @@ test_that("tableNCAConcentration maxTimeDeviation is monotonic in the threshold"
 	}
 
 	tb_strict <- suppressMessages(tableNCAConcentration(
-		projectFile = pkx_project_complex, useNominalTime = TRUE,
+		projectFile = NULL, useNominalTime = TRUE,
 		maxTimeDeviation = 5, useWideFormat = FALSE))
 	tb_loose <- suppressMessages(tableNCAConcentration(
-		projectFile = pkx_project_complex, useNominalTime = TRUE,
+		projectFile = NULL, useNominalTime = TRUE,
 		maxTimeDeviation = 500, useWideFormat = FALSE))
 
 	# A stricter (smaller) threshold must exclude at least as many observations
@@ -353,7 +364,7 @@ test_that("tableNCAConcentration maxTimeDeviation only applies when useNominalTi
 
 	# With useNominalTime = FALSE the deviation filter is skipped -> no attributes
 	tb <- suppressWarnings(tableNCAConcentration(
-		projectFile      = pkx_project_complex,
+		projectFile      = NULL,
 		useNominalTime   = FALSE,
 		maxTimeDeviation = 5))
 
@@ -365,13 +376,14 @@ test_that("tableNCAConcentration maxTimeDeviation only applies when useNominalTi
 ################################################################################
 # tableNCAConcentration: pivot-variant coverage
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("tableNCAConcentration wide format with splitCovariates (non-stratified)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Wide pivot (time as columns) with the covariate kept as a left-hand column
 	table <- tableNCAConcentration(
-		projectFile     = pkx_project_1,
+		projectFile     = NULL,
 		splitCovariates = "TINFCAT",
 		useWideFormat   = TRUE,
 		stratifyColumns = FALSE)
@@ -383,12 +395,13 @@ test_that("tableNCAConcentration wide format with splitCovariates (non-stratifie
 	expect_gt(length(time_cols), 0)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_2))
 test_that("tableNCAConcentration with multiple splitCovariates", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	table <- tableNCAConcentration(
-		projectFile     = pkx_project_2,
+		projectFile     = NULL,
 		splitCovariates = c("FOOD", "TREAT"),
 		useWideFormat   = FALSE,
 		stratifyColumns = FALSE,
@@ -403,11 +416,12 @@ test_that("tableNCAConcentration with multiple splitCovariates", {
 ################################################################################
 ################################################################################
 # tableNCAParameters
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("tableNCAParameters basic (no stratification)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test basic functionality with no covariates
-	table <- tableNCAParameters(projectFile = pkx_project_1)
+	table <- tableNCAParameters(projectFile = NULL)
 
 	# Verify structure
 	expect_true(is.data.frame(table))
@@ -423,7 +437,7 @@ test_that("tableNCAParameters with specific selectParameters", {
 
 	# Test with specific NCA parameters
 	table <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		selectParameters = c("AUCINF_obs", "AUClast", "Cmax"),
 		units       = FALSE,
 		aliases     = FALSE)
@@ -446,7 +460,7 @@ test_that("tableNCAParameters with specific metrics", {
 
 	# Test with specific metrics
 	table <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		selectParameters = c("AUCINF_obs", "AUClast", "Cmax"),
 		metrics     = c("min", "MeanSD", "median", "GeomCV", "max"))
 
@@ -459,23 +473,25 @@ test_that("tableNCAParameters with specific metrics", {
 	expect_true(length(metric_cols) > 0)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_5))
 test_that("tableNCAParameters N is the pooled population, not deflated by constant parameters", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	# Regression: with occasions, a parameter constant across occasions (e.g. Tlast,
 	# flags) must not deflate N to the subject count. Every parameter row shares the
 	# same pooled-population N; N >= Nobs (equal when nothing is uncomputable).
-	tbl <- tableNCAParameters(projectFile = pkx_project_5, prettyLabels = FALSE,
+	tbl <- tableNCAParameters(projectFile = NULL, prettyLabels = FALSE,
 	                          roundMethod = "none", metrics = c("N", "Nobs", "mean"))
 	expect_equal(length(unique(as.numeric(tbl$N))), 1L)
 	expect_true(all(as.numeric(tbl$N) >= as.numeric(tbl$Nobs)))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("tableNCAParameters with stratification (stratifyColumns = FALSE)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with covariates but no column stratification
 	table <- tableNCAParameters(
-		projectFile      = pkx_project_1,
+		projectFile      = NULL,
 		splitCovariates  = "TINFCAT",
 		selectParameters = c("AUCINF_obs", "AUClast", "Cmax"),
 		stratifyColumns = FALSE)
@@ -493,7 +509,7 @@ test_that("tableNCAParameters with column stratification (stratifyColumns = TRUE
 
 	# Test with covariates and column stratification
 	table <- tableNCAParameters(
-		projectFile      = pkx_project_1,
+		projectFile      = NULL,
 		splitCovariates  = "TINFCAT",
 		selectParameters = c("AUCINF_obs", "AUClast", "Cmax"),
 		stratifyColumns = TRUE,
@@ -517,7 +533,7 @@ test_that("tableNCAParameters with column stratification and specific metric", {
 
 	# Test with single metric (should suppress Statistic column based on concentration tests)
 	table <- tableNCAParameters(
-		projectFile      = pkx_project_1,
+		projectFile      = NULL,
 		splitCovariates  = "TINFCAT",
 		selectParameters = c("AUCINF_obs", "AUClast", "Cmax"),
 		stratifyColumns = TRUE,
@@ -534,7 +550,7 @@ test_that("tableNCAParameters with column stratification and multiple metrics", 
 
 	# Test with multiple metrics
 	table <- tableNCAParameters(
-		projectFile      = pkx_project_1,
+		projectFile      = NULL,
 		splitCovariates  = "TINFCAT",
 		selectParameters = c("AUCINF_obs", "AUClast", "Cmax"),
 		stratifyColumns = TRUE,
@@ -554,7 +570,7 @@ test_that("tableNCAParameters vertical layout (useWideFormat = FALSE)", {
 
 	# Test vertical layout without stratification
 	table <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		selectParameters = c("AUCINF_obs", "AUClast", "Cmax"),
 		useWideFormat  = FALSE)
 
@@ -569,7 +585,7 @@ test_that("tableNCAParameters vertical layout with covariates", {
 
 	# Test vertical layout with covariates
 	table <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		selectParameters = c("AUCINF_obs", "AUClast", "Cmax"),
 		splitCovariates  = "TINFCAT",
 		useWideFormat  = FALSE,
@@ -582,12 +598,13 @@ test_that("tableNCAParameters vertical layout with covariates", {
 	expect_gt(nrow(table), 0)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_3))
 test_that("tableNCAParameters with multiple covariates", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with multiple covariates
 	table <- tableNCAParameters(
-		projectFile      = pkx_project_3,
+		projectFile      = NULL,
 		selectParameters = c("AUCINF_obs", "Cmax"),
 		splitCovariates  = c("DOSE_mg", "ROUTE"),
 		stratifyColumns = TRUE,
@@ -600,12 +617,13 @@ test_that("tableNCAParameters with multiple covariates", {
 	expect_true(any(grepl("Overall", names(table), ignore.case = TRUE)))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("tableNCAParameters with splitCovariateLabels", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with custom covariate labels
 	table <- tableNCAParameters(
-		projectFile      = pkx_project_1,
+		projectFile      = NULL,
 		splitCovariates  = "TINFCAT",
 		splitCovariateLabels = "Infusion Category",
 		selectParameters = c("AUCINF_obs", "Cmax"),
@@ -617,12 +635,13 @@ test_that("tableNCAParameters with splitCovariateLabels", {
 	expect_true(any(grepl("Infusion Category", header_names)))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_3))
 test_that("tableNCAParameters with multiple splitCovariateLabels", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with multiple custom covariate labels
 	table <- tableNCAParameters(
-		projectFile      = pkx_project_3,
+		projectFile      = NULL,
 		selectParameters = c("AUCINF_obs", "Cmax"),
 		splitCovariates  = c("DOSE_mg", "ROUTE"),  # Changed from "DOSE" to "DOSE_mg"
 		splitCovariateLabels = c("Dose Level", "Route of Administration"),
@@ -635,13 +654,14 @@ test_that("tableNCAParameters with multiple splitCovariateLabels", {
 	expect_true(any(grepl("Dose Level|Route of Administration", header_names)))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("tableNCAParameters non-stratified relabels the split covariate column", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# stratifyColumns = FALSE -> covariate stays a literal column that the label
 	# should rename, mirroring the stratified-header behaviour.
 	table <- tableNCAParameters(
-		projectFile          = pkx_project_1,
+		projectFile          = NULL,
 		splitCovariates      = "TINFCAT",
 		splitCovariateLabels = "Infusion Category",
 		selectParameters     = c("AUCINF_obs", "Cmax"),
@@ -656,27 +676,27 @@ test_that("tableNCAParameters rounding methods", {
 
 	# Test different rounding methods
 	table_monolix <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		selectParameters = c("Cmax"),
 		roundDigits = 2,
 		roundMethod = "monolixSuiteRounding")
 
 	table_signif <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		selectParameters = c("Cmax"),
 		roundDigits = 2,
 		roundMethod = "significantFigures"
 	)
 
 	table_signif_preserved <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		selectParameters = c("Cmax"),
 		roundDigits = 2,
 		roundMethod = "significantFiguresPreserved"
 	)
 
 	table_none <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		selectParameters = c("Cmax"),
 		roundMethod = "none"
 	)
@@ -697,7 +717,7 @@ test_that("tableNCAParameters roundByParameter data.frame overrides digits and m
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	args <- list(
-		projectFile   = pkx_project_1,
+		projectFile   = NULL,
 		selectParameters = c("Cmax", "AUClast"),
 		metrics       = "mean",
 		useWideFormat = TRUE,
@@ -721,7 +741,7 @@ test_that("tableNCAParameters roundByParameter accepts a named numeric vector (d
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	args <- list(
-		projectFile   = pkx_project_1,
+		projectFile   = NULL,
 		selectParameters = c("Cmax", "AUClast"),
 		metrics       = "mean",
 		useWideFormat = TRUE,
@@ -741,15 +761,15 @@ test_that("tableNCAParameters roundByParameter ignores unknown parameters with a
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	expect_message(
-		tableNCAParameters(projectFile = pkx_project_1, selectParameters = "Cmax", metrics = "mean",
+		tableNCAParameters(projectFile = NULL, selectParameters = "Cmax", metrics = "mean",
 											 useWideFormat = TRUE, prettyLabels = FALSE, units = FALSE, aliases = FALSE,
 											 roundByParameter = c(Cmaxx = 2)),
 		"ignoring unknown parameter")
 
 	# Table is still produced; NULL override equals no override
-	a <- tableNCAParameters(projectFile = pkx_project_1, selectParameters = "Cmax", metrics = "mean",
+	a <- tableNCAParameters(projectFile = NULL, selectParameters = "Cmax", metrics = "mean",
 													useWideFormat = TRUE, prettyLabels = FALSE, units = FALSE, aliases = FALSE)
-	b <- tableNCAParameters(projectFile = pkx_project_1, selectParameters = "Cmax", metrics = "mean",
+	b <- tableNCAParameters(projectFile = NULL, selectParameters = "Cmax", metrics = "mean",
 													useWideFormat = TRUE, prettyLabels = FALSE, units = FALSE, aliases = FALSE,
 													roundByParameter = NULL)
 	expect_equal(a, b)
@@ -759,10 +779,10 @@ test_that("tableNCAParameters roundByParameter rejects invalid digits/method", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	expect_error(
-		tableNCAParameters(projectFile = pkx_project_1, selectParameters = "Cmax",
+		tableNCAParameters(projectFile = NULL, selectParameters = "Cmax",
 											 roundByParameter = data.frame(parameter = "Cmax", digits = 2, method = "bogus")))
 	expect_error(
-		tableNCAParameters(projectFile = pkx_project_1, selectParameters = "Cmax",
+		tableNCAParameters(projectFile = NULL, selectParameters = "Cmax",
 											 roundByParameter = c(Cmax = -1)))
 })
 
@@ -770,7 +790,7 @@ test_that("tableNCAParameters roundByParameter applies per-parameter rounding to
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	common <- list(
-		projectFile     = pkx_project_1,
+		projectFile     = NULL,
 		useWideFormat   = FALSE,
 		splitCovariates = "TINFCAT",
 		includeIds       = TRUE,
@@ -809,7 +829,7 @@ test_that("tableNCAParameters includeIds individual values match independent per
 										stringsAsFactors = FALSE)
 
 	tbl <- tableNCAParameters(
-		projectFile      = pkx_project_1,
+		projectFile      = NULL,
 		useWideFormat    = FALSE,
 		splitCovariates  = "TINFCAT",
 		includeIds        = TRUE,
@@ -845,8 +865,8 @@ test_that("tableNCAParameters includeIds individual values match independent per
 test_that("tableNCAParameters mock = TRUE masks output", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
-	table_real <- tableNCAParameters(projectFile = pkx_project_1, selectParameters = c("Cmax"), mock = FALSE)
-	table_mock <- tableNCAParameters(projectFile = pkx_project_1, selectParameters = c("Cmax"), mock = TRUE)
+	table_real <- tableNCAParameters(projectFile = NULL, selectParameters = c("Cmax"), mock = FALSE)
+	table_mock <- tableNCAParameters(projectFile = NULL, selectParameters = c("Cmax"), mock = TRUE)
 
 	expect_true(is.data.frame(table_mock))
 	expect_equal(dim(table_real), dim(table_mock))
@@ -858,21 +878,21 @@ test_that("tableNCAParameters units and aliases", {
 
 	# Test with units enabled, aliases disabled
 	table_units_no_alias <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		selectParameters = c("AUCINF_obs", "AUClast", "Cmax"),
 		units       = TRUE,
 		aliases     = FALSE)
 
 	# Test with units disabled, aliases enabled
 	table_no_units_alias <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		selectParameters = c("AUCINF_obs", "AUClast", "Cmax"),
 		units       = FALSE,
 		aliases     = TRUE)
 
 	# Test with both disabled
 	table_both_off <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		selectParameters = c("AUCINF_obs", "AUClast", "Cmax"),
 		units       = FALSE,
 		aliases     = FALSE)
@@ -888,13 +908,13 @@ test_that("tableNCAParameters prettyLabels", {
 
 	# Test with pretty labels enabled
 	table_pretty <- tableNCAParameters(
-		projectFile  = pkx_project_1,
+		projectFile  = NULL,
 		selectParameters = c("Cmax"),
 		prettyLabels = TRUE)
 
 	# Test with pretty labels disabled
 	table_raw <- tableNCAParameters(
-		projectFile  = pkx_project_1,
+		projectFile  = NULL,
 		selectParameters = c("Cmax"),
 		prettyLabels = FALSE)
 
@@ -912,20 +932,20 @@ test_that("tableNCAParameters errors", {
 	# Test with invalid metrics
 	expect_error(
 		tableNCAParameters(
-			projectFile = pkx_project_1,
+			projectFile = NULL,
 			metrics     = c("InvalidMetric1", "InvalidMetric2")),
 		"metric")
 
 	# Test with invalid covariates
 	expect_error(
 		tableNCAParameters(
-			projectFile = pkx_project_1,
+			projectFile = NULL,
 			splitCovariates = "NONEXISTENT_COVARIATE"))
 
 	# Test with invalid NCA parameters
 	expect_error(
 		tableNCAParameters(
-			projectFile = pkx_project_1,
+			projectFile = NULL,
 			selectParameters = c("INVALID_PARAM")))
 })
 
@@ -934,7 +954,7 @@ test_that("tableNCAParameters complex scenario", {
 
 	# Test complex scenario with multiple options
 	table <- tableNCAParameters(
-		projectFile      = pkx_project_1,
+		projectFile      = NULL,
 		metrics          = c("GeomCV", "MeanSD", "Q3"),
 		selectParameters = c("AUCINF_obs", "AUClast", "Cmax"),
 		splitCovariates  = "TINFCAT",
@@ -972,14 +992,14 @@ test_that("tableNCAParameters with different roundDigits values", {
 
 	# Test with roundDigits = 1
 	table_1 <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		selectParameters = c("Cmax"),
 		roundDigits = 1,
 		roundMethod = "monolixSuiteRounding")
 
 	# Test with roundDigits = 5
 	table_5 <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		selectParameters = c("Cmax"),
 		roundDigits = 5,
 		roundMethod = "monolixSuiteRounding")
@@ -999,7 +1019,7 @@ test_that("tableNCAParameters roundMethod with stratification", {
 	# Test each rounding method with stratification
 	for (method in c("monolixSuiteRounding", "significantFigures", "significantFiguresPreserved", "none")) {
 		table <- tableNCAParameters(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			selectParameters = c("Cmax"),
 			splitCovariates  = "TINFCAT",
 			stratifyColumns = TRUE,
@@ -1020,7 +1040,7 @@ test_that("tableNCAParameters all arguments combined", {
 
 	# Test with all arguments specified (comprehensive test)
 	table <- tableNCAParameters(
-		projectFile      = pkx_project_1,
+		projectFile      = NULL,
 		splitCovariates  = "TINFCAT",
 		selectParameters = c("AUCINF_obs", "AUClast", "Cmax"),
 		metrics          = c("min", "MeanSD", "median", "GeomCV", "max"),
@@ -1045,7 +1065,7 @@ test_that("tableNCAParameters with all flags FALSE", {
 
 	# Test with all boolean flags set to FALSE
 	table <- tableNCAParameters(
-		projectFile      = pkx_project_1,
+		projectFile      = NULL,
 		selectParameters = c("Cmax"),
 		useWideFormat  = FALSE,
 		stratifyColumns = FALSE,
@@ -1063,7 +1083,7 @@ test_that("tableNCAParameters with all flags TRUE", {
 
 	# Test with all boolean flags set to TRUE
 	table <- tableNCAParameters(
-		projectFile      = pkx_project_1,
+		projectFile      = NULL,
 		selectParameters = c("Cmax"),
 		splitCovariates  = "TINFCAT",
 		useWideFormat  = TRUE,
@@ -1081,7 +1101,7 @@ test_that("tableNCAParameters default values work correctly", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with only projectFile specified (all other defaults)
-	table <- tableNCAParameters(projectFile = pkx_project_1)
+	table <- tableNCAParameters(projectFile = NULL)
 
 	# Should use:
 	# - All available selectParameters
@@ -1105,13 +1125,13 @@ test_that("tableNCAParameters with selectParameters = NULL (all parameters)", {
 
 	# Test with selectParameters = NULL to use all available parameters
 	table_all <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		selectParameters = NULL  # Should use all computed NCA parameters
 	)
 
 	# Test with specific parameters
 	table_specific <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		selectParameters = c("Cmax")
 	)
 
@@ -1126,7 +1146,7 @@ test_that("tableNCAParameters with metrics = NULL (default metrics)", {
 
 	# Test with metrics = NULL to use default metrics
 	table <- tableNCAParameters(
-		projectFile      = pkx_project_1,
+		projectFile      = NULL,
 		selectParameters = c("Cmax"),
 		splitCovariates  = "TINFCAT",
 		stratifyColumns = TRUE,
@@ -1144,7 +1164,7 @@ test_that("tableNCAParameters edge case: single parameter, single metric", {
 
 	# Minimal case
 	table <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		selectParameters = "Cmax",
 		metrics     = "mean"
 	)
@@ -1158,7 +1178,7 @@ test_that("tableNCAParameters edge case: many parameters, many metrics", {
 
 	# Maximal case (if project has many parameters)
 	table <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		selectParameters = NULL,  # All available
 		metrics     = c("min", "Q1", "median", "mean", "Q3", "max",
 										"SD", "CV", "geoMean", "geoCV", "harmMean")
@@ -1177,7 +1197,7 @@ test_that("tableNCAParameters with includeIds basic (no covariates)", {
 
 	# Test basic includeIds functionality without covariates
 	table <- tableNCAParameters(
-		projectFile  = pkx_project_1,
+		projectFile  = NULL,
 		useWideFormat   = FALSE,
 		selectParameters = c("Cmax", "AUClast", "Lambda_z"),
 		includeIds   = TRUE,
@@ -1207,7 +1227,7 @@ test_that("tableNCAParameters with includeIds and single covariate", {
 
 	# Test includeIds with stratification by single covariate
 	table <- tableNCAParameters(
-		projectFile  = pkx_project_1,
+		projectFile  = NULL,
 		useWideFormat   = FALSE,
 		splitCovariates   = "TINFCAT",
 		selectParameters = c("Cmax", "AUClast", "Lambda_z"),
@@ -1233,12 +1253,13 @@ test_that("tableNCAParameters with includeIds and single covariate", {
 	expect_true(has_metrics)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_3))
 test_that("tableNCAParameters with includeIds and multiple covariates", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test includeIds with multiple covariates
 	table <- tableNCAParameters(
-		projectFile  = pkx_project_3,
+		projectFile  = NULL,
 		useWideFormat = FALSE,
 		splitCovariates = c("DOSE_mg", "ROUTE"),
 		selectParameters = c("Cmax", "AUClast"),
@@ -1258,12 +1279,13 @@ test_that("tableNCAParameters with includeIds and multiple covariates", {
 	expect_gt(nrow(covariate_combos), 1)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("tableNCAParameters with includeIds and prettyLabels = TRUE", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test includeIds with pretty labels enabled
 	table <- tableNCAParameters(
-		projectFile  = pkx_project_1,
+		projectFile  = NULL,
 		useWideFormat   = FALSE,
 		selectParameters = c("Cmax", "AUClast", "Lambda_z"),
 		includeIds   = TRUE,
@@ -1289,7 +1311,7 @@ test_that("tableNCAParameters with includeIds validation: useWideFormat = TRUE",
 	# Test that includeIds = TRUE with useWideFormat = TRUE generates warning
 	expect_warning(
 		table <- tableNCAParameters(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			useWideFormat  = TRUE,  # This should trigger warning
 			selectParameters = c("Cmax"),
 			includeIds       = TRUE),
@@ -1305,7 +1327,7 @@ test_that("tableNCAParameters with includeIds validation: stratifyColumns = TRUE
 	# Test that includeIds = TRUE with stratifyColumns = TRUE generates warning
 	expect_warning(
 		table <- tableNCAParameters(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			useWideFormat  = FALSE,
 			stratifyColumns = TRUE,  # This should trigger warning
 			splitCovariates  = "TINFCAT",
@@ -1322,7 +1344,7 @@ test_that("tableNCAParameters with includeIds = FALSE (default behavior)", {
 
 	# Test that includeIds = FALSE produces table without individual IDs
 	table <- tableNCAParameters(
-		projectFile  = pkx_project_1,
+		projectFile  = NULL,
 		useWideFormat   = FALSE,
 		selectParameters = c("Cmax", "AUClast"),
 		includeIds   = FALSE,  # Explicitly FALSE
@@ -1350,7 +1372,7 @@ test_that("tableNCAParameters with includeIds and different rounding settings", 
 
 	# Test includeIds with different rounding methods
 	table_monolix <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		useWideFormat  = FALSE,
 		selectParameters = c("Cmax"),
 		includeIds  = TRUE,
@@ -1359,7 +1381,7 @@ test_that("tableNCAParameters with includeIds and different rounding settings", 
 	)
 
 	table_signif <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		useWideFormat  = FALSE,
 		selectParameters = c("Cmax"),
 		includeIds  = TRUE,
@@ -1368,7 +1390,7 @@ test_that("tableNCAParameters with includeIds and different rounding settings", 
 	)
 
 	table_signif_preserved <- tableNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		useWideFormat  = FALSE,
 		selectParameters = c("Cmax"),
 		includeIds  = TRUE,
@@ -1390,7 +1412,7 @@ test_that("tableNCAParameters with includeIds and specific metrics", {
 
 	# Test includeIds with specific metrics selected
 	table <- tableNCAParameters(
-		projectFile  = pkx_project_1,
+		projectFile  = NULL,
 		useWideFormat   = FALSE,
 		selectParameters = c("Cmax", "AUClast"),
 		metrics      = c("median", "GeomCV", "max"),
@@ -1415,7 +1437,7 @@ test_that("tableNCAParameters with includeIds comprehensive test", {
 
 	# Comprehensive test with all compatible features
 	table <- tableNCAParameters(
-		projectFile     = pkx_project_1,
+		projectFile     = NULL,
 		splitCovariates = "TINFCAT",
 		selectParameters = c("Cmax", "AUClast", "Lambda_z"),
 		metrics      = c("min", "MeanSD", "median", "GeomCV", "max"),
@@ -1441,7 +1463,7 @@ test_that("tableNCAParameters with includeIds row count check", {
 
 	# Compare row counts: includeIds = FALSE vs TRUE
 	table_no_ids <- tableNCAParameters(
-		projectFile  = pkx_project_1,
+		projectFile  = NULL,
 		useWideFormat   = FALSE,
 		selectParameters = c("Cmax"),
 		metrics      = c("median", "GeomCV"),
@@ -1450,7 +1472,7 @@ test_that("tableNCAParameters with includeIds row count check", {
 	)
 
 	table_with_ids <- tableNCAParameters(
-		projectFile  = pkx_project_1,
+		projectFile  = NULL,
 		useWideFormat   = FALSE,
 		selectParameters = c("Cmax"),
 		metrics      = c("median", "GeomCV"),
@@ -1466,13 +1488,14 @@ test_that("tableNCAParameters with includeIds row count check", {
 	expect_equal(ncol(table_with_ids), ncol(table_no_ids)+1)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_3))
 test_that("tableNCAParameters with includeIds and numeric categorical covariate", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 
 	# Test with numeric-valued categorical covariate (tests sorting logic)
 	# Using project_3 which has DOSE_mg covariate
 	table <- tableNCAParameters(
-		projectFile  = pkx_project_3,
+		projectFile  = NULL,
 		useWideFormat   = FALSE,
 		splitCovariates   = "DOSE_mg",
 		selectParameters = c("Cmax", "AUClast"),
@@ -1492,13 +1515,14 @@ test_that("tableNCAParameters with includeIds and numeric categorical covariate"
 ################################################################################
 # tableNCAParameters: customAliases / customUnits
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("tableNCAParameters applies customAliases and customUnits", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Wide format keeps parameter names as values in the Parameter column
 	table <- tableNCAParameters(
-		projectFile   = pkx_project_1,
+		projectFile   = NULL,
 		selectParameters = c("Cmax", "AUClast"),
 		customAliases = c(Cmax = "C<sub>max</sub>", AUClast = "AUC<sub>last</sub>"),
 		customUnits   = c(Cmax = "ng/mL", AUClast = "h*ng/mL"),
@@ -1517,7 +1541,7 @@ test_that("tableNCAParameters applies customAliases and customUnits", {
 test_that("listingNCAParameters works with basic settings", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
-	result <- listingNCAParameters(projectFile = pkx_project_1)
+	result <- listingNCAParameters(projectFile = NULL)
 
 	# Basic structure checks
 	expect_s3_class(result, "data.frame")
@@ -1530,7 +1554,7 @@ test_that("listingNCAParameters works with covariates", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	result <- listingNCAParameters(
-		projectFile = pkx_project_1,
+		projectFile = NULL,
 		splitCovariates = c("SEX", "TINFCAT")
 	)
 
@@ -1545,7 +1569,7 @@ test_that("listingNCAParameters relabels split covariate columns with splitCovar
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	result <- listingNCAParameters(
-		projectFile          = pkx_project_1,
+		projectFile          = NULL,
 		splitCovariates      = c("SEX", "TINFCAT"),
 		splitCovariateLabels = c("Sex", "Infusion Category")
 	)
@@ -1555,13 +1579,14 @@ test_that("listingNCAParameters relabels split covariate columns with splitCovar
 	expect_false(any(c("SEX", "TINFCAT") %in% names(result)))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_2))
 test_that("listingNCAParameters filters to selected parameters", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	selected_params <- c("Clast", "Cmax", "AUClast", "AUCINF_obs")
 
 	result <- listingNCAParameters(
-		projectFile = pkx_project_2,
+		projectFile = NULL,
 		splitCovariates = c("FOOD", "TREAT"),
 		selectParameters = selected_params,
 		roundDigits = 2,
@@ -1578,14 +1603,14 @@ test_that("listingNCAParameters applies rounding with significantFigures method"
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	result_rounded <- listingNCAParameters(
-		projectFile = pkx_project_2,
+		projectFile = NULL,
 		selectParameters = c("Cmax", "AUClast"),
 		roundDigits = 2,
 		roundMethod = "significantFigures"
 	)
 
 	result_none <- listingNCAParameters(
-		projectFile = pkx_project_2,
+		projectFile = NULL,
 		selectParameters = c("Cmax", "AUClast"),
 		roundMethod = "none"
 	)
@@ -1599,14 +1624,14 @@ test_that("listingNCAParameters applies rounding with significantFiguresPreserve
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	result_rounded <- listingNCAParameters(
-		projectFile = pkx_project_2,
+		projectFile = NULL,
 		selectParameters = c("Cmax", "AUClast"),
 		roundDigits = 2,
 		roundMethod = "significantFiguresPreserved"
 	)
 
 	result_none <- listingNCAParameters(
-		projectFile = pkx_project_2,
+		projectFile = NULL,
 		selectParameters = c("Cmax", "AUClast"),
 		roundMethod = "none"
 	)
@@ -1616,11 +1641,12 @@ test_that("listingNCAParameters applies rounding with significantFiguresPreserve
 	expect_equal(dim(result_rounded), dim(result_none))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_4))
 test_that("listingNCAParameters applies rounding with monolixSuiteRounding method", {
 	skip_if_not(file.exists(pkx_project_4), "Test project not available")
 
 	result <- listingNCAParameters(
-		projectFile = pkx_project_4,
+		projectFile = NULL,
 		roundDigits = 4,
 		roundMethod = "monolixSuiteRounding"
 	)
@@ -1629,16 +1655,17 @@ test_that("listingNCAParameters applies rounding with monolixSuiteRounding metho
 	expect_gt(ncol(result), 1)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_2))
 test_that("listingNCAParameters works without aliases", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	result_with_aliases <- listingNCAParameters(
-		projectFile = pkx_project_2,
+		projectFile = NULL,
 		aliases = TRUE
 	)
 
 	result_without_aliases <- listingNCAParameters(
-		projectFile = pkx_project_2,
+		projectFile = NULL,
 		aliases = FALSE
 	)
 
@@ -1650,16 +1677,17 @@ test_that("listingNCAParameters works without aliases", {
 	expect_false(identical(names(result_with_aliases), names(result_without_aliases)))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_4))
 test_that("listingNCAParameters works without units", {
 	skip_if_not(file.exists(pkx_project_4), "Test project not available")
 
 	result_with_units <- listingNCAParameters(
-		projectFile = pkx_project_4,
+		projectFile = NULL,
 		units = TRUE
 	)
 
 	result_without_units <- listingNCAParameters(
-		projectFile = pkx_project_4,
+		projectFile = NULL,
 		units = FALSE
 	)
 
@@ -1668,11 +1696,12 @@ test_that("listingNCAParameters works without units", {
 	expect_equal(nrow(result_with_units), nrow(result_without_units))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_5))
 test_that("listingNCAParameters sorts by covariates in specified order", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	result <- listingNCAParameters(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		splitCovariates = c("SEQ", "TRT")
 	)
 
@@ -1718,12 +1747,13 @@ test_that(".covariateSortKey treats NA as convertible and keeps a numeric key", 
 	expect_equal(key, c(2, NA, 10))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("listingNCAParameters validates invalid covariates", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	expect_error(
 		listingNCAParameters(
-			projectFile = pkx_project_1,
+			projectFile = NULL,
 			splitCovariates = c("INVALID_COVARIATE")
 		),
 		"Invalid covariate"
@@ -1735,19 +1765,20 @@ test_that("listingNCAParameters validates invalid NCA parameters", {
 
 	expect_error(
 		listingNCAParameters(
-			projectFile = pkx_project_1,
+			projectFile = NULL,
 			selectParameters = c("INVALID_PARAMETER", "ANOTHER_INVALID")
 		),
 		"None of the requested.*parameters were found"
 	)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_2))
 test_that("listingNCAParameters messages for partially invalid parameters", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	expect_message(
 		result <- listingNCAParameters(
-			projectFile = pkx_project_2,
+			projectFile = NULL,
 			selectParameters = c("Cmax", "INVALID_PARAM", "AUClast")
 		),
 		"Ignoring unknown.*parameters"
@@ -1762,7 +1793,7 @@ test_that("listingNCAParameters works with occasions and covariates", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	result <- listingNCAParameters(
-		projectFile = pkx_project_2,
+		projectFile = NULL,
 		splitCovariates = c("FOOD", "TREAT"),
 		selectParameters = c("Clast", "Cmax", "AUClast", "AUCINF_obs")
 	)
@@ -1773,30 +1804,31 @@ test_that("listingNCAParameters works with occasions and covariates", {
 	expect_gt(ncol(result), 6)  # id + 2 covariates + occasions + params
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_3))
 test_that("listingNCAParameters handles multiple rounding methods", {
 	skip_if_not(file.exists(pkx_project_3), "Test project not available")
 
 	# Test all three rounding methods
 	result_monolix <- listingNCAParameters(
-		projectFile = pkx_project_3,
+		projectFile = NULL,
 		roundDigits = 3,
 		roundMethod = "monolixSuiteRounding"
 	)
 
 	result_signif <- listingNCAParameters(
-		projectFile = pkx_project_3,
+		projectFile = NULL,
 		roundDigits = 3,
 		roundMethod = "significantFigures"
 	)
 
 	result_signif_preserved <- listingNCAParameters(
-		projectFile = pkx_project_3,
+		projectFile = NULL,
 		roundDigits = 3,
 		roundMethod = "significantFiguresPreserved"
 	)
 
 	result_none <- listingNCAParameters(
-		projectFile = pkx_project_3,
+		projectFile = NULL,
 		roundMethod = "none"
 	)
 
@@ -1813,19 +1845,20 @@ test_that("listingNCAParameters handles multiple rounding methods", {
 test_that("listingNCAParameters mock = TRUE masks output", {
 	skip_if_not(file.exists(pkx_project_3), "Test project not available")
 
-	result_real <- listingNCAParameters(projectFile = pkx_project_3, mock = FALSE)
-	result_mock <- listingNCAParameters(projectFile = pkx_project_3, mock = TRUE)
+	result_real <- listingNCAParameters(projectFile = NULL, mock = FALSE)
+	result_mock <- listingNCAParameters(projectFile = NULL, mock = TRUE)
 
 	expect_s3_class(result_mock, "data.frame")
 	expect_equal(dim(result_real), dim(result_mock))
 	expect_true(all(grepl("^id[0-9]+$", as.character(result_mock$id))))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_2))
 test_that("listingNCAParameters returns correct column order", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	result <- listingNCAParameters(
-		projectFile = pkx_project_2,
+		projectFile = NULL,
 		splitCovariates = c("TREAT", "FOOD")  # Specify order
 	)
 
@@ -1838,12 +1871,13 @@ test_that("listingNCAParameters returns correct column order", {
 
 
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_complex))
 test_that("listingNCAParameters applies customAliases and customUnits (named vector)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_complex), "Test project not available")
 
 	result <- listingNCAParameters(
-		projectFile   = pkx_project_complex,
+		projectFile   = NULL,
 		selectParameters = c("AUClast", "Cmax", "C0"),
 		roundDigits   = 3,
 		roundMethod   = "monolixSuiteRounding",
@@ -1877,7 +1911,7 @@ test_that("listingNCAParameters accepts customAliases/customUnits as a data.fram
 		stringsAsFactors = FALSE)
 
 	result <- listingNCAParameters(
-		projectFile   = pkx_project_complex,
+		projectFile   = NULL,
 		selectParameters = c("Cmax", "AUClast"),
 		customAliases = aliases_df,
 		customUnits   = units_df)
@@ -1888,6 +1922,7 @@ test_that("listingNCAParameters accepts customAliases/customUnits as a data.fram
 	expect_true(any(grepl("ng/mL",    nm, fixed = TRUE)))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_2))
 test_that("listingNCAParameters roundByParameter data.frame overrides digits and method per parameter", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
@@ -1895,7 +1930,7 @@ test_that("listingNCAParameters roundByParameter data.frame overrides digits and
 	# aliases/units FALSE keeps raw parameter codes as column names, so overrides
 	# (and the per-column comparison below) key on the same names.
 	args <- list(
-		projectFile = pkx_project_2,
+		projectFile = NULL,
 		selectParameters = c("Cmax", "AUClast"),
 		roundDigits = 3, roundMethod = "monolixSuiteRounding",
 		units = FALSE, aliases = FALSE)
@@ -1916,7 +1951,7 @@ test_that("listingNCAParameters roundByParameter accepts a named numeric vector 
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	args <- list(
-		projectFile = pkx_project_2,
+		projectFile = NULL,
 		selectParameters = c("Cmax", "AUClast"),
 		roundDigits = 3, roundMethod = "monolixSuiteRounding",
 		units = FALSE, aliases = FALSE)
@@ -1933,15 +1968,15 @@ test_that("listingNCAParameters roundByParameter ignores unknown parameters with
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	expect_message(
-		listingNCAParameters(projectFile = pkx_project_2, selectParameters = "Cmax",
+		listingNCAParameters(projectFile = NULL, selectParameters = "Cmax",
 												 units = FALSE, aliases = FALSE,
 												 roundByParameter = c(Cmaxx = 2)),
 		"ignoring unknown parameter")
 
 	# Listing is still produced; NULL override equals no override
-	a <- listingNCAParameters(projectFile = pkx_project_2, selectParameters = "Cmax",
+	a <- listingNCAParameters(projectFile = NULL, selectParameters = "Cmax",
 														units = FALSE, aliases = FALSE)
-	b <- listingNCAParameters(projectFile = pkx_project_2, selectParameters = "Cmax",
+	b <- listingNCAParameters(projectFile = NULL, selectParameters = "Cmax",
 														units = FALSE, aliases = FALSE, roundByParameter = NULL)
 	expect_equal(a, b)
 })
@@ -1951,10 +1986,10 @@ test_that("listingNCAParameters roundByParameter rejects invalid digits/method",
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	expect_error(
-		listingNCAParameters(projectFile = pkx_project_2, selectParameters = "Cmax",
+		listingNCAParameters(projectFile = NULL, selectParameters = "Cmax",
 												 roundByParameter = data.frame(parameter = "Cmax", digits = 2, method = "bogus")))
 	expect_error(
-		listingNCAParameters(projectFile = pkx_project_2, selectParameters = "Cmax",
+		listingNCAParameters(projectFile = NULL, selectParameters = "Cmax",
 												 roundByParameter = c(Cmax = -1)))
 })
 
@@ -1965,7 +2000,7 @@ test_that("listingNCAParameters roundByParameter rejects invalid digits/method",
 test_that("listingNCAConcentration works with basic settings", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
-	result <- listingNCAConcentration(projectFile = pkx_project_2,
+	result <- listingNCAConcentration(projectFile = NULL,
 																		prettyLabels = FALSE, units = FALSE)
 
 	expect_s3_class(result, "data.frame")
@@ -1979,7 +2014,7 @@ test_that("listingNCAConcentration works with covariates", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	result <- listingNCAConcentration(
-		projectFile = pkx_project_2,
+		projectFile = NULL,
 		splitCovariates = c("FOOD", "TREAT"),
 		prettyLabels = FALSE, units = FALSE
 	)
@@ -1994,7 +2029,7 @@ test_that("listingNCAConcentration relabels split covariate columns with splitCo
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	result <- listingNCAConcentration(
-		projectFile          = pkx_project_2,
+		projectFile          = NULL,
 		splitCovariates      = c("FOOD", "TREAT"),
 		splitCovariateLabels = c("Food Status", "Treatment")
 	)
@@ -2003,11 +2038,12 @@ test_that("listingNCAConcentration relabels split covariate columns with splitCo
 	expect_false(any(c("FOOD", "TREAT") %in% names(result)))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_4))
 test_that("listingNCAConcentration works with useNominalTime", {
 	skip_if_not(file.exists(pkx_project_4), "Test project not available")
 
 	result <- listingNCAConcentration(
-		projectFile = pkx_project_4,
+		projectFile = NULL,
 		useNominalTime = TRUE,
 		prettyLabels = FALSE, units = FALSE
 	)
@@ -2026,13 +2062,13 @@ test_that("listingNCAConcentration applies rounding", {
 	skip_if_not(file.exists(pkx_project_4), "Test project not available")
 
 	result_rounded <- listingNCAConcentration(
-		projectFile = pkx_project_4,
+		projectFile = NULL,
 		roundDigits = 2,
 		roundMethod = "significantFigures"
 	)
 
 	result_none <- listingNCAConcentration(
-		projectFile = pkx_project_4,
+		projectFile = NULL,
 		roundMethod = "none"
 	)
 
@@ -2045,19 +2081,19 @@ test_that("listingNCAConcentration handles different rounding methods", {
 	skip_if_not(file.exists(pkx_project_4), "Test project not available")
 
 	result_monolix <- listingNCAConcentration(
-		projectFile = pkx_project_4,
+		projectFile = NULL,
 		roundDigits = 4,
 		roundMethod = "monolixSuiteRounding"
 	)
 
 	result_signif <- listingNCAConcentration(
-		projectFile = pkx_project_4,
+		projectFile = NULL,
 		roundDigits = 4,
 		roundMethod = "significantFigures"
 	)
 
 	result_signif_preserved <- listingNCAConcentration(
-		projectFile = pkx_project_4,
+		projectFile = NULL,
 		roundDigits = 4,
 		roundMethod = "significantFiguresPreserved"
 	)
@@ -2075,7 +2111,7 @@ test_that("listingNCAConcentration works with default roundMethod (no argument p
 	# Regression test: roundMethod used to be missing its match.arg() resolution here,
 	# so leaving it at the default (unspecified) crashed with a "'arg' must be of
 	# length 1" error once forwarded into .round_num().
-	result <- listingNCAConcentration(projectFile = pkx_project_4)
+	result <- listingNCAConcentration(projectFile = NULL)
 
 	expect_s3_class(result, "data.frame")
 	expect_gt(nrow(result), 0)
@@ -2084,8 +2120,8 @@ test_that("listingNCAConcentration works with default roundMethod (no argument p
 test_that("listingNCAConcentration mock = TRUE masks output", {
 	skip_if_not(file.exists(pkx_project_4), "Test project not available")
 
-	result_real <- listingNCAConcentration(projectFile = pkx_project_4, mock = FALSE)
-	result_mock <- listingNCAConcentration(projectFile = pkx_project_4, mock = TRUE)
+	result_real <- listingNCAConcentration(projectFile = NULL, mock = FALSE)
+	result_mock <- listingNCAConcentration(projectFile = NULL, mock = TRUE)
 
 	expect_s3_class(result_mock, "data.frame")
 	expect_equal(dim(result_real), dim(result_mock))
@@ -2093,30 +2129,33 @@ test_that("listingNCAConcentration mock = TRUE masks output", {
 	expect_true(all(grepl("^id[0-9]+$", as.character(result_mock$id))))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_2))
 test_that("listingNCAConcentration includes UsedConc column", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
-	result <- listingNCAConcentration(projectFile = pkx_project_2,
+	result <- listingNCAConcentration(projectFile = NULL,
 																		prettyLabels = FALSE, units = FALSE)
 
 	expect_true("UsedConc" %in% names(result))
 	expect_true("Censoring" %in% names(result))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_5))
 test_that("listingNCAConcentration includes ActualTime", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
-	result <- listingNCAConcentration(projectFile = pkx_project_5,
+	result <- listingNCAConcentration(projectFile = NULL,
 																		prettyLabels = FALSE, units = FALSE)
 
 	expect_true("ActualTime" %in% names(result))
 	expect_type(result$ActualTime, "double")
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_2))
 test_that("listingNCAConcentration applies pretty labels by default", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
-	result <- listingNCAConcentration(projectFile = pkx_project_2)
+	result <- listingNCAConcentration(projectFile = NULL)
 
 	# Default prettyLabels = TRUE renames the raw time/concentration headers
 	expect_false("ActualTime" %in% names(result))
@@ -2131,7 +2170,7 @@ test_that("listingNCAConcentration handles occasions", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	result <- listingNCAConcentration(
-		projectFile = pkx_project_2,
+		projectFile = NULL,
 		splitCovariates = c("FOOD", "TREAT")
 	)
 
@@ -2145,28 +2184,30 @@ test_that("listingNCAConcentration validates invalid covariates", {
 
 	expect_error(
 		listingNCAConcentration(
-			projectFile = pkx_project_2,
+			projectFile = NULL,
 			splitCovariates = c("INVALID_COV")
 		),
 		"Invalid covariate"
 	)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_3))
 test_that("listingNCAConcentration handles BLQ flags", {
 	skip_if_not(file.exists(pkx_project_3), "Test project not available")
 
-	result <- listingNCAConcentration(projectFile = pkx_project_3)
+	result <- listingNCAConcentration(projectFile = NULL)
 
 	expect_s3_class(result, "data.frame")
 	# Should have Censoring column for BLQ handling
 	expect_true("Censoring" %in% names(result))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_2))
 test_that("listingNCAConcentration includes covariates in correct order", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	result <- listingNCAConcentration(
-		projectFile = pkx_project_2,
+		projectFile = NULL,
 		splitCovariates = c("FOOD", "TREAT"),
 		prettyLabels = FALSE, units = FALSE
 	)
@@ -2180,10 +2221,11 @@ test_that("listingNCAConcentration includes covariates in correct order", {
 	expect_true(food_pos < time_pos)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_3))
 test_that("listingNCAConcentration preserves concentration text flags", {
 	skip_if_not(file.exists(pkx_project_3), "Test project not available")
 
-	result <- listingNCAConcentration(projectFile = pkx_project_3)
+	result <- listingNCAConcentration(projectFile = NULL)
 
 	expect_s3_class(result, "data.frame")
 	expect_type(result$Concentration, "character")
@@ -2210,13 +2252,14 @@ test_that("listingNCAConcentration works across different project types", {
 
 # listingNCAConcentration: time-column branches
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_notime))
 test_that("listingNCAConcentration handles a project without actual time (nominal only)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_notime), "Test project not available")
 
 	# Project has only nominal time -> nominal is used as the time axis
 	result <- suppressMessages(listingNCAConcentration(
-		projectFile    = pkx_project_notime,
+		projectFile    = NULL,
 		useNominalTime = TRUE,
 		prettyLabels = FALSE, units = FALSE))
 
@@ -2225,6 +2268,7 @@ test_that("listingNCAConcentration handles a project without actual time (nomina
 	expect_false("ActualTime" %in% names(result))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_3))
 test_that("listingNCAConcentration warns when useNominalTime = TRUE but no nominal time exists", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_3), "Test project not available")
@@ -2232,7 +2276,7 @@ test_that("listingNCAConcentration warns when useNominalTime = TRUE but no nomin
 	# project_aPCSK9_SAD_route has actual time but no nominal time
 	expect_warning(
 		result <- listingNCAConcentration(
-			projectFile    = pkx_project_3,
+			projectFile    = NULL,
 			useNominalTime = TRUE,
 			prettyLabels = FALSE, units = FALSE),
 		"No nominal time available")
@@ -2244,10 +2288,11 @@ test_that("listingNCAConcentration warns when useNominalTime = TRUE but no nomin
 ################################################################################
 # Tests for listingNCARatios ------------------------------------------------
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_5))
 test_that("listingNCARatios works with basic settings", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
-	result <- listingNCARatios(projectFile = pkx_project_5)
+	result <- listingNCARatios(projectFile = NULL)
 
 	# Basic structure checks
 	expect_s3_class(result, "data.frame")
@@ -2260,7 +2305,7 @@ test_that("listingNCARatios works with covariates", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	result <- listingNCARatios(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		splitCovariates = c("SEQ")
 	)
 
@@ -2275,7 +2320,7 @@ test_that("listingNCARatios relabels split covariate columns with splitCovariate
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	result <- listingNCARatios(
-		projectFile          = pkx_project_5,
+		projectFile          = NULL,
 		splitCovariates      = "SEQ",
 		splitCovariateLabels = "Sequence"
 	)
@@ -2288,14 +2333,14 @@ test_that("listingNCARatios filters to selected ratio parameters", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# First get all available ratios to select from
-	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	all_ratios <- listingNCARatios(projectFile = NULL)
 	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
 
 	if (length(available_ratios) >= 2) {
 		selected_ratios <- available_ratios[1:2]
 
 		result <- listingNCARatios(
-			projectFile = pkx_project_5,
+			projectFile = NULL,
 			splitCovariates = c("SEQ"),
 			selectParameters = selected_ratios,
 			roundDigits = 2,
@@ -2313,21 +2358,21 @@ test_that("listingNCARatios applies rounding with significantFigures method", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get available ratio parameters
-	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	all_ratios <- listingNCARatios(projectFile = NULL)
 	ratio_params <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
 
 	if (length(ratio_params) >= 2) {
 		selected <- ratio_params[1:2]
 
 		result_rounded <- listingNCARatios(
-			projectFile = pkx_project_5,
+			projectFile = NULL,
 			selectParameters = selected,
 			roundDigits = 2,
 			roundMethod = "significantFigures"
 		)
 
 		result_none <- listingNCARatios(
-			projectFile = pkx_project_5,
+			projectFile = NULL,
 			selectParameters = selected,
 			roundMethod = "none"
 		)
@@ -2342,21 +2387,21 @@ test_that("listingNCARatios applies rounding with significantFiguresPreserved me
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get available ratio parameters
-	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	all_ratios <- listingNCARatios(projectFile = NULL)
 	ratio_params <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
 
 	if (length(ratio_params) >= 2) {
 		selected <- ratio_params[1:2]
 
 		result_rounded <- listingNCARatios(
-			projectFile = pkx_project_5,
+			projectFile = NULL,
 			selectParameters = selected,
 			roundDigits = 2,
 			roundMethod = "significantFiguresPreserved"
 		)
 
 		result_none <- listingNCARatios(
-			projectFile = pkx_project_5,
+			projectFile = NULL,
 			selectParameters = selected,
 			roundMethod = "none"
 		)
@@ -2371,7 +2416,7 @@ test_that("listingNCARatios applies rounding with monolixSuiteRounding method", 
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	result <- listingNCARatios(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		roundDigits = 4,
 		roundMethod = "monolixSuiteRounding"
 	)
@@ -2388,7 +2433,7 @@ test_that("listingNCARatios roundByParameter data.frame overrides digits and met
 	# so these raw codes are also the column names that overrides key on).
 	selected <- c("AUC_inf_Per1_Per2", "AUC_inf_Per1_Per3")
 	args <- list(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		selectParameters = selected,
 		roundDigits = 3, roundMethod = "monolixSuiteRounding")
 
@@ -2409,7 +2454,7 @@ test_that("listingNCARatios roundByParameter accepts a named numeric vector (dig
 
 	selected <- c("AUC_inf_Per1_Per2", "AUC_inf_Per1_Per3")
 	args <- list(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		selectParameters = selected,
 		roundDigits = 3, roundMethod = "monolixSuiteRounding")
 
@@ -2426,13 +2471,13 @@ test_that("listingNCARatios roundByParameter ignores unknown parameters with a m
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	expect_message(
-		listingNCARatios(projectFile = pkx_project_5,
+		listingNCARatios(projectFile = NULL,
 										 roundByParameter = c(definitelyNotAParam = 2)),
 		"ignoring unknown parameter")
 
 	# Listing is still produced; NULL override equals no override
-	a <- listingNCARatios(projectFile = pkx_project_5)
-	b <- listingNCARatios(projectFile = pkx_project_5, roundByParameter = NULL)
+	a <- listingNCARatios(projectFile = NULL)
+	b <- listingNCARatios(projectFile = NULL, roundByParameter = NULL)
 	expect_equal(a, b)
 })
 
@@ -2441,11 +2486,11 @@ test_that("listingNCARatios roundByParameter rejects invalid digits/method", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	expect_error(
-		listingNCARatios(projectFile = pkx_project_5,
+		listingNCARatios(projectFile = NULL,
 										 roundByParameter = data.frame(parameter = "AUC_inf_Per1_Per2",
 																									 digits = 2, method = "bogus")))
 	expect_error(
-		listingNCARatios(projectFile = pkx_project_5,
+		listingNCARatios(projectFile = NULL,
 										 roundByParameter = c(AUC_inf_Per1_Per2 = -1)))
 })
 
@@ -2454,12 +2499,12 @@ test_that("listingNCARatios aliases argument (not yet functional)", {
 
 	# Note: aliases parameter doesn't affect output yet, but function should still work
 	result_with_aliases <- listingNCARatios(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		aliases = TRUE
 	)
 
 	result_without_aliases <- listingNCARatios(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		aliases = FALSE
 	)
 
@@ -2474,7 +2519,7 @@ test_that("listingNCARatios sorts by covariates in specified order", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	result <- listingNCARatios(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		splitCovariates = c("SEQ")
 	)
 
@@ -2491,7 +2536,7 @@ test_that("listingNCARatios validates invalid covariates", {
 
 	expect_error(
 		listingNCARatios(
-			projectFile = pkx_project_5,
+			projectFile = NULL,
 			splitCovariates = c("INVALID_COVARIATE")
 		),
 		"Invalid covariate"
@@ -2503,7 +2548,7 @@ test_that("listingNCARatios validates invalid ratio parameters", {
 
 	expect_error(
 		listingNCARatios(
-			projectFile = pkx_project_5,
+			projectFile = NULL,
 			selectParameters = c("INVALID_RATIO", "ANOTHER_INVALID")
 		),
 		"None of the requested.*parameters were found"
@@ -2514,12 +2559,12 @@ test_that("listingNCARatios messages for partially invalid parameters", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get one valid ratio parameter
-	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	all_ratios <- listingNCARatios(projectFile = NULL)
 	valid_ratio <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))[1]
 
 	expect_message(
 		result <- listingNCARatios(
-			projectFile = pkx_project_5,
+			projectFile = NULL,
 			selectParameters = c(valid_ratio, "INVALID_PARAM")
 		),
 		"Ignoring unknown.*parameters"
@@ -2534,7 +2579,7 @@ test_that("listingNCARatios works with occasions and covariates", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	result <- listingNCARatios(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		splitCovariates = c("SEQ")
 	)
 
@@ -2549,25 +2594,25 @@ test_that("listingNCARatios handles multiple rounding methods", {
 
 	# Test all three rounding methods
 	result_monolix <- listingNCARatios(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		roundDigits = 3,
 		roundMethod = "monolixSuiteRounding"
 	)
 
 	result_signif <- listingNCARatios(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		roundDigits = 3,
 		roundMethod = "significantFigures"
 	)
 
 	result_signif_preserved <- listingNCARatios(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		roundDigits = 3,
 		roundMethod = "significantFiguresPreserved"
 	)
 
 	result_none <- listingNCARatios(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		roundMethod = "none"
 	)
 
@@ -2584,8 +2629,8 @@ test_that("listingNCARatios handles multiple rounding methods", {
 test_that("listingNCARatios mock = TRUE masks output", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
-	result_real <- listingNCARatios(projectFile = pkx_project_5, mock = FALSE)
-	result_mock <- listingNCARatios(projectFile = pkx_project_5, mock = TRUE)
+	result_real <- listingNCARatios(projectFile = NULL, mock = FALSE)
+	result_mock <- listingNCARatios(projectFile = NULL, mock = TRUE)
 
 	expect_s3_class(result_mock, "data.frame")
 	expect_equal(dim(result_real), dim(result_mock))
@@ -2596,7 +2641,7 @@ test_that("listingNCARatios returns correct column order", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	result <- listingNCARatios(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		splitCovariates = c("SEQ")  # Specify order
 	)
 
@@ -2605,12 +2650,13 @@ test_that("listingNCARatios returns correct column order", {
 	expect_equal(names(result)[2], "id")
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("listingNCARatios validates NCA results availability", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# project_remifentanil_excl has NCA but likely no ratios configured
 	expect_error(
-		listingNCARatios(projectFile = pkx_project_1),
+		listingNCARatios(projectFile = NULL),
 		"No NCA.*ratio"
 	)
 })
@@ -2626,11 +2672,12 @@ test_that("listingNCARatios handles projects without NCA", {
 	)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_5))
 test_that("listingNCARatios applies customAliases", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
-	all_ratios   <- listingNCARatios(projectFile = pkx_project_5)
+	all_ratios   <- listingNCARatios(projectFile = NULL)
 	ratio_params <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
 	skip_if(length(ratio_params) < 1, "No ratio parameters available")
 
@@ -2638,7 +2685,7 @@ test_that("listingNCARatios applies customAliases", {
 	aliases <- setNames("MyRatio<sub>x</sub>", sel)
 
 	result <- listingNCARatios(
-		projectFile   = pkx_project_5,
+		projectFile   = NULL,
 		selectParameters = sel,
 		customAliases = aliases)
 
@@ -2649,10 +2696,11 @@ test_that("listingNCARatios applies customAliases", {
 ################################################################################
 # Tests for listingAbbreviation -------------------------------------------------
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("listingAbbreviation returns basic structure", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
-	result <- listingAbbreviation(projectFile = pkx_project_1)
+	result <- listingAbbreviation(projectFile = NULL)
 
 	expect_true(is.data.frame(result))
 	expect_gt(nrow(result), 0)
@@ -2662,8 +2710,8 @@ test_that("listingAbbreviation returns basic structure", {
 test_that("listingAbbreviation with aliases = FALSE keeps raw parameter names", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
-	result_aliases    <- listingAbbreviation(projectFile = pkx_project_1, aliases = TRUE)
-	result_no_aliases <- listingAbbreviation(projectFile = pkx_project_1, aliases = FALSE)
+	result_aliases    <- listingAbbreviation(projectFile = NULL, aliases = TRUE)
+	result_no_aliases <- listingAbbreviation(projectFile = NULL, aliases = FALSE)
 
 	expect_true(is.data.frame(result_no_aliases))
 	# Same set of underlying NCA parameters either way
@@ -2675,11 +2723,11 @@ test_that("listingAbbreviation applies customAliases mapping", {
 
 	# aliases = FALSE so Abbreviation holds the raw parameter name - customAliases is
 	# joined on that raw name, not on whatever alias would otherwise be displayed
-	result_default <- listingAbbreviation(projectFile = pkx_project_1, aliases = FALSE)
+	result_default <- listingAbbreviation(projectFile = NULL, aliases = FALSE)
 	target_param    <- result_default$Abbreviation[1]
 
 	custom <- setNames("MyCustomAlias", target_param)
-	result_custom <- listingAbbreviation(projectFile = pkx_project_1, customAliases = custom)
+	result_custom <- listingAbbreviation(projectFile = NULL, customAliases = custom)
 
 	expect_true(is.data.frame(result_custom))
 	expect_true("MyCustomAlias" %in% result_custom$Abbreviation)
@@ -2688,11 +2736,11 @@ test_that("listingAbbreviation applies customAliases mapping", {
 test_that("listingAbbreviation applies fullTerms mapping", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
-	result_default <- listingAbbreviation(projectFile = pkx_project_1, aliases = FALSE)
+	result_default <- listingAbbreviation(projectFile = NULL, aliases = FALSE)
 	target_param    <- result_default$Abbreviation[1]
 
 	full_terms <- setNames("My Full Term Description", target_param)
-	result <- listingAbbreviation(projectFile = pkx_project_1, aliases = FALSE, fullTerms = full_terms)
+	result <- listingAbbreviation(projectFile = NULL, aliases = FALSE, fullTerms = full_terms)
 
 	expect_true(is.data.frame(result))
 	expect_true("My Full Term Description" %in% result$`Full term`)
@@ -2711,12 +2759,13 @@ test_that("listingAbbreviation errors on wrong project file type", {
 ################################################################################
 # Tests for tableNCARatios -----------------------------------------------------
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_5))
 test_that("tableNCARatios basic (no stratification)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Test basic functionality with no covariates
-	table <- tableNCARatios(projectFile = pkx_project_5)
+	table <- tableNCARatios(projectFile = NULL)
 
 	# Verify structure
 	expect_true(is.data.frame(table))
@@ -2732,14 +2781,14 @@ test_that("tableNCARatios with specific selectParameters", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get available ratio parameters first
-	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	all_ratios <- listingNCARatios(projectFile = NULL)
 	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
 
 	if (length(available_ratios) >= 2) {
 		selected_ratios <- available_ratios[1:2]
 
 		table <- tableNCARatios(
-			projectFile = pkx_project_5,
+			projectFile = NULL,
 			selectParameters = selected_ratios
 		)
 
@@ -2760,7 +2809,7 @@ test_that("tableNCARatios with specific metrics", {
 
 	# Test with specific metrics
 	table <- tableNCARatios(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		metrics     = c("min", "MeanSD", "median", "GeomCV", "max")
 	)
 
@@ -2780,7 +2829,7 @@ test_that("tableNCARatios with stratification (stratifyColumns = FALSE)", {
 
 	# Test with covariates but no column stratification
 	table <- tableNCARatios(
-		projectFile      = pkx_project_5,
+		projectFile      = NULL,
 		splitCovariates  = "SEQ",
 		stratifyColumns = FALSE
 	)
@@ -2799,7 +2848,7 @@ test_that("tableNCARatios with column stratification (stratifyColumns = TRUE)", 
 
 	# Test with covariates and column stratification
 	table <- tableNCARatios(
-		projectFile      = pkx_project_5,
+		projectFile      = NULL,
 		splitCovariates  = "SEQ",
 		stratifyColumns = TRUE,
 		useWideFormat  = FALSE)
@@ -2820,7 +2869,7 @@ test_that("tableNCARatios with column stratification and single metric", {
 
 	# Test with single metric (should suppress Statistic column)
 	table <- tableNCARatios(
-		projectFile      = pkx_project_5,
+		projectFile      = NULL,
 		splitCovariates       = "SEQ",
 		stratifyColumns = TRUE,
 		useWideFormat  = FALSE,
@@ -2838,7 +2887,7 @@ test_that("tableNCARatios with column stratification and multiple metrics", {
 
 	# Test with multiple metrics
 	table <- tableNCARatios(
-		projectFile      = pkx_project_5,
+		projectFile      = NULL,
 		splitCovariates       = "SEQ",
 		stratifyColumns = TRUE,
 		useWideFormat  = FALSE,
@@ -2855,7 +2904,7 @@ test_that("tableNCARatios vertical layout (useWideFormat = FALSE)", {
 
 	# Test vertical layout without stratification
 	table <- tableNCARatios(
-		projectFile     = pkx_project_5,
+		projectFile     = NULL,
 		useWideFormat = FALSE
 	)
 
@@ -2871,7 +2920,7 @@ test_that("tableNCARatios vertical layout with covariates", {
 
 	# Test vertical layout with covariates
 	table <- tableNCARatios(
-		projectFile     = pkx_project_5,
+		projectFile     = NULL,
 		splitCovariates      = "SEQ",
 		useWideFormat = FALSE,
 		metrics         = c("min", "MeanSD", "median", "GeomCV", "max")
@@ -2890,25 +2939,25 @@ test_that("tableNCARatios rounding methods", {
 
 	# Test different rounding methods
 	table_monolix <- tableNCARatios(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		roundDigits = 2,
 		roundMethod = "monolixSuiteRounding"
 	)
 
 	table_signif <- tableNCARatios(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		roundDigits = 2,
 		roundMethod = "significantFigures"
 	)
 
 	table_signif_preserved <- tableNCARatios(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		roundDigits = 2,
 		roundMethod = "significantFiguresPreserved"
 	)
 
 	table_none <- tableNCARatios(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		roundMethod = "none"
 	)
 
@@ -2928,14 +2977,14 @@ test_that("tableNCARatios roundByParameter applies per-parameter rounding to ind
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
-	all_ratios       <- listingNCARatios(projectFile = pkx_project_5)
+	all_ratios       <- listingNCARatios(projectFile = NULL)
 	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
 	skip_if(length(available_ratios) < 2, "Need >= 2 ratio parameters")
 	p_over <- available_ratios[1]   # gets the override
 	p_keep <- available_ratios[2]   # stays on the global rule
 
 	common <- list(
-		projectFile     = pkx_project_5,
+		projectFile     = NULL,
 		useWideFormat   = FALSE,
 		splitCovariates = "SEQ",
 		includeIds       = TRUE,
@@ -2966,7 +3015,7 @@ test_that("tableNCARatios includeIds individual values match independent per-par
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
-	all_ratios       <- listingNCARatios(projectFile = pkx_project_5)
+	all_ratios       <- listingNCARatios(projectFile = NULL)
 	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
 	skip_if(length(available_ratios) < 2, "Need >= 2 ratio parameters")
 
@@ -2978,7 +3027,7 @@ test_that("tableNCARatios includeIds individual values match independent per-par
 										stringsAsFactors = FALSE)
 
 	tbl <- tableNCARatios(
-		projectFile      = pkx_project_5,
+		projectFile      = NULL,
 		useWideFormat    = FALSE,
 		splitCovariates  = "SEQ",
 		includeIds        = TRUE,
@@ -3015,8 +3064,8 @@ test_that("tableNCARatios mock = TRUE masks output", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
-	table_real <- tableNCARatios(projectFile = pkx_project_5, mock = FALSE)
-	table_mock <- tableNCARatios(projectFile = pkx_project_5, mock = TRUE)
+	table_real <- tableNCARatios(projectFile = NULL, mock = FALSE)
+	table_mock <- tableNCARatios(projectFile = NULL, mock = TRUE)
 
 	expect_true(is.data.frame(table_mock))
 	expect_equal(dim(table_real), dim(table_mock))
@@ -3029,7 +3078,7 @@ test_that("tableNCARatios with splitCovariateLabels", {
 
 	# Test with custom covariate labels
 	table <- tableNCARatios(
-		projectFile      = pkx_project_5,
+		projectFile      = NULL,
 		splitCovariates       = "SEQ",
 		splitCovariateLabels = "Sequence",
 		stratifyColumns = TRUE,
@@ -3047,7 +3096,7 @@ test_that("tableNCARatios non-stratified relabels the split covariate column", {
 
 	# stratifyColumns = FALSE -> covariate is a literal column renamed by the label.
 	table <- tableNCARatios(
-		projectFile          = pkx_project_5,
+		projectFile          = NULL,
 		splitCovariates      = "SEQ",
 		splitCovariateLabels = "Sequence",
 		stratifyColumns      = FALSE)
@@ -3062,13 +3111,13 @@ test_that("tableNCARatios prettyLabels", {
 
 	# Test with pretty labels enabled
 	table_pretty <- tableNCARatios(
-		projectFile  = pkx_project_5,
+		projectFile  = NULL,
 		prettyLabels = TRUE
 	)
 
 	# Test with pretty labels disabled
 	table_raw <- tableNCARatios(
-		projectFile  = pkx_project_5,
+		projectFile  = NULL,
 		prettyLabels = FALSE
 	)
 
@@ -3087,7 +3136,7 @@ test_that("tableNCARatios errors", {
 	# Test with invalid metrics
 	expect_error(
 		tableNCARatios(
-			projectFile = pkx_project_5,
+			projectFile = NULL,
 			metrics     = c("InvalidMetric1", "InvalidMetric2")
 		),
 		"metric"
@@ -3096,7 +3145,7 @@ test_that("tableNCARatios errors", {
 	# Test with invalid covariates
 	expect_error(
 		tableNCARatios(
-			projectFile = pkx_project_5,
+			projectFile = NULL,
 			splitCovariates = "NONEXISTENT_COVARIATE"
 		)
 	)
@@ -3104,29 +3153,31 @@ test_that("tableNCARatios errors", {
 	# Test with invalid ratio parameters
 	expect_error(
 		tableNCARatios(
-			projectFile = pkx_project_5,
+			projectFile = NULL,
 			selectParameters = c("INVALID_RATIO")
 		)
 	)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("tableNCARatios validates NCA ratios availability", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# project_remifentanil_excl has NCA but likely no ratios configured
 	expect_error(
-		tableNCARatios(projectFile = pkx_project_1),
+		tableNCARatios(projectFile = NULL),
 		"No NCA.*ratio"
 	)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_5))
 test_that("tableNCARatios default values work correctly", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Test with only projectFile specified (all other defaults)
-	table <- tableNCARatios(projectFile = pkx_project_5)
+	table <- tableNCARatios(projectFile = NULL)
 
 	expect_true(is.data.frame(table))
 	expect_gt(nrow(table), 0)
@@ -3138,12 +3189,12 @@ test_that("tableNCARatios edge case: single parameter, single metric", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get one valid ratio parameter
-	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	all_ratios <- listingNCARatios(projectFile = NULL)
 	valid_ratio <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))[1]
 
 	# Minimal case
 	table <- tableNCARatios(
-		projectFile = pkx_project_5,
+		projectFile = NULL,
 		selectParameters = valid_ratio,
 		metrics     = "mean"
 	)
@@ -3160,7 +3211,7 @@ test_that("tableNCARatios with includeIds basic (no covariates)", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get available ratio parameters
-	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	all_ratios <- listingNCARatios(projectFile = NULL)
 	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
 
 	if (length(available_ratios) >= 2) {
@@ -3168,7 +3219,7 @@ test_that("tableNCARatios with includeIds basic (no covariates)", {
 
 		# Test basic includeIds functionality without covariates
 		table <- tableNCARatios(
-			projectFile     = pkx_project_5,
+			projectFile     = NULL,
 			useWideFormat = FALSE,
 			selectParameters = selected_ratios,
 			includeIds      = TRUE,
@@ -3198,7 +3249,7 @@ test_that("tableNCARatios with includeIds and single covariate", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get available ratio parameters
-	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	all_ratios <- listingNCARatios(projectFile = NULL)
 	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
 
 	if (length(available_ratios) >= 2) {
@@ -3206,7 +3257,7 @@ test_that("tableNCARatios with includeIds and single covariate", {
 
 		# Test includeIds with stratification by single covariate
 		table <- tableNCARatios(
-			projectFile     = pkx_project_5,
+			projectFile     = NULL,
 			useWideFormat = FALSE,
 			splitCovariates = "SEQ",
 			selectParameters = selected_ratios,
@@ -3230,7 +3281,7 @@ test_that("tableNCARatios with includeIds validation: useWideFormat = TRUE", {
 	# Test that includeIds = TRUE with useWideFormat = TRUE generates warning
 	expect_warning(
 		table <- tableNCARatios(
-			projectFile     = pkx_project_5,
+			projectFile     = NULL,
 			useWideFormat = TRUE,  # This should trigger warning
 			includeIds      = TRUE
 		),
@@ -3248,7 +3299,7 @@ test_that("tableNCARatios with includeIds validation: stratifyColumns = TRUE", {
 	# Test that includeIds = TRUE with stratifyColumns = TRUE generates warning
 	expect_warning(
 		table <- tableNCARatios(
-			projectFile      = pkx_project_5,
+			projectFile      = NULL,
 			useWideFormat  = FALSE,
 			stratifyColumns = TRUE,  # This should trigger warning
 			splitCovariates  = "SEQ",
@@ -3266,7 +3317,7 @@ test_that("tableNCARatios with includeIds = FALSE (default behavior)", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get available ratio parameters
-	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	all_ratios <- listingNCARatios(projectFile = NULL)
 	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
 
 	if (length(available_ratios) >= 1) {
@@ -3274,7 +3325,7 @@ test_that("tableNCARatios with includeIds = FALSE (default behavior)", {
 
 		# Test that includeIds = FALSE produces table without individual IDs
 		table <- tableNCARatios(
-			projectFile     = pkx_project_5,
+			projectFile     = NULL,
 			useWideFormat = FALSE,
 			selectParameters = selected_ratio,
 			includeIds      = FALSE,  # Explicitly FALSE
@@ -3303,7 +3354,7 @@ test_that("tableNCARatios with includeIds row count check", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get available ratio parameters
-	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	all_ratios <- listingNCARatios(projectFile = NULL)
 	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
 
 	if (length(available_ratios) >= 1) {
@@ -3311,7 +3362,7 @@ test_that("tableNCARatios with includeIds row count check", {
 
 		# Compare row counts: includeIds = FALSE vs TRUE
 		table_no_ids <- tableNCARatios(
-			projectFile     = pkx_project_5,
+			projectFile     = NULL,
 			useWideFormat = FALSE,
 			selectParameters = selected_ratio,
 			metrics         = c("median", "GeomCV"),
@@ -3320,7 +3371,7 @@ test_that("tableNCARatios with includeIds row count check", {
 		)
 
 		table_with_ids <- tableNCARatios(
-			projectFile     = pkx_project_5,
+			projectFile     = NULL,
 			useWideFormat = FALSE,
 			selectParameters = selected_ratio,
 			metrics         = c("median", "GeomCV"),
@@ -3342,7 +3393,7 @@ test_that("tableNCARatios all arguments combined", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get available ratio parameters
-	all_ratios <- listingNCARatios(projectFile = pkx_project_5)
+	all_ratios <- listingNCARatios(projectFile = NULL)
 	available_ratios <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
 
 	if (length(available_ratios) >= 2) {
@@ -3350,7 +3401,7 @@ test_that("tableNCARatios all arguments combined", {
 
 		# Test with all arguments specified (comprehensive test)
 		table <- tableNCARatios(
-			projectFile      = pkx_project_5,
+			projectFile      = NULL,
 			splitCovariates  = "SEQ",
 			selectParameters = selected_ratios,
 			metrics          = c("min", "MeanSD", "median", "GeomCV", "max"),
@@ -3376,13 +3427,13 @@ test_that("tableNCARatios applies customAliases", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
-	all_ratios   <- listingNCARatios(projectFile = pkx_project_5)
+	all_ratios   <- listingNCARatios(projectFile = NULL)
 	ratio_params <- setdiff(names(all_ratios), c("id", "SEQ", "TRT", "OCC"))
 	skip_if(length(ratio_params) < 1, "No ratio parameters available")
 
 	sel   <- ratio_params[1]
 	table <- tableNCARatios(
-		projectFile   = pkx_project_5,
+		projectFile   = NULL,
 		selectParameters = sel,
 		customAliases = setNames("RatAlias<sub>1</sub>", sel),
 		prettyLabels  = FALSE)
@@ -3397,12 +3448,13 @@ test_that("tableNCARatios applies customAliases", {
 
 # --- tableNCAConcentration filter tests ---
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("tableNCAConcentration with filterCovariates", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get unique TINFCAT values first
-	listing <- listingNCAConcentration(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
+	listing <- listingNCAConcentration(projectFile = NULL, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing$TINFCAT)
 
 	if (length(tinfcat_values) >= 2) {
@@ -3410,13 +3462,13 @@ test_that("tableNCAConcentration with filterCovariates", {
 
 		# Test with covariate filter
 		table_filtered <- tableNCAConcentration(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			splitCovariates  = "TINFCAT",
 			filterCovariates = list(TINFCAT = filter_value)
 		)
 
 		table_unfiltered <- tableNCAConcentration(
-			projectFile = pkx_project_1,
+			projectFile = NULL,
 			splitCovariates  = "TINFCAT"
 		)
 
@@ -3434,7 +3486,7 @@ test_that("tableNCAConcentration with filterIds", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get available IDs first
-	listing <- listingNCAConcentration(projectFile = pkx_project_1)
+	listing <- listingNCAConcentration(projectFile = NULL)
 	available_ids <- unique(listing$id)
 
 	if (length(available_ids) >= 3) {
@@ -3442,12 +3494,12 @@ test_that("tableNCAConcentration with filterIds", {
 
 		# Test with ID filter
 		table_filtered <- tableNCAConcentration(
-			projectFile = pkx_project_1,
+			projectFile = NULL,
 			filterIds   = selected_ids
 		)
 
 		table_unfiltered <- tableNCAConcentration(
-			projectFile = pkx_project_1
+			projectFile = NULL
 		)
 
 		# Filtered table should exist and be valid
@@ -3461,7 +3513,7 @@ test_that("tableNCAConcentration with combined filterCovariates and filterIds", 
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get data to find valid filter combinations
-	listing <- listingNCAConcentration(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
+	listing <- listingNCAConcentration(projectFile = NULL, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing$TINFCAT)
 	available_ids <- unique(listing$id)
 
@@ -3471,7 +3523,7 @@ test_that("tableNCAConcentration with combined filterCovariates and filterIds", 
 
 		# Test with both filters
 		table <- tableNCAConcentration(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			splitCovariates  = "TINFCAT",
 			filterCovariates = list(TINFCAT = filter_value),
 			filterIds        = selected_ids
@@ -3486,7 +3538,7 @@ test_that("tableNCAConcentration with filterCovariates and includeIds", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get unique TINFCAT values first
-	listing <- listingNCAConcentration(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
+	listing <- listingNCAConcentration(projectFile = NULL, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing$TINFCAT)
 
 	if (length(tinfcat_values) >= 2) {
@@ -3495,7 +3547,7 @@ test_that("tableNCAConcentration with filterCovariates and includeIds", {
 		# Test with covariate filter and includeIds
 		# Note: includeIds = TRUE requires useWideFormat = TRUE for tableNCAConcentration
 		table <- tableNCAConcentration(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			useWideFormat  = TRUE,
 			splitCovariates  = "TINFCAT",
 			filterCovariates = list(TINFCAT = filter_value),
@@ -3521,7 +3573,7 @@ test_that("tableNCAConcentration filterCovariates validation errors", {
 	# Test with non-existent covariate in filter
 	expect_error(
 		tableNCAConcentration(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			filterCovariates = list(NONEXISTENT = "value")
 		),
 		"Invalid covariate"
@@ -3530,7 +3582,7 @@ test_that("tableNCAConcentration filterCovariates validation errors", {
 	# Test with non-list filterCovariates
 	expect_error(
 		tableNCAConcentration(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			filterCovariates = "TINFCAT"
 		),
 		"must be a named list"
@@ -3544,7 +3596,7 @@ test_that("tableNCAParameters with filterCovariates", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get unique TINFCAT values first
-	listing <- listingNCAParameters(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
+	listing <- listingNCAParameters(projectFile = NULL, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing$TINFCAT)
 
 	if (length(tinfcat_values) >= 2) {
@@ -3552,14 +3604,14 @@ test_that("tableNCAParameters with filterCovariates", {
 
 		# Test with covariate filter
 		table_filtered <- tableNCAParameters(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			splitCovariates  = "TINFCAT",
 			selectParameters = c("Cmax"),
 			filterCovariates = list(TINFCAT = filter_value)
 		)
 
 		table_unfiltered <- tableNCAParameters(
-			projectFile = pkx_project_1,
+			projectFile = NULL,
 			splitCovariates  = "TINFCAT",
 			selectParameters = c("Cmax")
 		)
@@ -3578,7 +3630,7 @@ test_that("tableNCAParameters with filterIds", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get available IDs first
-	listing <- listingNCAParameters(projectFile = pkx_project_1)
+	listing <- listingNCAParameters(projectFile = NULL)
 	available_ids <- unique(listing$id)
 
 	if (length(available_ids) >= 3) {
@@ -3586,7 +3638,7 @@ test_that("tableNCAParameters with filterIds", {
 
 		# Test with ID filter
 		table_filtered <- tableNCAParameters(
-			projectFile = pkx_project_1,
+			projectFile = NULL,
 			selectParameters = c("Cmax"),
 			filterIds   = selected_ids
 		)
@@ -3602,7 +3654,7 @@ test_that("tableNCAParameters with filterCovariates and includeIds", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get unique TINFCAT values first
-	listing <- listingNCAParameters(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
+	listing <- listingNCAParameters(projectFile = NULL, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing$TINFCAT)
 
 	if (length(tinfcat_values) >= 2) {
@@ -3610,7 +3662,7 @@ test_that("tableNCAParameters with filterCovariates and includeIds", {
 
 		# Test with covariate filter and includeIds
 		table <- tableNCAParameters(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			useWideFormat  = FALSE,
 			splitCovariates  = "TINFCAT",
 			selectParameters = c("Cmax"),
@@ -3630,7 +3682,7 @@ test_that("tableNCAParameters with combined filterCovariates and filterIds", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get available data first
-	listing <- listingNCAParameters(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
+	listing <- listingNCAParameters(projectFile = NULL, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing$TINFCAT)
 	available_ids <- unique(listing$id)
 
@@ -3640,7 +3692,7 @@ test_that("tableNCAParameters with combined filterCovariates and filterIds", {
 
 		# Test with both filters combined
 		table_filtered <- tableNCAParameters(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			splitCovariates  = "TINFCAT",
 			selectParameters = c("Cmax", "AUClast"),
 			filterCovariates = list(TINFCAT = filter_value),
@@ -3656,7 +3708,7 @@ test_that("tableNCAParameters with combined filterCovariates and filterIds", {
 
 		# Compare with unfiltered - should have fewer or equal rows
 		table_unfiltered <- tableNCAParameters(
-			projectFile = pkx_project_1,
+			projectFile = NULL,
 			splitCovariates = "TINFCAT",
 			selectParameters = c("Cmax", "AUClast")
 		)
@@ -3666,12 +3718,13 @@ test_that("tableNCAParameters with combined filterCovariates and filterIds", {
 
 # --- tableNCARatios filter tests ---
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_5))
 test_that("tableNCARatios with filterCovariates", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get unique SEQ values first
-	listing <- listingNCARatios(projectFile = pkx_project_5, splitCovariates = "SEQ")
+	listing <- listingNCARatios(projectFile = NULL, splitCovariates = "SEQ")
 	seq_values <- unique(listing$SEQ)
 
 	if (length(seq_values) >= 2) {
@@ -3679,13 +3732,13 @@ test_that("tableNCARatios with filterCovariates", {
 
 		# Test with covariate filter
 		table_filtered <- tableNCARatios(
-			projectFile      = pkx_project_5,
+			projectFile      = NULL,
 			splitCovariates  = "SEQ",
 			filterCovariates = list(SEQ = filter_value)
 		)
 
 		table_unfiltered <- tableNCARatios(
-			projectFile = pkx_project_5,
+			projectFile = NULL,
 			splitCovariates = "SEQ"
 		)
 
@@ -3703,7 +3756,7 @@ test_that("tableNCARatios with filterIds", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get available IDs first
-	listing <- listingNCARatios(projectFile = pkx_project_5)
+	listing <- listingNCARatios(projectFile = NULL)
 	available_ids <- unique(listing$id)
 
 	if (length(available_ids) >= 3) {
@@ -3711,7 +3764,7 @@ test_that("tableNCARatios with filterIds", {
 
 		# Test with ID filter
 		table_filtered <- tableNCARatios(
-			projectFile = pkx_project_5,
+			projectFile = NULL,
 			filterIds   = selected_ids
 		)
 
@@ -3726,7 +3779,7 @@ test_that("tableNCARatios with combined filterCovariates and filterIds", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get available data first
-	listing <- listingNCARatios(projectFile = pkx_project_5, splitCovariates = "SEQ")
+	listing <- listingNCARatios(projectFile = NULL, splitCovariates = "SEQ")
 	seq_values <- unique(listing$SEQ)
 	available_ids <- unique(listing$id)
 
@@ -3736,7 +3789,7 @@ test_that("tableNCARatios with combined filterCovariates and filterIds", {
 
 		# Test with both filters combined
 		table_filtered <- tableNCARatios(
-			projectFile      = pkx_project_5,
+			projectFile      = NULL,
 			splitCovariates  = "SEQ",
 			filterCovariates = list(SEQ = filter_value),
 			filterIds        = selected_ids
@@ -3751,7 +3804,7 @@ test_that("tableNCARatios with combined filterCovariates and filterIds", {
 
 		# Compare with unfiltered - should have fewer or equal rows
 		table_unfiltered <- tableNCARatios(
-			projectFile = pkx_project_5,
+			projectFile = NULL,
 			splitCovariates = "SEQ"
 		)
 		expect_lte(nrow(table_filtered), nrow(table_unfiltered))
@@ -3763,7 +3816,7 @@ test_that("tableNCARatios with filterCovariates and includeIds", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get unique SEQ values first
-	listing <- listingNCARatios(projectFile = pkx_project_5, splitCovariates = "SEQ")
+	listing <- listingNCARatios(projectFile = NULL, splitCovariates = "SEQ")
 	seq_values <- unique(listing$SEQ)
 
 	if (length(seq_values) >= 2) {
@@ -3771,7 +3824,7 @@ test_that("tableNCARatios with filterCovariates and includeIds", {
 
 		# Test with covariate filter and includeIds
 		table <- tableNCARatios(
-			projectFile      = pkx_project_5,
+			projectFile      = NULL,
 			useWideFormat  = FALSE,
 			splitCovariates  = "SEQ",
 			filterCovariates = list(SEQ = filter_value),
@@ -3792,12 +3845,13 @@ test_that("tableNCARatios with filterCovariates and includeIds", {
 
 # --- listingNCAConcentration filter tests ---
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_2))
 test_that("listingNCAConcentration with filterCovariates", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	# Get unique FOOD values first
-	listing_all <- listingNCAConcentration(projectFile = pkx_project_2, splitCovariates = "FOOD")
+	listing_all <- listingNCAConcentration(projectFile = NULL, splitCovariates = "FOOD")
 	food_values <- unique(listing_all$FOOD)
 
 	if (length(food_values) >= 2) {
@@ -3805,7 +3859,7 @@ test_that("listingNCAConcentration with filterCovariates", {
 
 		# Test with covariate filter
 		listing_filtered <- listingNCAConcentration(
-			projectFile      = pkx_project_2,
+			projectFile      = NULL,
 			splitCovariates  = "FOOD",
 			filterCovariates = list(FOOD = filter_value)
 		)
@@ -3824,7 +3878,7 @@ test_that("listingNCAConcentration with filterIds", {
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	# Get available IDs first
-	listing_all <- listingNCAConcentration(projectFile = pkx_project_2)
+	listing_all <- listingNCAConcentration(projectFile = NULL)
 	available_ids <- unique(listing_all$id)
 
 	if (length(available_ids) >= 3) {
@@ -3832,7 +3886,7 @@ test_that("listingNCAConcentration with filterIds", {
 
 		# Test with ID filter
 		listing_filtered <- listingNCAConcentration(
-			projectFile = pkx_project_2,
+			projectFile = NULL,
 			filterIds   = selected_ids
 		)
 
@@ -3850,7 +3904,7 @@ test_that("listingNCAConcentration with combined filterCovariates and filterIds"
 	skip_if_not(file.exists(pkx_project_2), "Test project not available")
 
 	# Get available data first
-	listing_all <- listingNCAConcentration(projectFile = pkx_project_2, splitCovariates = "FOOD")
+	listing_all <- listingNCAConcentration(projectFile = NULL, splitCovariates = "FOOD")
 	food_values <- unique(listing_all$FOOD)
 	available_ids <- unique(listing_all$id)
 
@@ -3860,7 +3914,7 @@ test_that("listingNCAConcentration with combined filterCovariates and filterIds"
 
 		# Test with both filters combined
 		listing_filtered <- listingNCAConcentration(
-			projectFile      = pkx_project_2,
+			projectFile      = NULL,
 			splitCovariates  = "FOOD",
 			filterCovariates = list(FOOD = filter_value),
 			filterIds        = selected_ids
@@ -3880,12 +3934,13 @@ test_that("listingNCAConcentration with combined filterCovariates and filterIds"
 
 # --- listingNCAParameters filter tests ---
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("listingNCAParameters with filterCovariates", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get unique TINFCAT values first
-	listing_all <- listingNCAParameters(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
+	listing_all <- listingNCAParameters(projectFile = NULL, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing_all$TINFCAT)
 
 	if (length(tinfcat_values) >= 2) {
@@ -3893,7 +3948,7 @@ test_that("listingNCAParameters with filterCovariates", {
 
 		# Test with covariate filter
 		listing_filtered <- listingNCAParameters(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			splitCovariates  = "TINFCAT",
 			filterCovariates = list(TINFCAT = filter_value)
 		)
@@ -3912,7 +3967,7 @@ test_that("listingNCAParameters with filterIds", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get available IDs first
-	listing_all <- listingNCAParameters(projectFile = pkx_project_1)
+	listing_all <- listingNCAParameters(projectFile = NULL)
 	available_ids <- unique(listing_all$id)
 
 	if (length(available_ids) >= 3) {
@@ -3920,7 +3975,7 @@ test_that("listingNCAParameters with filterIds", {
 
 		# Test with ID filter
 		listing_filtered <- listingNCAParameters(
-			projectFile = pkx_project_1,
+			projectFile = NULL,
 			filterIds   = selected_ids
 		)
 
@@ -3938,7 +3993,7 @@ test_that("listingNCAParameters with combined filters", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get data to find valid filter combinations
-	listing_all <- listingNCAParameters(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
+	listing_all <- listingNCAParameters(projectFile = NULL, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing_all$TINFCAT)
 	available_ids <- unique(listing_all$id)
 
@@ -3948,7 +4003,7 @@ test_that("listingNCAParameters with combined filters", {
 
 		# Test with both filters
 		listing_filtered <- listingNCAParameters(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			splitCovariates  = "TINFCAT",
 			filterCovariates = list(TINFCAT = filter_value),
 			filterIds        = selected_ids
@@ -3965,12 +4020,13 @@ test_that("listingNCAParameters with combined filters", {
 
 # --- listingNCARatios filter tests ---
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_5))
 test_that("listingNCARatios with filterCovariates", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get unique SEQ values first
-	listing_all <- listingNCARatios(projectFile = pkx_project_5, splitCovariates = "SEQ")
+	listing_all <- listingNCARatios(projectFile = NULL, splitCovariates = "SEQ")
 	seq_values <- unique(listing_all$SEQ)
 
 	if (length(seq_values) >= 2) {
@@ -3978,7 +4034,7 @@ test_that("listingNCARatios with filterCovariates", {
 
 		# Test with covariate filter
 		listing_filtered <- listingNCARatios(
-			projectFile      = pkx_project_5,
+			projectFile      = NULL,
 			splitCovariates  = "SEQ",
 			filterCovariates = list(SEQ = filter_value)
 		)
@@ -3997,7 +4053,7 @@ test_that("listingNCARatios with filterIds", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get available IDs first
-	listing_all <- listingNCARatios(projectFile = pkx_project_5)
+	listing_all <- listingNCARatios(projectFile = NULL)
 	available_ids <- unique(listing_all$id)
 
 	if (length(available_ids) >= 3) {
@@ -4005,7 +4061,7 @@ test_that("listingNCARatios with filterIds", {
 
 		# Test with ID filter
 		listing_filtered <- listingNCARatios(
-			projectFile = pkx_project_5,
+			projectFile = NULL,
 			filterIds   = selected_ids
 		)
 
@@ -4023,7 +4079,7 @@ test_that("listingNCARatios with combined filterCovariates and filterIds", {
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	# Get available data first
-	listing_all <- listingNCARatios(projectFile = pkx_project_5, splitCovariates = "SEQ")
+	listing_all <- listingNCARatios(projectFile = NULL, splitCovariates = "SEQ")
 	seq_values <- unique(listing_all$SEQ)
 	available_ids <- unique(listing_all$id)
 
@@ -4033,7 +4089,7 @@ test_that("listingNCARatios with combined filterCovariates and filterIds", {
 
 		# Test with both filters combined
 		listing_filtered <- listingNCARatios(
-			projectFile      = pkx_project_5,
+			projectFile      = NULL,
 			splitCovariates  = "SEQ",
 			filterCovariates = list(SEQ = filter_value),
 			filterIds        = selected_ids
@@ -4053,6 +4109,7 @@ test_that("listingNCARatios with combined filterCovariates and filterIds", {
 
 # --- Filter validation tests ---
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("filterCovariates must be a named list", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
@@ -4060,7 +4117,7 @@ test_that("filterCovariates must be a named list", {
 	# Test with vector instead of list
 	expect_error(
 		tableNCAParameters(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			filterCovariates = c(TINFCAT = "value")
 		),
 		"must be a named list"
@@ -4069,7 +4126,7 @@ test_that("filterCovariates must be a named list", {
 	# Test with unnamed list
 	expect_error(
 		tableNCAParameters(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			filterCovariates = list("value")
 		),
 		"must be a named list"
@@ -4083,7 +4140,7 @@ test_that("filterCovariates validates covariate names", {
 	# Test with non-existent covariate
 	expect_error(
 		tableNCAParameters(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			filterCovariates = list(NONEXISTENT_COV = "value")
 		),
 		"Invalid covariate"
@@ -4095,7 +4152,7 @@ test_that("filter with multiple covariate values", {
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
 	# Get unique TINFCAT values first
-	listing <- listingNCAParameters(projectFile = pkx_project_1, splitCovariates = "TINFCAT")
+	listing <- listingNCAParameters(projectFile = NULL, splitCovariates = "TINFCAT")
 	tinfcat_values <- unique(listing$TINFCAT)
 
 	if (length(tinfcat_values) >= 2) {
@@ -4103,7 +4160,7 @@ test_that("filter with multiple covariate values", {
 
 		# Test with multiple values for one covariate
 		table <- tableNCAParameters(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			splitCovariates  = "TINFCAT",
 			selectParameters = c("Cmax"),
 			filterCovariates = list(TINFCAT = filter_values)
@@ -4126,7 +4183,7 @@ test_that("tableNCAConcentration with includeIds basic (no covariates)", {
 	# Test basic includeIds functionality without covariates
 	# Note: includeIds = TRUE requires useWideFormat = TRUE for tableNCAConcentration
 	table <- tableNCAConcentration(
-		projectFile     = pkx_project_1,
+		projectFile     = NULL,
 		useWideFormat = TRUE,
 		includeIds      = TRUE,
 		prettyLabels    = FALSE
@@ -4149,7 +4206,7 @@ test_that("tableNCAConcentration with includeIds and single covariate", {
 	# Test includeIds with stratification by single covariate
 	# Note: includeIds = TRUE requires useWideFormat = TRUE for tableNCAConcentration
 	table <- tableNCAConcentration(
-		projectFile     = pkx_project_1,
+		projectFile     = NULL,
 		useWideFormat = TRUE,
 		splitCovariates = "TINFCAT",
 		metrics         = c("min", "MeanSD", "median", "GeomCV", "max"),
@@ -4172,7 +4229,7 @@ test_that("tableNCAConcentration with includeIds validation: useWideFormat = FAL
 	# Test that includeIds = TRUE with useWideFormat = TRUE generates warning
 	expect_warning(
 		table <- tableNCAConcentration(
-			projectFile     = pkx_project_1,
+			projectFile     = NULL,
 			useWideFormat = FALSE,  # This should trigger warning
 			includeIds      = TRUE),
 		"includeIds = TRUE only works with useWideFormat = TRUE")
@@ -4191,7 +4248,7 @@ test_that("tableNCAConcentration with includeIds validation: stratifyColumns = T
 	# gets disabled first, before the includeIds+stratifyColumns check can fire
 	expect_message(
 		table <- tableNCAConcentration(
-			projectFile      = pkx_project_1,
+			projectFile      = NULL,
 			useWideFormat  = TRUE,
 			stratifyColumns = TRUE,
 			splitCovariates  = "TINFCAT",
@@ -4213,7 +4270,7 @@ test_that("tableNCAConcentration with includeIds = FALSE (default behavior)", {
 	# Test that includeIds = FALSE produces table without individual IDs
 	# Using useWideFormat = TRUE for consistent structure with Statistic column
 	table <- tableNCAConcentration(
-		projectFile     = pkx_project_1,
+		projectFile     = NULL,
 		useWideFormat = TRUE,
 		includeIds      = FALSE,  # Explicitly FALSE
 		prettyLabels    = FALSE
@@ -4246,7 +4303,7 @@ test_that("tableNCAConcentration with includeIds row count check", {
 	# Compare row counts: includeIds = FALSE vs TRUE
 	# Note: includeIds = TRUE requires useWideFormat = TRUE for tableNCAConcentration
 	table_no_ids <- tableNCAConcentration(
-		projectFile     = pkx_project_1,
+		projectFile     = NULL,
 		useWideFormat = TRUE,
 		metrics         = c("median", "GeomCV"),
 		includeIds      = FALSE,
@@ -4254,7 +4311,7 @@ test_that("tableNCAConcentration with includeIds row count check", {
 	)
 
 	table_with_ids <- tableNCAConcentration(
-		projectFile     = pkx_project_1,
+		projectFile     = NULL,
 		useWideFormat = TRUE,
 		metrics         = c("median", "GeomCV"),
 		includeIds      = TRUE,
@@ -4272,12 +4329,13 @@ test_that("tableNCAConcentration with includeIds row count check", {
 ################################################################################
 # tableBEResults
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_3))
 test_that("tableBEResults basic functionality", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_3), "Test project not available")
 
 	# Test basic functionality
-	table <- tableBEResults(projectFile = pkx_project_3)
+	table <- tableBEResults(projectFile = NULL)
 
 	# Verify structure
 	expect_true(is.data.frame(table))
@@ -4295,7 +4353,7 @@ test_that("tableBEResults with specific selectParameters", {
 	# Test with specific parameters
 	selected_params <- c("AUClast_D", "Cmax_D")
 	table <- tableBEResults(
-		projectFile = pkx_project_3,
+		projectFile = NULL,
 		selectParameters = selected_params
 	)
 
@@ -4303,7 +4361,7 @@ test_that("tableBEResults with specific selectParameters", {
 	expect_gt(nrow(table), 0)
 
 	# Compare with all parameters - filtered should have fewer or equal rows
-	table_all <- tableBEResults(projectFile = pkx_project_3)
+	table_all <- tableBEResults(projectFile = NULL)
 	expect_lte(nrow(table), nrow(table_all))
 })
 
@@ -4314,7 +4372,7 @@ test_that("tableBEResults with invalid selectParameters messages", {
 	# Test with mix of valid and invalid parameters
 	expect_message(
 		tableBEResults(
-			projectFile = pkx_project_3,
+			projectFile = NULL,
 			selectParameters = c("AUClast_D", "INVALID_PARAM")
 		),
 		"Ignoring unknown"
@@ -4328,7 +4386,7 @@ test_that("tableBEResults with all invalid selectParameters errors", {
 	# Test with only invalid parameters
 	expect_error(
 		tableBEResults(
-			projectFile = pkx_project_3,
+			projectFile = NULL,
 			selectParameters = c("INVALID1", "INVALID2")
 		),
 		"None of the requested"
@@ -4341,7 +4399,7 @@ test_that("tableBEResults with BELimits = TRUE", {
 
 	# Test with BE limits column
 	table <- tableBEResults(
-		projectFile = pkx_project_3,
+		projectFile = NULL,
 		BELimits    = TRUE
 	)
 
@@ -4357,7 +4415,7 @@ test_that("tableBEResults with BEConclusion = TRUE", {
 
 	# Test with conclusion column (default)
 	table <- tableBEResults(
-		projectFile  = pkx_project_3,
+		projectFile  = NULL,
 		BEConclusion = TRUE
 	)
 
@@ -4380,7 +4438,7 @@ test_that("tableBEResults with BEConclusion = FALSE", {
 
 	# Test without conclusion column
 	table <- tableBEResults(
-		projectFile  = pkx_project_3,
+		projectFile  = NULL,
 		BEConclusion = FALSE
 	)
 
@@ -4396,7 +4454,7 @@ test_that("tableBEResults with units = TRUE", {
 
 	# Test with units
 	table <- tableBEResults(
-		projectFile  = pkx_project_3,
+		projectFile  = NULL,
 		units        = TRUE,
 		prettyLabels = FALSE
 	)
@@ -4416,14 +4474,14 @@ test_that("tableBEResults with units = FALSE", {
 
 	# Test without units
 	table_no_units <- tableBEResults(
-		projectFile  = pkx_project_3,
+		projectFile  = NULL,
 		units        = FALSE,
 		aliases      = FALSE,
 		prettyLabels = FALSE
 	)
 
 	table_with_units <- tableBEResults(
-		projectFile  = pkx_project_3,
+		projectFile  = NULL,
 		units        = TRUE,
 		aliases      = FALSE,
 		prettyLabels = FALSE
@@ -4446,7 +4504,7 @@ test_that("tableBEResults log-transformed parameters have ln() prefix", {
 
 	# Test that log-transformed parameters are labeled
 	table <- tableBEResults(
-		projectFile  = pkx_project_3,
+		projectFile  = NULL,
 		prettyLabels = FALSE
 	)
 
@@ -4466,7 +4524,7 @@ test_that("tableBEResults rounding methods", {
 
 	# Test monolix rounding
 	table_monolix <- tableBEResults(
-		projectFile = pkx_project_3,
+		projectFile = NULL,
 		roundMethod = "monolixSuiteRounding",
 		roundDigits = 2
 	)
@@ -4474,7 +4532,7 @@ test_that("tableBEResults rounding methods", {
 
 	# Test signif rounding
 	table_signif <- tableBEResults(
-		projectFile = pkx_project_3,
+		projectFile = NULL,
 		roundMethod = "significantFigures",
 		roundDigits = 3
 	)
@@ -4482,7 +4540,7 @@ test_that("tableBEResults rounding methods", {
 
 	# Test significantFiguresPreserved rounding
 	table_signif_preserved <- tableBEResults(
-		projectFile = pkx_project_3,
+		projectFile = NULL,
 		roundMethod = "significantFiguresPreserved",
 		roundDigits = 3
 	)
@@ -4490,7 +4548,7 @@ test_that("tableBEResults rounding methods", {
 
 	# Test no rounding
 	table_none <- tableBEResults(
-		projectFile = pkx_project_3,
+		projectFile = NULL,
 		roundMethod = "none"
 	)
 	expect_true(is.data.frame(table_none))
@@ -4538,8 +4596,8 @@ test_that("tableBEResults mock = TRUE masks output", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_3), "Test project not available")
 
-	table_real <- tableBEResults(projectFile = pkx_project_3, mock = FALSE)
-	table_mock <- tableBEResults(projectFile = pkx_project_3, mock = TRUE)
+	table_real <- tableBEResults(projectFile = NULL, mock = FALSE)
+	table_mock <- tableBEResults(projectFile = NULL, mock = TRUE)
 
 	expect_true(is.data.frame(table_mock))
 	expect_equal(dim(table_real), dim(table_mock))
@@ -4552,13 +4610,13 @@ test_that("tableBEResults prettyLabels", {
 
 	# Test with pretty labels
 	table_pretty <- tableBEResults(
-		projectFile  = pkx_project_3,
+		projectFile  = NULL,
 		prettyLabels = TRUE
 	)
 
 	# Test without pretty labels
 	table_raw <- tableBEResults(
-		projectFile  = pkx_project_3,
+		projectFile  = NULL,
 		prettyLabels = FALSE
 	)
 
@@ -4575,7 +4633,7 @@ test_that("tableBEResults multiple comparisons combined", {
 
 	# Test that multiple test vs ref comparisons are in one table
 	table <- tableBEResults(
-		projectFile  = pkx_project_3,
+		projectFile  = NULL,
 		prettyLabels = FALSE
 	)
 
@@ -4594,7 +4652,7 @@ test_that("tableBEResults all arguments combined", {
 
 	# Test with all arguments specified
 	table <- tableBEResults(
-		projectFile  = pkx_project_3,
+		projectFile  = NULL,
 		selectParameters = c("AUClast_D", "Cmax_D"),
 		roundDigits  = 2,
 		roundMethod  = "monolixSuiteRounding",
@@ -4615,7 +4673,7 @@ test_that("tableBEResults applies customAliases and customUnits", {
 	skip_if_not(file.exists(pkx_project_3), "Test project not available")
 
 	table <- tableBEResults(
-		projectFile   = pkx_project_3,
+		projectFile   = NULL,
 		selectParameters = c("AUClast_D", "Cmax_D"),
 		customAliases = c(AUClast_D = "AUC<sub>0-tlast</sub>", Cmax_D = "C<sub>max</sub>"),
 		customUnits   = c(AUClast_D = "h*ng/mL", Cmax_D = "ng/mL"),
@@ -4649,11 +4707,12 @@ test_that("tableBEResults applies customAliases and customUnits", {
 	expect_true(all(nchar(pad) >= nchar(minimal), na.rm = TRUE))
 }
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("tableNCAParameters trailingZeros toggles padding; metric columns are character", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
-	args <- list(projectFile = pkx_project_1, selectParameters = c("Cmax", "AUClast"),
+	args <- list(projectFile = NULL, selectParameters = c("Cmax", "AUClast"),
 							 metrics = "mean", useWideFormat = TRUE, roundDigits = 3,
 							 roundMethod = "monolixSuiteRounding",
 							 prettyLabels = FALSE, units = FALSE, aliases = FALSE)
@@ -4666,7 +4725,7 @@ test_that("tableNCAConcentration trailingZeros toggles padding; metric columns a
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
-	args <- list(projectFile = pkx_project_1, useWideFormat = FALSE, metrics = "mean",
+	args <- list(projectFile = NULL, useWideFormat = FALSE, metrics = "mean",
 							 roundDigits = 3, roundMethod = "monolixSuiteRounding",
 							 prettyLabels = FALSE, units = FALSE)
 	pad <- suppressWarnings(do.call(tableNCAConcentration, c(args, list(trailingZeros = TRUE))))
@@ -4674,22 +4733,24 @@ test_that("tableNCAConcentration trailingZeros toggles padding; metric columns a
 	.expect_trailing_contract(pad$mean, mn$mean)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_5))
 test_that("tableNCARatios trailingZeros toggles padding; metric columns are character", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
-	args <- list(projectFile = pkx_project_5, metrics = "mean", useWideFormat = TRUE,
+	args <- list(projectFile = NULL, metrics = "mean", useWideFormat = TRUE,
 							 roundDigits = 3, roundMethod = "monolixSuiteRounding", prettyLabels = FALSE)
 	pad <- do.call(tableNCARatios, c(args, list(trailingZeros = TRUE)))
 	mn  <- do.call(tableNCARatios, c(args, list(trailingZeros = FALSE)))
 	.expect_trailing_contract(pad$mean, mn$mean)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_3))
 test_that("tableBEResults trailingZeros toggles padding; Ratio column is character", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_3), "Test project not available")
 
-	args <- list(projectFile = pkx_project_3, roundDigits = 3,
+	args <- list(projectFile = NULL, roundDigits = 3,
 							 roundMethod = "monolixSuiteRounding",
 							 units = FALSE, aliases = FALSE, prettyLabels = FALSE)
 	pad <- do.call(tableBEResults, c(args, list(trailingZeros = TRUE)))
@@ -4697,11 +4758,12 @@ test_that("tableBEResults trailingZeros toggles padding; Ratio column is charact
 	.expect_trailing_contract(pad$Ratio, mn$Ratio)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("listingNCAParameters trailingZeros toggles padding; parameter columns are character", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
-	args <- list(projectFile = pkx_project_1, selectParameters = c("Cmax"),
+	args <- list(projectFile = NULL, selectParameters = c("Cmax"),
 							 roundDigits = 3, roundMethod = "monolixSuiteRounding",
 							 units = FALSE, aliases = FALSE)
 	pad <- do.call(listingNCAParameters, c(args, list(trailingZeros = TRUE)))
@@ -4709,11 +4771,12 @@ test_that("listingNCAParameters trailingZeros toggles padding; parameter columns
 	.expect_trailing_contract(pad$Cmax, mn$Cmax)
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_5))
 test_that("listingNCARatios trailingZeros toggles padding; ratio columns are character", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
-	args <- list(projectFile = pkx_project_5, roundDigits = 3,
+	args <- list(projectFile = NULL, roundDigits = 3,
 							 roundMethod = "monolixSuiteRounding", aliases = FALSE)
 	pad <- do.call(listingNCARatios, c(args, list(trailingZeros = TRUE)))
 	mn  <- do.call(listingNCARatios, c(args, list(trailingZeros = FALSE)))
@@ -4722,11 +4785,12 @@ test_that("listingNCARatios trailingZeros toggles padding; ratio columns are cha
 	.expect_trailing_contract(pad[[ratio_cols[1]]], mn[[ratio_cols[1]]])
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
 test_that("listingNCAConcentration trailingZeros toggles padding; UsedConc is character", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_1), "Test project not available")
 
-	args <- list(projectFile = pkx_project_1, roundDigits = 3,
+	args <- list(projectFile = NULL, roundDigits = 3,
 							 roundMethod = "monolixSuiteRounding",
 							 prettyLabels = FALSE, units = FALSE)
 	pad <- suppressWarnings(do.call(listingNCAConcentration, c(args, list(trailingZeros = TRUE))))
@@ -4739,12 +4803,13 @@ test_that("listingNCAConcentration trailingZeros toggles padding; UsedConc is ch
 # assertions elsewhere disable them)
 ################################################################################
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_5))
 test_that("listingNCAConcentration prettyLabels and units take effect (actual time)", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_5), "Test project not available")
 
 	nm <- function(...) names(suppressWarnings(
-		listingNCAConcentration(projectFile = pkx_project_5, ...)))
+		listingNCAConcentration(projectFile = NULL, ...)))
 	raw        <- nm(prettyLabels = FALSE, units = FALSE)
 	pretty     <- nm(prettyLabels = TRUE,  units = FALSE)
 	with_units <- nm(prettyLabels = FALSE, units = TRUE)
@@ -4764,15 +4829,16 @@ test_that("listingNCAConcentration prettyLabels and units take effect (actual ti
 	expect_false(identical(both, with_units))
 })
 
+suppressMessages(lixoftConnectors::loadProject(pkx_project_complex))
 test_that("listingNCAConcentration prettyLabels renames the nominal time column", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	skip_if_not(file.exists(pkx_project_complex), "Test project not available")
 
 	raw    <- names(suppressMessages(listingNCAConcentration(
-		projectFile = pkx_project_complex, useNominalTime = TRUE,
+		projectFile = NULL, useNominalTime = TRUE,
 		prettyLabels = FALSE, units = FALSE)))
 	pretty <- names(suppressMessages(listingNCAConcentration(
-		projectFile = pkx_project_complex, useNominalTime = TRUE,
+		projectFile = NULL, useNominalTime = TRUE,
 		prettyLabels = TRUE, units = FALSE)))
 
 	expect_true("NominalTime" %in% raw)
