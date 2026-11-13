@@ -979,5 +979,255 @@ test_that("tablePopulationParameterEstimates includeFEcategory in wide format ke
 })
 
 ################################################################################
+# Argument-coverage additions (Phase 1). Appended so .popcell etc. are in scope.
+################################################################################
+
+# --- tableCovariateModelBuilding() -------------------------------------------
+
+test_that("tableCovariateModelBuilding displayBestModelPerStep reduces to one accepted model per step", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	full <- tableCovariateModelBuilding(mb_project_scm, prettyLabels = FALSE)
+	best <- tableCovariateModelBuilding(mb_project_scm, displayBestModelPerStep = TRUE,
+																			prettyLabels = FALSE)
+
+	expect_lt(nrow(best), nrow(full))
+	expect_true(all(best$Run %in% full$Run))
+	expect_true(any(best$Step == "Base"))                   # Base always kept
+	expect_setequal(best$Run, c(full$Run[full$Step == "Base"], attr(best, "best_per_step")))
+	grp <- .modelBuildingStepGroups(best$Step, best$Reference)
+	expect_equal(unname(max(table(grp))), 1L)               # one model per round
+})
+
+test_that("tableCovariateModelBuilding displayBestModelPerStep is ignored for SAMBA (no steps)", {
+	withr::local_options(TFLMonolixSuite.verbose = TRUE)
+
+	expect_message(
+		best <- tableCovariateModelBuilding(mb_project_samba, displayBestModelPerStep = TRUE,
+																				prettyLabels = FALSE),
+		"applies only to stepwise")
+	full <- tableCovariateModelBuilding(mb_project_samba, prettyLabels = FALSE)
+	expect_equal(nrow(best), nrow(full))
+})
+
+test_that("tableCovariateModelBuilding mock masks metrics and anonymizes covariate names", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	real <- tableCovariateModelBuilding(mb_project_cossac, prettyLabels = FALSE, mock = FALSE)
+	mock <- tableCovariateModelBuilding(mb_project_cossac, prettyLabels = FALSE, mock = TRUE,
+																			roundDigits = 2)
+
+	expect_equal(dim(real), dim(mock))
+	expect_equal(mock$Run, real$Run)                        # identifiers kept
+	expect_equal(mock$BestModel, real$BestModel)
+	bicc <- as.character(mock$BICc)
+	expect_true(all(grepl("xx", bicc[!is.na(bicc)])))       # metrics masked
+	# covariate names anonymized in Tested; parameter names kept
+	tested <- mock$Tested[nzchar(mock$Tested)]
+	expect_true(all(grepl("^Covariate[0-9]+ on ", tested)))
+	expect_false(any(mock$Tested == real$Tested & nzchar(real$Tested)))
+})
+
+test_that("tableCovariateModelBuilding customDescriptions adds a Description column after Tested", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	tbl <- tableCovariateModelBuilding(mb_project_cossac, prettyLabels = FALSE,
+		customDescriptions = c("Model 1" = "Base covariate model",
+													 "Model 4" = "Selected final model"))
+
+	expect_true("Description" %in% names(tbl))
+	expect_equal(which(names(tbl) == "Description"), which(names(tbl) == "Tested") + 1L)
+	expect_equal(tbl$Description[tbl$Run == "Model 1"], "Base covariate model")
+	expect_equal(tbl$Description[tbl$Run == "Model 4"], "Selected final model")
+	expect_true(is.na(tbl$Description[tbl$Run == "Model 2"]))   # unmapped -> NA
+})
+
+test_that("tableCovariateModelBuilding customDescriptions ignores unknown keys with a message", {
+	withr::local_options(TFLMonolixSuite.verbose = TRUE)
+
+	expect_message(
+		tableCovariateModelBuilding(mb_project_cossac, prettyLabels = FALSE,
+			customDescriptions = c("Model 999" = "does not exist")),
+		"did not match any Run")
+})
+
+test_that("tableCovariateModelBuilding roundDigits/roundMethod change the numeric display", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	none <- tableCovariateModelBuilding(mb_project_samba, roundMethod = "none", prettyLabels = FALSE)
+	r1   <- tableCovariateModelBuilding(mb_project_samba, roundDigits = 1,
+																			roundMethod = "monolixSuiteRounding", prettyLabels = FALSE)
+	expect_false(isTRUE(all.equal(none$BICc, r1$BICc)))
+
+	# BICc ~690 (3 integer digits) -> the two methods disagree at roundDigits = 2
+	sf  <- tableCovariateModelBuilding(mb_project_samba, roundDigits = 2,
+																		 roundMethod = "significantFigures", prettyLabels = FALSE)
+	sfp <- tableCovariateModelBuilding(mb_project_samba, roundDigits = 2,
+																		 roundMethod = "significantFiguresPreserved", prettyLabels = FALSE)
+	expect_false(isTRUE(all.equal(sf$BICc, sfp$BICc)))
+	expect_true(all(sf$BICc %% 10 == 0))                    # 2 sig figs -> multiples of 10
+	expect_false(all(sfp$BICc %% 10 == 0))                  # preserved keeps the units digit
+})
+
+test_that("tableCovariateModelBuilding rejects invalid enum argument values", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	expect_error(tableCovariateModelBuilding(mb_project_cossac, filterCriteria = "bogus"))
+	expect_error(tableCovariateModelBuilding(mb_project_cossac, sortBy         = "bogus"))
+	expect_error(tableCovariateModelBuilding(mb_project_cossac, roundMethod    = "bogus"))
+})
+
+test_that("tableCovariateModelBuilding sortBy pValue/index orders rows as documented", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# pValue: sort stays within each round, ascending in p.value
+	pv <- tableCovariateModelBuilding(mb_project_cossac, sortBy = "pValue", prettyLabels = FALSE)
+	grp <- .modelBuildingStepGroups(pv$Step, pv$Reference)
+	for (g in unique(grp)) {
+		vals <- pv$p.value[grp == g]
+		expect_false(is.unsorted(vals[!is.na(vals)]))
+	}
+
+	# index: algorithm order
+	idx <- tableCovariateModelBuilding(mb_project_cossac, sortBy = "index", prettyLabels = FALSE)
+	expect_equal(idx$Run, paste("Model", 1:6))
+})
+
+test_that("tableCovariateModelBuilding filterCriteria = 'LL' drops the BICc columns", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	tbl <- tableCovariateModelBuilding(mb_project_cossac, filterCriteria = "LL", prettyLabels = FALSE)
+	expect_false(any(c("BICc", "dBICc") %in% names(tbl)))
+	expect_contains(names(tbl), c("LL", "dLL"))
+})
+
+test_that("tableCovariateModelBuilding prettyLabels renames headers without changing data", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	raw    <- tableCovariateModelBuilding(mb_project_cossac, prettyLabels = FALSE)
+	pretty <- tableCovariateModelBuilding(mb_project_cossac, prettyLabels = TRUE)
+
+	expect_equal(dim(raw), dim(pretty))
+	expect_true("CovariateModel" %in% names(raw))
+	expect_false("CovariateModel" %in% names(pretty))
+	expect_true(all(c("Covariate\nModel", "Best\nModel") %in% names(pretty)))
+	expect_equal(unname(as.list(raw)), unname(as.list(pretty)))
+})
+
+# --- tableRunHistory() -------------------------------------------------------
+
+test_that("tableRunHistory rejects incompatible sortByCriteria x filterCriteria pair", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	expect_error(
+		tableRunHistory(syc_project, sortByCriteria = "LL", filterCriteria = "BICc"),
+		"Incompatible arguments")
+})
+
+test_that("tableRunHistory sortByCriteria = 'BICc' orders rows by BICc", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	none <- tableRunHistory(syc_project, prettyLabels = FALSE, sortByCriteria = "none")
+	bicc <- tableRunHistory(syc_project, prettyLabels = FALSE, sortByCriteria = "BICc")
+
+	expect_setequal(none$Run, bicc$Run)
+	bicc_cols <- intersect(c("BICclin", "BICcis"), names(bicc))
+	skip_if(length(bicc_cols) == 0, "no BICc column to verify sort")
+	expect_true(any(vapply(bicc_cols,
+												 function(c) !is.unsorted(bicc[[c]][!is.na(bicc[[c]])]), logical(1))))
+})
+
+test_that("tableRunHistory significantFigures vs significantFiguresPreserved diverge on numeric cols", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	# BICc/LL ~1700-1800 (4 integer digits): the methods disagree at roundDigits = 2
+	sf  <- tableRunHistory(syc_project, prettyLabels = FALSE, roundDigits = 2,
+												 roundMethod = "significantFigures")
+	sfp <- tableRunHistory(syc_project, prettyLabels = FALSE, roundDigits = 2,
+												 roundMethod = "significantFiguresPreserved")
+
+	num_cols <- intersect(names(Filter(is.numeric, sf)), names(sfp))
+	skip_if(length(num_cols) == 0, "no numeric columns present")
+	expect_true(any(vapply(num_cols,
+												 function(c) !isTRUE(all.equal(sf[[c]], sfp[[c]])), logical(1))))
+})
+
+test_that("tableRunHistory error paths: missing mandatory arg and missing .syc file", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	expect_error(tableRunHistory(NULL), "mandatory")
+	expect_error(tableRunHistory("test-projects/monolix/does_not_exist.syc"),
+							 "Could not find Sycomore project")
+})
+
+test_that("tableRunHistory higher-precision roundDigits differs from roundDigits = 0", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+
+	r0 <- tableRunHistory(syc_project, prettyLabels = FALSE,
+												roundMethod = "monolixSuiteRounding", roundDigits = 0)
+	r3 <- tableRunHistory(syc_project, prettyLabels = FALSE,
+												roundMethod = "monolixSuiteRounding", roundDigits = 3)
+
+	num_cols <- intersect(names(Filter(is.numeric, r0)), names(r3))
+	skip_if(length(num_cols) == 0, "no numeric columns present")
+	expect_true(any(vapply(num_cols,
+												 function(c) !isTRUE(all.equal(r0[[c]], r3[[c]])), logical(1))))
+})
+
+# --- tablePopulationParameterEstimates() -------------------------------------
+
+test_that("tablePopulationParameterEstimates roundMethod 'none' keeps full-precision strings", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	.ensureProjectLoaded(mono_project_2)
+
+	none    <- tablePopulationParameterEstimates(mono_project_2, prettyLabels = FALSE,
+																							 roundMethod = "none")
+	rounded <- tablePopulationParameterEstimates(mono_project_2, prettyLabels = FALSE,
+																							 roundMethod = "significantFigures", roundDigits = 3)
+
+	expect_type(none$Estimate, "character")
+	expect_false(isTRUE(all.equal(none$Estimate, rounded$Estimate)))
+})
+
+test_that("tablePopulationParameterEstimates significantFiguresPreserved diverges from significantFigures", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	.ensureProjectLoaded(mono_project_2)
+
+	# omega_ka CV ~78.2 (2 integer digits), roundDigits = 1:
+	#   significantFigures -> 80 ; significantFiguresPreserved -> 78
+	sf  <- tablePopulationParameterEstimates(mono_project_2, prettyLabels = FALSE,
+		includeCV = TRUE, roundDigits = 1, roundMethod = "significantFigures")
+	sfp <- tablePopulationParameterEstimates(mono_project_2, prettyLabels = FALSE,
+		includeCV = TRUE, roundDigits = 1, roundMethod = "significantFiguresPreserved")
+
+	expect_equal(.popcell(sf,  "omega_ka", "CV"), "80")
+	expect_equal(.popcell(sfp, "omega_ka", "CV"), "78")
+})
+
+test_that("tablePopulationParameterEstimates drops RSE/CI when the requested SE method is unavailable", {
+	# prj08_iov2 ships only stochasticApproximation SE -> requesting linearization auto-drops
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	.ensureProjectLoaded(mono_project_3)
+
+	expect_warning(
+		tbl <- tablePopulationParameterEstimates(mono_project_3, stdErrMethod = "linearization",
+			includeRSE = TRUE, includeCI = TRUE, prettyLabels = FALSE),
+		"Setting includeRSE and includeCI to FALSE")
+
+	expect_false("RSE" %in% names(tbl))
+	expect_false(any(grepl("^CI", names(tbl))))
+})
+
+test_that("tablePopulationParameterEstimates validates customUnits by name, independently of customAliases", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	.ensureProjectLoaded(mono_project_1)   # project WITH results, so validation is what fails
+
+	expect_error(
+		tablePopulationParameterEstimates(mono_project_1, customUnits = "L"),
+		"named vector or a 2-column dataframe")
+	expect_error(
+		tablePopulationParameterEstimates(mono_project_1,
+			customUnits = data.frame(V_pop = "L")),
+		"at least 2 columns")
+})
+
+################################################################################
 # setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
 # testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-MonolixHelpers.R")
