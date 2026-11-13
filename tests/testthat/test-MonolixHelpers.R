@@ -994,7 +994,7 @@ test_that("tableCovariateModelBuilding displayBestModelPerStep reduces to one ac
 	expect_lt(nrow(best), nrow(full))
 	expect_true(all(best$Run %in% full$Run))
 	expect_true(any(best$Step == "Base"))                   # Base always kept
-	expect_setequal(best$Run, c(full$Run[full$Step == "Base"], attr(best, "best_per_step")))
+	expect_setequal(best$Run, c(full$Run[full$Step == "Base"], attr(full, "best_per_step")))
 	grp <- .modelBuildingStepGroups(best$Step, best$Reference)
 	expect_equal(unname(max(table(grp))), 1L)               # one model per round
 })

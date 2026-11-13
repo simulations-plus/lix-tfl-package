@@ -492,8 +492,14 @@ test_that("tableContinuousCovariateSummary multi-element splitCovariates groups 
 		splitCovariates = c("SEX", "DOSE"))
 
 	expect_true(all(c("SEX", "DOSE") %in% names(multi)))
-	# each covariate split across all 6 SEX x DOSE groups; subjects conserved
-	expect_equal(sum(as.numeric(multi$N[multi$Covariate == "AGE"])), 18)
+	# AGE split across all 6 SEX x DOSE cells; per-group N matches the raw data
+	age  <- multi[multi$Covariate == "AGE", , drop = FALSE]
+	keys <- paste(age$SEX, age$DOSE, sep = ":")
+	expected <- c("F:150" = 2, "F:300" = 4, "F:800" = 3,
+								"M:150" = 4, "M:300" = 2, "M:800" = 3)
+	expect_equal(nrow(age), 6L)
+	expect_setequal(keys, names(expected))
+	expect_equal(setNames(as.numeric(age$N), keys)[names(expected)], expected)
 })
 
 test_that("tableContinuousCovariateSummary stratifyColumns + useWideFormat is ignored with a message", {
