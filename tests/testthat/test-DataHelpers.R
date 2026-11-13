@@ -473,5 +473,283 @@ test_that("tableExclusions summarizes the ignored observations", {
 	expect_true(any(as.numeric(vals) == 8, na.rm = TRUE))   # 8 observations
 })
 ################################################################################
+# Argument-coverage additions (Phase 2). .covcell / .expect_trailing_contract
+# are defined at the top of this file.
+################################################################################
+
+# --- tableContinuousCovariateSummary() ---------------------------------------
+
+test_that("tableContinuousCovariateSummary filterIds restricts the population", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	# IDs 1-6 -> N = 6 for every covariate
+	filt <- tableContinuousCovariateSummary(mono_project_1, prettyLabels = FALSE, filterIds = 1:6)
+	expect_equal(as.numeric(filt$N), c(6, 6, 6))
+})
+
+test_that("tableContinuousCovariateSummary multi-element splitCovariates groups by every combination", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	multi <- tableContinuousCovariateSummary(mono_project_1, prettyLabels = FALSE,
+		splitCovariates = c("SEX", "DOSE"))
+
+	expect_true(all(c("SEX", "DOSE") %in% names(multi)))
+	# AGE split across all 6 SEX x DOSE cells; per-group N matches the raw data
+	age  <- multi[multi$Covariate == "AGE", , drop = FALSE]
+	keys <- paste(age$SEX, age$DOSE, sep = ":")
+	expected <- c("F:150" = 2, "F:300" = 4, "F:800" = 3,
+								"M:150" = 4, "M:300" = 2, "M:800" = 3)
+	expect_equal(nrow(age), 6L)
+	expect_setequal(keys, names(expected))
+	expect_equal(setNames(as.numeric(age$N), keys)[names(expected)], expected)
+})
+
+test_that("tableContinuousCovariateSummary stratifyColumns + useWideFormat is ignored with a message", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	expect_message(
+		tbl <- tableContinuousCovariateSummary(mono_project_1, prettyLabels = FALSE,
+			splitCovariates = "SEX", stratifyColumns = TRUE, useWideFormat = TRUE),
+		"requires long format")
+	# falls back to wide non-stratified: SEX is a split column, no Statistic rows
+	expect_false("Statistic" %in% names(tbl))
+	expect_true("SEX" %in% names(tbl))
+})
+
+test_that("tableContinuousCovariateSummary splitCovariateLabels appear in stratified headers", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	strat <- tableContinuousCovariateSummary(mono_project_7, splitCovariates = "sex",
+		splitCovariateLabels = "Sex", stratifyColumns = TRUE, useWideFormat = FALSE)
+
+	expect_true(any(grepl("Sex=0", names(strat))))
+	expect_true(any(grepl("Sex=1", names(strat))))
+	expect_false(any(grepl("sex=", names(strat))))   # raw name replaced by label
+})
+
+test_that("tableContinuousCovariateSummary significantFiguresPreserved diverges from significantFigures", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	# WEIGHT mean ~93.6 (2 integer digits), roundDigits = 1:
+	#   significantFigures -> 90 ; significantFiguresPreserved -> 94
+	sf  <- tableContinuousCovariateSummary(mono_project_1, prettyLabels = FALSE,
+		roundDigits = 1, roundMethod = "significantFigures")
+	sfp <- tableContinuousCovariateSummary(mono_project_1, prettyLabels = FALSE,
+		roundDigits = 1, roundMethod = "significantFiguresPreserved")
+
+	expect_equal(.covcell(sf,  "WEIGHT", "mean"), "90")
+	expect_equal(.covcell(sfp, "WEIGHT", "mean"), "94")
+})
+
+test_that("tableContinuousCovariateSummary mock masks values when combined with split + filter", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	real <- tableContinuousCovariateSummary(mono_project_1, prettyLabels = FALSE,
+		splitCovariates = "SEX", filterIds = 1:12)
+	mock <- tableContinuousCovariateSummary(mono_project_1, prettyLabels = FALSE,
+		splitCovariates = "SEX", filterIds = 1:12, mock = TRUE)
+
+	expect_equal(dim(real), dim(mock))
+	expect_equal(mock$Covariate, real$Covariate)   # covariate names kept
+	expect_true(all(grepl("x", mock$mean)))        # values masked
+})
+
+# --- tableCategoricalCovariateSummary() --------------------------------------
+
+test_that("tableCategoricalCovariateSummary filterIds restricts the population", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	# IDs 1-6 are all DOSE 150 (4 M, 2 F)
+	filt <- tableCategoricalCovariateSummary(mono_project_1, filterIds = 1:6)
+
+	dose <- filt[filt$`Subject characteristics` == "DOSE", ]
+	expect_equal(dose[[.freq_col]][dose$Modalities == "150"], "6 (100.00)")
+	sex <- filt[filt$`Subject characteristics` == "SEX", ]
+	expect_equal(sex[[.freq_col]][sex$Modalities == "M"], "4 (66.67)")
+	expect_equal(sex[[.freq_col]][sex$Modalities == "F"], "2 (33.33)")
+})
+
+test_that("tableCategoricalCovariateSummary roundMethod none and significantFiguresPreserved", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	# none: raw percentage, sprintf-padded to roundDigits
+	none <- tableCategoricalCovariateSummary(mono_project_1, roundMethod = "none")
+	expect_equal(none[[.freq_col]][none$Modalities == "150"], "6 (33.33)")
+
+	# 33.33%, roundDigits = 1: sig-figs -> 30, preserved keeps integer part -> 33
+	sig <- tableCategoricalCovariateSummary(mono_project_1, roundDigits = 1, roundMethod = "significantFigures")
+	sfp <- tableCategoricalCovariateSummary(mono_project_1, roundDigits = 1, roundMethod = "significantFiguresPreserved")
+	expect_equal(sig[[.freq_col]][sig$Modalities == "150"], "6 (30.0)")
+	expect_equal(sfp[[.freq_col]][sfp$Modalities == "150"], "6 (33.0)")
+})
+
+test_that("tableCategoricalCovariateSummary validates covDisplayLabels / categoryDisplayLabels", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	expect_error(tableCategoricalCovariateSummary(mono_project_1, covDisplayLabels = c(DOSE = "Dose")),
+							 "must be a dataframe")
+	expect_error(tableCategoricalCovariateSummary(mono_project_1,
+		covDisplayLabels = data.frame(cov = "DOSE", lab = "Dose")), "headers 'covariate' and 'label")
+	expect_error(tableCategoricalCovariateSummary(mono_project_1, categoryDisplayLabels = "x"),
+							 "must be a dataframe")
+	expect_error(tableCategoricalCovariateSummary(mono_project_1,
+		categoryDisplayLabels = data.frame(covariate = "DOSE", label = "x")), "headers 'covariate")
+})
+
+test_that("tableCategoricalCovariateSummary splitCovariateLabels appear in stratified headers", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	strat <- tableCategoricalCovariateSummary(mono_project_1, splitCovariates = "SEX",
+		stratifyColumns = TRUE, splitCovariateLabels = "Sex")
+
+	expect_true(any(grepl("Sex=", names(strat))))
+	expect_false(any(grepl("SEX=", names(strat))))
+})
+
+# --- getDescriptiveStatsMetrics() --------------------------------------------
+
+test_that("getDescriptiveStatsMetrics returns the full metric vocabulary in calculation order", {
+	expect_equal(getDescriptiveStatsMetrics(),
+		c("N", "Nobs", "min", "P05", "Q1", "mean", "SD", "SE", "CV", "median", "Q3",
+			"P95", "max", "geoMean", "geoSD", "geoCV", "harmMean",
+			"MeanSD", "MeanCV", "GeomCV", "GeomSD"))
+})
+
+# --- listingDosingRegimen() --------------------------------------------------
+
+test_that("listingDosingRegimen filterIds keeps only the requested subjects", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	listing <- listingDosingRegimen(mono_project_1, filterIds = c(1, 2))
+	expect_setequal(as.character(listing$id), c("1", "2"))
+})
+
+test_that("listingDosingRegimen filterCovariates restricts to matching subjects", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	# SEX = M -> the 9 male subjects
+	listing <- listingDosingRegimen(mono_project_1, filterCovariates = list(SEX = "M"))
+	expect_setequal(as.character(listing$id), c("1", "3", "4", "5", "8", "10", "13", "15", "18"))
+})
+
+test_that("listingDosingRegimen mock masks ids and numeric columns", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	real <- listingDosingRegimen(mono_project_1)
+	mock <- listingDosingRegimen(mono_project_1, mock = TRUE)
+
+	expect_equal(dim(real), dim(mock))
+	expect_true(all(grepl("^id[0-9]+$", mock$id)))   # id -> "id1", ...
+	expect_true(all(grepl("x", as.character(mock$Time))))
+	expect_true(all(grepl("x", as.character(mock$Amount))))
+})
+
+test_that("listingDosingRegimen surfaces occasion descriptor columns from dose intervals", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	# doseIntervals_as_Occ: DOSE_OCC tagged as occasion, AMT1 as amount
+	listing <- suppressMessages(listingDosingRegimen(df_doseocc_project))
+	expect_true("DOSE_OCC" %in% names(listing))
+	expect_true(all(c("Time", "Amount") %in% names(listing)))
+})
+
+################################################################################
+# PKanalix group (project_remifentanil_excl): load once, act via projectFile=NULL.
+# 8 excluded observations across IDs 3, 4, 11 (TINFCAT 20, 20, 14; all SEX 1).
+################################################################################
+suppressMessages(lixoftConnectors::initializeLixoftConnectors(software = "pkanalix", force = TRUE))
+suppressMessages(lixoftConnectors::loadProject(pkx_project_1))
+
+test_that("tableExclusions splitCovariates groups the excluded subjects", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	tbl <- tableExclusions(projectFile = NULL, splitCovariates = "TINFCAT", prettyLabels = FALSE)
+
+	expect_true("TINFCAT" %in% names(tbl))
+	expect_equal(nrow(tbl), 2)
+	expect_equal(tbl$nbSbj[tbl$TINFCAT == 20],      2)   # IDs 3, 4
+	expect_equal(tbl$totalNbObs[tbl$TINFCAT == 20], 5)
+	expect_equal(tbl$nbSbj[tbl$TINFCAT == 14],      1)   # ID 11
+	expect_equal(tbl$totalNbObs[tbl$TINFCAT == 14], 3)
+})
+
+test_that("tableExclusions length-2 splitCovariates groups by every combination", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	tbl <- tableExclusions(projectFile = NULL, splitCovariates = c("SEX", "TINFCAT"), prettyLabels = FALSE)
+
+	expect_true(all(c("SEX", "TINFCAT") %in% names(tbl)))
+	expect_equal(nrow(tbl), 2)             # (1,20) and (1,14)
+	expect_equal(sum(tbl$nbSbj), 3)
+	expect_equal(sum(tbl$totalNbObs), 8)
+})
+
+test_that("tableExclusions splitCovariateLabels renames the grouping column", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	tbl <- tableExclusions(projectFile = NULL, splitCovariates = "TINFCAT",
+		splitCovariateLabels = "Infusion category", prettyLabels = FALSE)
+	expect_true("Infusion category" %in% names(tbl))
+	expect_false("TINFCAT" %in% names(tbl))
+})
+
+test_that("tableExclusions filterIds and filterCovariates restrict the summary", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	# only ID 11 -> 1 subject, 3 obs
+	f_ids <- tableExclusions(projectFile = NULL, filterIds = 11, prettyLabels = FALSE)
+	expect_equal(f_ids$nbSbj, 1)
+	expect_equal(f_ids$totalNbObs, 3)
+	# TINFCAT = 20 -> IDs 3, 4 -> 2 subjects, 5 obs
+	f_cov <- tableExclusions(projectFile = NULL, filterCovariates = list(TINFCAT = 20), prettyLabels = FALSE)
+	expect_equal(f_cov$nbSbj, 2)
+	expect_equal(f_cov$totalNbObs, 5)
+})
+
+test_that("tableExclusions useWideFormat = FALSE transposes stats to rows", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	lng <- tableExclusions(projectFile = NULL, useWideFormat = FALSE, prettyLabels = FALSE)
+
+	expect_true(all(c("Statistic", "Value") %in% names(lng)))
+	expect_equal(lng$Value[lng$Statistic == "nbSbj"],      3)
+	expect_equal(lng$Value[lng$Statistic == "totalNbObs"], 8)
+})
+
+test_that("tableExclusions maxSubjectRatio flags near-unique grouping columns", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	# LBM is unique per subject (65/65) -> warns at the default ratio
+	expect_warning(
+		tableExclusions(projectFile = NULL, splitCovariates = "LBM", prettyLabels = FALSE),
+		"might not be a suitable grouping")
+	# a high threshold suppresses the warning
+	expect_no_warning(
+		tableExclusions(projectFile = NULL, splitCovariates = "LBM", maxSubjectRatio = 2, prettyLabels = FALSE))
+})
+
+test_that("tableExclusions mock masks the summary values", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	real <- tableExclusions(projectFile = NULL, prettyLabels = FALSE)
+	mock <- tableExclusions(projectFile = NULL, prettyLabels = FALSE, mock = TRUE)
+
+	expect_equal(dim(real), dim(mock))
+	expect_true(all(grepl("x", as.character(unlist(mock[1, ], use.names = FALSE)))))
+})
+
+test_that("tableExclusions prettyLabels renames headers on the real table", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	pretty <- tableExclusions(projectFile = NULL, prettyLabels = TRUE)
+	raw    <- tableExclusions(projectFile = NULL, prettyLabels = FALSE)
+
+	expect_equal(dim(pretty), dim(raw))
+	expect_true("Nb. of Subjects" %in% names(pretty))
+	expect_false("nbSbj" %in% names(pretty))
+})
+
+test_that("tableExclusions rejects an unknown grouping column", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	expect_error(tableExclusions(projectFile = NULL, splitCovariates = "NOPE"),
+							 "Grouping column\\(s\\) not found")
+})
+
+test_that("listingExclusions mock masks values by column type", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	real <- suppressMessages(listingExclusions(projectFile = NULL))
+	mock <- suppressMessages(listingExclusions(projectFile = NULL, mock = TRUE))
+
+	expect_equal(dim(real), dim(mock))
+	expect_true(all(grepl("^id[0-9]+$", as.character(mock$ID))))   # id -> "id1", ...
+	expect_true(all(grepl("x", as.character(mock$DV))))            # numeric -> "xx.xx"
+})
+
+test_that("listingDosingRegimen surfaces the rate descriptor on a PKanalix project", {
+	withr::local_options(TFLMonolixSuite.verbose = FALSE)
+	listing <- listingDosingRegimen(projectFile = NULL)   # remifentanil: RATE tagged as rate
+	expect_true("RATE" %in% names(listing))
+	expect_true(all(c("Time", "Amount") %in% names(listing)))
+})
+
+################################################################################
 # setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
 # testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-DataHelpers.R")
