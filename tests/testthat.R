@@ -7,6 +7,6 @@
 # * https://testthat.r-lib.org/articles/special-files.html
 
 library(testthat)
-library(MonolixSuiteTFL)
+library(monolixSuiteTFL)
 
-test_check("MonolixSuiteTFL")
+test_check("monolixSuiteTFL")
