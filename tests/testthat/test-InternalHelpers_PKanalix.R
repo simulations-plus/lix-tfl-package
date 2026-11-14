@@ -251,23 +251,24 @@ test_that(".fixNCAConcentrationsColumnSwap reverses covariate content and relabe
 ################################################################################
 
 test_that(".calculateCategoricalFrequencies counts modalities per variable with its own N", {
+	# SEX measured on 3 subjects, RACE only on 2 -> per-variable N must differ, so a
+	# global N = n_distinct(id) regression would give the wrong RACE percentages.
 	df <- data.frame(
-		id       = c(1, 2, 3,  1, 2, 3),
-		variable = rep(c("SEX", "RACE"), each = 3),
-		value    = c("M", "F", "M",  "A", "A", "B"),
+		id       = c(1, 2, 3,  1, 2),
+		variable = c("SEX", "SEX", "SEX",  "RACE", "RACE"),
+		value    = c("M", "F", "M",  "A", "B"),
 		stringsAsFactors = FALSE)
 	out <- .calculateCategoricalFrequencies(df)
 
 	expect_equal(names(out), c("variable", "Modalities", "Count", "Percentage", "N"))
-	# N is per-variable (distinct subjects), not global
 	expect_equal(unique(out$N[out$variable == "SEX"]),  3)
-	expect_equal(unique(out$N[out$variable == "RACE"]), 3)
-	# SEX: M=2 (66.67%), F=1 (33.33%)
+	expect_equal(unique(out$N[out$variable == "RACE"]), 2)
+	# SEX: M=2 (66.67%), F=1 (33.33%) over N=3
 	expect_equal(out$Count[out$variable == "SEX" & out$Modalities == "M"], 2)
 	expect_equal(round(out$Percentage[out$variable == "SEX" & out$Modalities == "M"], 2), 66.67)
-	# RACE: A=2, B=1
-	expect_equal(out$Count[out$variable == "RACE" & out$Modalities == "A"], 2)
-	expect_equal(out$Count[out$variable == "RACE" & out$Modalities == "B"], 1)
+	# RACE: A=1, B=1 -> 50% each over N=2 (would be 33.33% under a global N)
+	expect_equal(out$Count[out$variable == "RACE" & out$Modalities == "A"], 1)
+	expect_equal(out$Percentage[out$variable == "RACE" & out$Modalities == "A"], 50)
 })
 
 test_that(".format_frequency_table builds the 'N (%)' column and rounds percentages", {

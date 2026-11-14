@@ -143,18 +143,18 @@ test_that(".leastSquaresBins assigns contiguous clusters to separate bins", {
 	expect_true(all(.leastSquaresBins(x, nbins = 1) == 1L))                  # single bin
 })
 
-test_that(".makeBins dispatches on criteria and yields the requested bin count", {
-	ls <- .makeBins(c(1, 1.1, 10, 10.2),
-									binsSettings = list(is.fixedNbBins = TRUE, nbBins = 2))   # default leastsquare
-	expect_equal(length(unique(ls)), 2)
+test_that(".makeBins dispatches on criteria with distinct bin assignments", {
+	# Skewed input so the three criteria disagree on membership (not just bin count):
+	#   leastsquare / equalwidth -> {1,2,3,4} | {100}
+	#   equalsize (median split)  -> {1,2,3}  | {4,100}
+	x <- c(1, 2, 3, 4, 100)
+	ls <- .makeBins(x, list(is.fixedNbBins = TRUE, nbBins = 2))                          # default leastsquare
+	ew <- .makeBins(x, list(criteria = "equalwidth", is.fixedNbBins = TRUE, nbBins = 2))
+	es <- .makeBins(x, list(criteria = "equalsize",  is.fixedNbBins = TRUE, nbBins = 2))
 
-	ew <- .makeBins(0:10, binsSettings = list(criteria = "equalwidth",
-																						is.fixedNbBins = TRUE, nbBins = 2))
-	expect_equal(length(unique(ew)), 2)
-
-	es <- .makeBins(1:10, binsSettings = list(criteria = "equalsize",
-																						is.fixedNbBins = TRUE, nbBins = 2))
-	expect_equal(length(unique(es)), 2)
+	expect_equal(ls, c(1L, 1L, 1L, 1L, 2L))
+	expect_equal(ew, c(1L, 1L, 1L, 1L, 2L))
+	expect_equal(es, c(1L, 1L, 1L, 2L, 2L))   # distinct membership -> criteria is honoured
 })
 
 test_that(".extendToEdges prepends/appends edge rows per group", {

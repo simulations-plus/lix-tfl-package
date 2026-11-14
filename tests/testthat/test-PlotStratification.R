@@ -68,8 +68,9 @@ test_that(".splitCovariates relabels a categorical covariate via group definitio
 												groups = stats::setNames(list(c("0"), c("1")), c("F", "M"))))
 
 	out <- .splitCovariates(covData, covtypes, strat)
-	expect_equal(length(unique(as.character(out$SEX))), 2)
-	expect_true(all(grepl("^SEX: ", levels(out$SEX))))
+	# verify the actual mapping (0->F, 1->M), not just that two labelled groups exist
+	expect_equal(as.character(out$SEX), c("SEX: F", "SEX: F", "SEX: M", "SEX: M"))
+	expect_equal(levels(out$SEX), c("SEX: F", "SEX: M"))
 })
 
 test_that(".filter flags rows outside a continuous interval", {

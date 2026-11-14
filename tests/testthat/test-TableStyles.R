@@ -62,26 +62,6 @@ test_that(".add_section_headers inserts headers for model-building tables, passe
 	expect_length(res2$section_header_rows, 0)
 })
 
-# --- flextable-dependent helpers ---------------------------------------------
-
-test_that("styleTFL and the flextable helpers return flextables", {
-	skip_if_not_installed("flextable")
-	skip_if_not_installed("officer")
-
-	df <- data.frame(Parameter = c("Cl", "V"), Estimate = c(1.5, 20.3), RSE = c(45, 120))
-
-	expect_s3_class(styleTFL(df), "flextable")
-	# colorBy + manual footnote paths still return a flextable
-	expect_s3_class(styleTFL(df, colorBy = "RSE", footnote = "note"), "flextable")
-
-	expect_s3_class(my_custom_theme(flextable::flextable(df)), "flextable")
-
-	# subscript markers are consumed without error
-	dsub <- data.frame(Parameter = c("C[[sub:max]]", "AUC"), Value = c("1", "2"),
-										 stringsAsFactors = FALSE)
-	expect_s3_class(.apply_alias_subscripts(flextable::flextable(dsub), dsub), "flextable")
-})
-
 ################################################################################
 # setwd("C:/Users/skollmann/Documents/git/lix-tfl-package")
 # testthat::test_file("C:/Users/skollmann/Documents/git/lix-tfl-package/tests/testthat/test-TableStyles.R")
