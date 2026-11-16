@@ -360,9 +360,11 @@ utils::globalVariables(c("."))
 #' Explain how to point the connectors to a MonolixSuite installation
 #'
 #' @param restart If `TRUE`, the connectors can no longer be initialized in this
-#'   session, so the instructions start with restarting R.
+#'   session, so only instructions that start with restarting R are given.
+#'   Defaults to whether `zip` is loaded (e.g. flextable or officer loaded before
+#'   this package), since initializing the connectors then fails.
 #' @noRd
-.connectorInitHelp <- function(restart = FALSE) {
+.connectorInitHelp <- function(restart = .zipLoaded()) {
 	optPath <- tryCatch(.lixoftPathOption(), error = function(e) "")
 	cause <- if (nzchar(optPath)) {
 		paste0("The MonolixSuite installation folder is taken from the option ",
@@ -384,17 +386,22 @@ utils::globalVariables(c("."))
 		"call lixoftConnectors::initializeLixoftConnectors(path = \"<MonolixSuite folder>\") ",
 		"before using styleTFL() or loading flextable or officer")
 	if (restart) {
-		steps <- paste0(
-			"Restart R, then either:\n",
+		# zip may have been loaded before this package, in which case the folder
+		# can be right and the fix is only the load order
+		paste0(
+			"Restart R, and load MonolixSuiteTFL before flextable, officer, or other ",
+			"packages that load zip.\n",
+			cause,
+			"To use the MonolixSuite installation in another folder, after restarting R either:\n",
 			"  - ", optionStep, ", or\n",
 			"  - ", initStep, ".")
 	} else {
-		steps <- paste0(
+		paste0(
+			cause,
 			"To use the MonolixSuite installation in another folder, either:\n",
 			"  - restart R and ", optionStep, ", or\n",
 			"  - in this session, ", initStep, " (after that, R must be restarted first).")
 	}
-	paste0(cause, steps)
 }
 
 #' Initialize the lixoftConnectors, using the `TFLMonolixSuite.lixoftPath` option

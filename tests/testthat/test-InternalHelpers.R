@@ -85,23 +85,54 @@ test_that(".lixoftPathOption reads and validates the TFLMonolixSuite.lixoftPath 
 
 test_that(".connectorInitHelp explains how to set the MonolixSuite folder", {
 	withr::local_options(TFLMonolixSuite.lixoftPath = NULL)
-	help <- .connectorInitHelp()
+	help <- .connectorInitHelp(restart = FALSE)
 	expect_match(help, "lixoft.ini", fixed = TRUE)
 	# the option only takes effect at package load, so it must be set before library();
 	# in an already-loaded session the connectors must be initialized before styleTFL()
 	expect_match(help, "restart R and set options(TFLMonolixSuite.lixoftPath = \"<MonolixSuite folder>\") before library(MonolixSuiteTFL)", fixed = TRUE)
 	expect_match(help, "in this session, call lixoftConnectors::initializeLixoftConnectors(path = \"<MonolixSuite folder>\") before using styleTFL()", fixed = TRUE)
 	expect_match(help, "after that, R must be restarted first", fixed = TRUE)
-	expect_no_match(help, "Restart R, then", fixed = TRUE)
+	expect_no_match(help, "Restart R,", fixed = TRUE)
 
+	# restart-only: leads with the load order, no "in this session" recovery
 	restart <- .connectorInitHelp(restart = TRUE)
-	expect_match(restart, "Restart R, then either:", fixed = TRUE)
+	expect_match(restart, "^Restart R, and load MonolixSuiteTFL before flextable, officer")
+	expect_match(restart, "after restarting R either:", fixed = TRUE)
 	expect_match(restart, "set options(TFLMonolixSuite.lixoftPath = \"<MonolixSuite folder>\") before library(MonolixSuiteTFL)", fixed = TRUE)
 	expect_match(restart, "initializeLixoftConnectors(path = \"<MonolixSuite folder>\") before using styleTFL()", fixed = TRUE)
 	expect_no_match(restart, "in this session", fixed = TRUE)
 
 	withr::local_options(TFLMonolixSuite.lixoftPath = "D:/Lixoft/MonolixSuite2024R1")
-	expect_match(.connectorInitHelp(), "currently \"D:/Lixoft/MonolixSuite2024R1\"", fixed = TRUE)
+	expect_match(.connectorInitHelp(restart = FALSE), "currently \"D:/Lixoft/MonolixSuite2024R1\"", fixed = TRUE)
+})
+
+test_that(".connectorInitHelp gives restart-only instructions by default when zip is loaded", {
+	local_mocked_bindings(.zipLoaded = function() TRUE)
+	expect_identical(.connectorInitHelp(), .connectorInitHelp(restart = TRUE))
+	local_mocked_bindings(.zipLoaded = function() FALSE)
+	expect_identical(.connectorInitHelp(), .connectorInitHelp(restart = FALSE))
+})
+
+test_that("startup message after a failed initialization matches whether zip is loaded", {
+	local_connector_init_error("Could not initialize lixoftConnectors: bad folder.")
+
+	# zip loaded before the package (flextable/officer first): restart only
+	local_mocked_bindings(.zipLoaded = function() TRUE)
+	msg <- .connectorStartupMessage()
+	expect_match(msg, "bad folder.", fixed = TRUE)
+	expect_match(msg, "will not work in this R session because the zip package was already loaded", fixed = TRUE)
+	expect_match(msg, "Restart R, and load MonolixSuiteTFL before flextable", fixed = TRUE)
+	expect_no_match(msg, "in this session, call", fixed = TRUE)
+
+	# zip not loaded: can still be fixed in this session
+	local_mocked_bindings(.zipLoaded = function() FALSE)
+	msg <- .connectorStartupMessage()
+	expect_match(msg, "will not work until lixoftConnectors is initialized", fixed = TRUE)
+	expect_match(msg, "in this session, call", fixed = TRUE)
+
+	# no failure: no message
+	local_connector_init_error(NULL)
+	expect_null(.connectorStartupMessage())
 })
 
 test_that(".initializeConnectors passes the option folder only before the connectors are initialized", {
@@ -157,8 +188,8 @@ test_that(".checkLixoftConnectors errors when the connectors cannot be used", {
 	# not initialized, zip loaded: R must be restarted
 	local_mocked_bindings(.zipLoaded = function() TRUE)
 	expect_error(.checkLixoftConnectors(), "can no longer be initialized in this R session")
-	expect_error(.checkLixoftConnectors(), "bad folder.\nThe MonolixSuite", fixed = TRUE)
-	expect_error(.checkLixoftConnectors(), "Restart R, then", fixed = TRUE)
+	expect_error(.checkLixoftConnectors(), "bad folder.\nRestart R, and load", fixed = TRUE)
+	expect_error(.checkLixoftConnectors(), "Restart R, and load MonolixSuiteTFL before flextable", fixed = TRUE)
 })
 
 test_that(".checkProjectFile checks the connectors only when using the loaded project", {

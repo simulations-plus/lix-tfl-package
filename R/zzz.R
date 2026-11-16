@@ -22,15 +22,31 @@
 
 # Report a failed initialization when the package is attached, so users with a
 # MonolixSuite installation in a non-default folder learn how to set it before
-# flextable is loaded (after that, R must be restarted).
+# flextable is loaded. If zip is already loaded (flextable or officer loaded
+# before this package), the connectors cannot be initialized in this session,
+# so only restart instructions are given.
 .onAttach <- function(libname, pkgname) {
+	msg <- .connectorStartupMessage()
+	if (!is.null(msg)) packageStartupMessage(msg)
+}
+
+#' Startup message for a failed load-time initialization of the connectors
+#'
+#' @return The message, or `NULL` if the initialization did not fail.
+#' @noRd
+.connectorStartupMessage <- function() {
 	err <- .tflState$connectorInitError
-	if (!is.null(err)) {
-		packageStartupMessage(
-			"MonolixSuiteTFL: ", err, "\n",
-			"Functions that read MonolixSuite projects will not work until lixoftConnectors ",
-			"is initialized; styleTFL() is not affected.\n",
-			.connectorInitHelp()
-		)
-	}
+	if (is.null(err)) return(NULL)
+	restart <- .zipLoaded()
+	paste0(
+		"MonolixSuiteTFL: ", err, "\n",
+		if (restart) {
+			paste0("Functions that read MonolixSuite projects will not work in this R session ",
+						 "because the zip package was already loaded; styleTFL() is not affected.\n")
+		} else {
+			paste0("Functions that read MonolixSuite projects will not work until lixoftConnectors ",
+						 "is initialized; styleTFL() is not affected.\n")
+		},
+		.connectorInitHelp(restart = restart)
+	)
 }
