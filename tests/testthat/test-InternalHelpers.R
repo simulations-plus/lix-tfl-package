@@ -54,6 +54,104 @@ test_that(".connectorCallOrStop turns a FALSE return / [ERROR] message into an R
 	expect_true(.connectorCallOrStop(TRUE, "do x"))
 	expect_true(.connectorCallOrStop(invisible(NULL), "do x"))
 	expect_message(.connectorCallOrStop({ message("[INFO] loaded"); TRUE }, "do x"), "[INFO] loaded", fixed = TRUE)
+	# optional hint is appended on a new line
+	expect_error(.connectorCallOrStop(FALSE, "do x", hint = "Try y."), "Could not do x.\nTry y.", fixed = TRUE)
+})
+
+#---------------------------------------------------------------------------------------------------
+# lixoftConnectors initialization helpers (connector state mocked; the real session is untouched)
+
+# Restore the load-time initialization error after a test changes it
+local_connector_init_error <- function(value, env = parent.frame()) {
+	old <- .tflState$connectorInitError
+	.tflState$connectorInitError <- value
+	withr::defer(.tflState$connectorInitError <- old, envir = env)
+}
+
+test_that(".lixoftPathOption reads and validates the TFLMonolixSuite.lixoftPath option", {
+	withr::local_options(TFLMonolixSuite.lixoftPath = NULL)
+	expect_identical(.lixoftPathOption(), "")
+	withr::local_options(TFLMonolixSuite.lixoftPath = "")
+	expect_identical(.lixoftPathOption(), "")
+	withr::local_options(TFLMonolixSuite.lixoftPath = "D:/Lixoft/MonolixSuite2024R1")
+	expect_identical(.lixoftPathOption(), "D:/Lixoft/MonolixSuite2024R1")
+	withr::local_options(TFLMonolixSuite.lixoftPath = "~/MonolixSuite")
+	expect_identical(.lixoftPathOption(), path.expand("~/MonolixSuite"))
+	for (bad in list(c("a", "b"), 1, NA_character_, TRUE)) {
+		withr::local_options(TFLMonolixSuite.lixoftPath = bad)
+		expect_error(.lixoftPathOption(), "must be a single string")
+	}
+})
+
+test_that(".connectorInitHelp explains how to set the MonolixSuite folder", {
+	withr::local_options(TFLMonolixSuite.lixoftPath = NULL)
+	help <- .connectorInitHelp()
+	expect_match(help, "lixoft.ini", fixed = TRUE)
+	expect_match(help, "options(TFLMonolixSuite.lixoftPath", fixed = TRUE)
+	expect_match(help, "initializeLixoftConnectors(path =", fixed = TRUE)
+	expect_match(help, "otherwise R must be restarted first", fixed = TRUE)
+	expect_no_match(help, "Restart R, then", fixed = TRUE)
+	expect_match(.connectorInitHelp(restart = TRUE), "Restart R, then to use", fixed = TRUE)
+
+	withr::local_options(TFLMonolixSuite.lixoftPath = "D:/Lixoft/MonolixSuite2024R1")
+	expect_match(.connectorInitHelp(), "currently \"D:/Lixoft/MonolixSuite2024R1\"", fixed = TRUE)
+})
+
+test_that(".initializeConnectors passes the option folder only before the connectors are initialized", {
+	withr::local_options(TFLMonolixSuite.lixoftPath = "D:/Lixoft/MonolixSuite2024R1")
+	local_mocked_bindings(initializeLixoftConnectors = function(software, path, force) list(software, path, force),
+												.package = "lixoftConnectors")
+
+	local_mocked_bindings(.connectorsInitialized = function() FALSE)
+	expect_identical(.initializeConnectors("pkanalix", force = TRUE),
+									 list("pkanalix", "D:/Lixoft/MonolixSuite2024R1", TRUE))
+
+	local_mocked_bindings(.connectorsInitialized = function() TRUE)
+	expect_identical(.initializeConnectors("pkanalix", force = TRUE), list("pkanalix", "", TRUE))
+})
+
+test_that(".initializeConnectorsOnLoad skips initialized connectors and records failures", {
+	local_connector_init_error("stale")
+	calls <- 0
+	local_mocked_bindings(.initializeConnectors = function(...) {
+		calls <<- calls + 1
+		message("[ERROR] The directory \"C:/Nowhere\" does not exist.")
+		invisible(FALSE)
+	})
+
+	# already initialized (e.g. by the user with a custom path): no call, no error
+	local_mocked_bindings(.connectorsInitialized = function() TRUE)
+	expect_silent(.initializeConnectorsOnLoad())
+	expect_equal(calls, 0)
+	expect_null(.tflState$connectorInitError)
+
+	# not initialized and initialization fails: silent, reason recorded
+	local_mocked_bindings(.connectorsInitialized = function() FALSE)
+	expect_silent(.initializeConnectorsOnLoad())
+	expect_equal(calls, 1)
+	expect_identical(.tflState$connectorInitError,
+									 "Could not initialize lixoftConnectors: The directory \"C:/Nowhere\" does not exist.")
+})
+
+test_that(".checkLixoftConnectors errors when the connectors cannot be used", {
+	withr::local_options(TFLMonolixSuite.lixoftPath = NULL)
+	local_connector_init_error("Could not initialize lixoftConnectors: bad folder.")
+
+	# initialized: always fine
+	local_mocked_bindings(.connectorsInitialized = function() TRUE, .zipLoaded = function() TRUE)
+	expect_true(.checkLixoftConnectors(requireInitialized = TRUE))
+
+	# not initialized, zip not loaded: can still be initialized by .ensureProjectLoaded
+	local_mocked_bindings(.connectorsInitialized = function() FALSE, .zipLoaded = function() FALSE)
+	expect_true(.checkLixoftConnectors())
+	expect_error(.checkLixoftConnectors(requireInitialized = TRUE), "not initialized, so no project is loaded")
+	expect_error(.checkLixoftConnectors(requireInitialized = TRUE), "bad folder", fixed = TRUE)
+
+	# not initialized, zip loaded: R must be restarted
+	local_mocked_bindings(.zipLoaded = function() TRUE)
+	expect_error(.checkLixoftConnectors(), "can no longer be initialized in this R session")
+	expect_error(.checkLixoftConnectors(), "bad folder.\nThe MonolixSuite", fixed = TRUE)
+	expect_error(.checkLixoftConnectors(), "Restart R, then", fixed = TRUE)
 })
 
 test_that("ensureProjectLoaded errors when the project cannot be loaded", {

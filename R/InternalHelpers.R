@@ -164,9 +164,12 @@ utils::globalVariables(c("."))
 		# previously loaded project in place and silently return its results.
 		if (!same_project) {
 			if (!same_software) {
+				# When the connectors were never initialized, a failure here is most likely
+				# a wrong MonolixSuite installation folder, so explain how to set it.
 				.connectorCallOrStop(
-					lixoftConnectors::initializeLixoftConnectors(software = project_software, force = TRUE),
-					paste0("initialize lixoftConnectors for ", project_software))
+					.initializeConnectors(software = project_software, force = TRUE),
+					paste0("initialize lixoftConnectors for ", project_software),
+					hint = if (is.null(connector_state)) .connectorInitHelp() else NULL)
 			}
 			.TFL_message("Loading new project: ", projectFile)
 			.connectorCallOrStop(
@@ -195,9 +198,10 @@ utils::globalVariables(c("."))
 #'
 #' @param expr The connector call (evaluated inside the function).
 #' @param what Short description for the error, e.g. `"load project 'x.pkx'"`.
+#' @param hint Optional text appended to the error on a new line, e.g. how to fix it.
 #' @return `invisible(TRUE)` on success; otherwise an error.
 #' @noRd
-.connectorCallOrStop <- function(expr, what) {
+.connectorCallOrStop <- function(expr, what, hint = NULL) {
 	errs <- character()
 	ok <- withCallingHandlers(expr, message = function(m) {
 		txt <- trimws(conditionMessage(m))
@@ -206,6 +210,7 @@ utils::globalVariables(c("."))
 	if (isFALSE(ok) || (!isTRUE(ok) && length(errs) > 0)) {
 		stop("Could not ", what,
 				 if (length(errs)) paste0(": ", paste(errs, collapse = " ")) else ".",
+				 if (!is.null(hint)) paste0("\n", hint),
 				 call. = FALSE)
 	}
 	invisible(TRUE)
@@ -297,10 +302,131 @@ utils::globalVariables(c("."))
 	}
 }
 
+#-------------------------------------------------------------------------------
+# lixoftConnectors initialization
+#
 # lixoftConnectors is in Suggests: it is installed with MonolixSuite rather than
-# from CRAN, and styleTFL() works without it. Call this at the entry of every
-# code path that reads project results through the connectors.
-.checkLixoftConnectors <- function() {
+# from CRAN, and styleTFL() works without it. Initializing the connectors loads
+# the MonolixSuite library (lib/lixoftConnectors.dll on Windows) from the
+# installation folder, which is either passed as `path` or read from the
+# `monolixSuite=` line of ~/lixoft/lixoft.ini (the most recently launched
+# MonolixSuite version). Constraints imposed by lixoftConnectors:
+#   * the library can only be loaded once per R session, so the installation
+#     folder cannot be changed without restarting R;
+#   * the library fails to load ("LoadLibrary failure") once the `zip` package
+#     is loaded, e.g. by flextable or officer.
+# The `TFLMonolixSuite.lixoftPath` option lets users point to a MonolixSuite
+# installation that is not the one recorded in lixoft.ini.
+
+# Package-level state; `connectorInitError` holds the reason the initialization
+# in .onLoad() failed (NULL if it succeeded or was not attempted).
+.tflState <- new.env(parent = emptyenv())
+
+#' Whether the lixoftConnectors MonolixSuite library is loaded in this session
+#'
+#' Same test that `lixoftConnectors::initializeLixoftConnectors()` uses: the
+#' library is a DLL named "lixoftConnectors" (the R package itself has no DLL).
+#' @noRd
+.connectorsInitialized <- function() {
+	!is.null(getLoadedDLLs()[["lixoftConnectors"]])
+}
+
+#' Whether the zip package is loaded, after which the connectors cannot be initialized
+#' @noRd
+.zipLoaded <- function() {
+	"zip" %in% loadedNamespaces()
+}
+
+#' MonolixSuite installation folder from the `TFLMonolixSuite.lixoftPath` option
+#'
+#' @return The folder, or `""` (lixoftConnectors then uses lixoft.ini) if unset.
+#' @noRd
+.lixoftPathOption <- function() {
+	path <- getOption("TFLMonolixSuite.lixoftPath")
+	if (is.null(path) || identical(path, "")) return("")
+	if (!is.character(path) || length(path) != 1 || is.na(path)) {
+		stop("The option 'TFLMonolixSuite.lixoftPath' must be a single string giving ",
+				 "the MonolixSuite installation folder.", call. = FALSE)
+	}
+	path.expand(path)
+}
+
+#' Explain how to point the connectors to a MonolixSuite installation
+#'
+#' @param restart If `TRUE`, the connectors can no longer be initialized in this
+#'   session, so the instructions start with restarting R.
+#' @noRd
+.connectorInitHelp <- function(restart = FALSE) {
+	optPath <- tryCatch(.lixoftPathOption(), error = function(e) "")
+	cause <- if (nzchar(optPath)) {
+		paste0("The MonolixSuite installation folder is taken from the option ",
+					 "TFLMonolixSuite.lixoftPath (currently \"", optPath, "\").\n")
+	} else {
+		paste0("The MonolixSuite installation folder is read from lixoft.ini, which ",
+					 "points to the most recently launched MonolixSuite version.\n")
+	}
+	paste0(
+		cause,
+		if (restart) "Restart R, then " else "",
+		if (restart) "to " else "To ",
+		"use the MonolixSuite installation in another folder, either:\n",
+		"  - set options(TFLMonolixSuite.lixoftPath = \"<MonolixSuite folder>\") ",
+		"(add it to your .Rprofile to keep it), or\n",
+		"  - call lixoftConnectors::initializeLixoftConnectors(path = \"<MonolixSuite folder>\").\n",
+		"Do this before styleTFL() is used or flextable/officer is loaded",
+		if (restart) "." else "; otherwise R must be restarted first."
+	)
+}
+
+#' Initialize the lixoftConnectors, using the `TFLMonolixSuite.lixoftPath` option
+#'
+#' The folder from the option is only passed when the connectors are not yet
+#' initialized: once the library is loaded, lixoftConnectors only accepts
+#' `path = ""` (or the exact library path) to switch software.
+#'
+#' @param software "monolix", "pkanalix", or "simulx".
+#' @param force Passed to `initializeLixoftConnectors()`; `TRUE` switches
+#'   software without asking for confirmation.
+#' @return The (invisible) return value of `initializeLixoftConnectors()`.
+#' @noRd
+.initializeConnectors <- function(software = "monolix", force = FALSE) {
+	path <- if (.connectorsInitialized()) "" else .lixoftPathOption()
+	lixoftConnectors::initializeLixoftConnectors(software = software, path = path, force = force)
+}
+
+#' Initialize the connectors when the package is loaded
+#'
+#' Called from .onLoad(). Does nothing if lixoftConnectors is not installed, or
+#' if the connectors are already initialized (e.g. the user called
+#' `initializeLixoftConnectors(path = ...)` before loading this package; calling
+#' it again with another software would ask to confirm a software switch).
+#' Never fails: the reason for a failed initialization is stored in
+#' `.tflState$connectorInitError` and reported by .onAttach() and
+#' .checkLixoftConnectors().
+#' @noRd
+.initializeConnectorsOnLoad <- function() {
+	.tflState$connectorInitError <- NULL
+	if (!requireNamespace("lixoftConnectors", quietly = TRUE) || .connectorsInitialized()) {
+		return(invisible(NULL))
+	}
+	.tflState$connectorInitError <- tryCatch({
+		suppressMessages(.connectorCallOrStop(.initializeConnectors(), "initialize lixoftConnectors"))
+		NULL
+	}, error = function(e) conditionMessage(e))
+	invisible(NULL)
+}
+
+#' Check that lixoftConnectors can be used
+#'
+#' Call this at the entry of every code path that reads project results through
+#' the connectors. Errors if lixoftConnectors is not installed, or if the
+#' connectors are not initialized and cannot be anymore because `zip` is loaded.
+#'
+#' @param requireInitialized If `TRUE`, also error when the connectors are not
+#'   initialized (for functions that use the currently loaded project and so
+#'   cannot initialize the connectors themselves).
+#' @noRd
+.checkLixoftConnectors <- function(requireInitialized = FALSE) {
 	if (!requireNamespace("lixoftConnectors", quietly = TRUE))
 	{
 		stop("The lixoftConnectors package is necessary for this function. ",
@@ -308,21 +434,23 @@ utils::globalVariables(c("."))
 				 "for installation instructions.",
 				 call. = FALSE)
 	}
-}
+	if (.connectorsInitialized()) return(invisible(TRUE))
 
-# TODO: decide if we want to check for this in .ensureProjectLoaded (that is zip loaded and not connectors)
-# problem is that we would not necessarily be able to detect all problem cases (e.g. both already attached but in wrong order)
-.checkZipLoadedOrAttached <- function() {
-	session = sessionInfo()
-	zipLoaded = FALSE
-
-	attached = sapply(session$otherPkgs, function(x) x$Package)
-	loaded = sapply(session$loadedOnly, function(x) x$Package)
-
-	if ("zip" %in% attached || "zip" %in% loaded) {
-		zipLoaded = TRUE
+	loadError <- .tflState$connectorInitError
+	reason <- if (is.null(loadError)) "" else paste0(loadError, "\n")
+	if (.zipLoaded()) {
+		stop("lixoftConnectors is not initialized, and can no longer be initialized in ",
+				 "this R session because the zip package is already loaded (for example by ",
+				 "styleTFL(), flextable, or officer).\n", reason,
+				 .connectorInitHelp(restart = TRUE),
+				 call. = FALSE)
 	}
-	return(zipLoaded)
+	if (requireInitialized) {
+		stop("lixoftConnectors is not initialized, so no project is loaded.\n", reason,
+				 .connectorInitHelp(),
+				 call. = FALSE)
+	}
+	invisible(TRUE)
 }
 #-------------------------------------------------------------------------------
 #' Rounds numbers to specified number of digits
