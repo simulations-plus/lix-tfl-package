@@ -268,6 +268,12 @@ utils::globalVariables(c("."))
 {
 	# if project file is NULL, check that currently loaded project is correct software
 	if (is.null(projectFile)) {
+		# The currently loaded project is read through the connectors; check them
+		# first so a missing or uninitialized lixoftConnectors is reported as such
+		# rather than as "no project loaded" (the tryCatch below would mask it).
+		# Not needed for an explicit file (e.g. tableRunHistory() Sycomore files).
+		.checkLixoftConnectors(requireInitialized = TRUE)
+
 		# check if currently loaded project is the specified software application
 		current_prj_info  <- tryCatch(lixoftConnectors::getProjectSettings(), error = function(e) NULL)
 

@@ -154,6 +154,16 @@ test_that(".checkLixoftConnectors errors when the connectors cannot be used", {
 	expect_error(.checkLixoftConnectors(), "Restart R, then", fixed = TRUE)
 })
 
+test_that(".checkProjectFile checks the connectors only when using the loaded project", {
+	local_connector_init_error(NULL)
+	local_mocked_bindings(.connectorsInitialized = function() FALSE, .zipLoaded = function() FALSE)
+	# NULL project: reported as connectors not initialized, not as "no project loaded"
+	expect_error(.checkProjectFile(NULL, "monolix"), "lixoftConnectors is not initialized")
+	# explicit file: only the extension is checked, connectors not needed
+	expect_no_error(.checkProjectFile("runs.syc", "sycomore"))
+	expect_no_error(.checkProjectFile("run01.mlxtran", "monolix"))
+})
+
 test_that("ensureProjectLoaded errors when the project cannot be loaded", {
 	withr::local_options(TFLMonolixSuite.verbose = FALSE)
 	suppressMessages(.ensureProjectLoaded(mono_project_1))
