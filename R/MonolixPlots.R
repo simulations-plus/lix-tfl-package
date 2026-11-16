@@ -443,6 +443,8 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 																															 													linetype  = "dashed",
 																															 													label     = "CI"))) {
 
+	.checkLixoftConnectors()
+
 	# Merge user-supplied values over defaults (protects against partial lists)
 	default_settings    <- formals()$settings
 	default_preferences <- formals()$preferences
@@ -1288,6 +1290,8 @@ plotAbsIWRESScatterPlot <- function(
 		spline         = list(color = "#eba213", linewidth = 0.8),
 		binLimit       = list(color = "#E31A1C", linewidth = 0.6, linetype = "solid"))){
 
+
+	.checkLixoftConnectors()
 
 	# merge user values over defaults
 	d_settings    <- eval(formals()$settings)

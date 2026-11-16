@@ -110,6 +110,8 @@ utils::globalVariables(c("."))
 #'@noRd
 .ensureProjectLoaded <- function(projectFile = NULL) {
 
+	.checkLixoftConnectors()
+
 	# suppress lixoftConnector messages (i.e., ERROR, WARNING, and INFO) in the case of connectors not initialized,
 	# no project loaded, etc., the functions return NULL in these cases
 	# Note: directory and seed are only project settings common to all 3 software
@@ -291,6 +293,19 @@ utils::globalVariables(c("."))
 	if (!requireNamespace("flextable", quietly = TRUE))
 	{
 		stop("The flextable package is necessary for this function. Please install it from CRAN.",
+				 call. = FALSE)
+	}
+}
+
+# lixoftConnectors is in Suggests: it is installed with MonolixSuite rather than
+# from CRAN, and styleTFL() works without it. Call this at the entry of every
+# code path that reads project results through the connectors.
+.checkLixoftConnectors <- function() {
+	if (!requireNamespace("lixoftConnectors", quietly = TRUE))
+	{
+		stop("The lixoftConnectors package is necessary for this function. ",
+				 "It is installed with MonolixSuite; see the MonolixSuite documentation ",
+				 "for installation instructions.",
 				 call. = FALSE)
 	}
 }

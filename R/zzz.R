@@ -8,14 +8,20 @@
 # namespace load time — this runs after all Imports are loaded but before any
 # user code can trigger a flextable/zip load.
 #
-# Wrapped in try() so the package still loads on systems without a working
-# MonolixSuite installation; downstream functions will surface clearer errors
-# when they actually need the connectors. NOTE: keep flextable in Suggests
+# lixoftConnectors is in Suggests (it ships with MonolixSuite, not CRAN), so
+# styleTFL() and the other helpers that do not read project results work
+# without it. The initialization is therefore only attempted when the package
+# is installed. It is also wrapped in try() so the package still loads on
+# systems where lixoftConnectors is installed but MonolixSuite is not working;
+# downstream functions will surface clearer errors when they actually need the
+# connectors (see .checkLixoftConnectors()). NOTE: keep flextable in Suggests
 # (not Imports), otherwise it would load before this hook runs and defeat
 # the fix.
 .onLoad <- function(libname, pkgname) {
-	try(
-		suppressMessages(lixoftConnectors::initializeLixoftConnectors()),
-		silent = TRUE
-	)
+	if (requireNamespace("lixoftConnectors", quietly = TRUE)) {
+		try(
+			suppressMessages(lixoftConnectors::initializeLixoftConnectors()),
+			silent = TRUE
+		)
+	}
 }
