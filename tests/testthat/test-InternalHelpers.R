@@ -115,6 +115,8 @@ test_that(".connectorInitHelp gives restart-only instructions by default when zi
 
 test_that("startup message after a failed initialization matches whether zip is loaded", {
 	local_connector_init_error("Could not initialize lixoftConnectors: bad folder.")
+	# the real test session has initialized connectors; mock the failed state
+	local_mocked_bindings(.connectorsInitialized = function() FALSE)
 
 	# zip loaded before the package (flextable/officer first): restart only
 	local_mocked_bindings(.zipLoaded = function() TRUE)
@@ -130,7 +132,16 @@ test_that("startup message after a failed initialization matches whether zip is 
 	expect_match(msg, "will not work until lixoftConnectors is initialized", fixed = TRUE)
 	expect_match(msg, "in this session, call", fixed = TRUE)
 
+	# load-time failure, but initialized since (namespace loaded via ::, folder fixed,
+	# project read, then library()): the stale error is not reported
+	local_mocked_bindings(.connectorsInitialized = function() TRUE)
+	for (zip in c(TRUE, FALSE)) {
+		local_mocked_bindings(.zipLoaded = function() zip)
+		expect_null(.connectorStartupMessage())
+	}
+
 	# no failure: no message
+	local_mocked_bindings(.connectorsInitialized = function() FALSE)
 	local_connector_init_error(NULL)
 	expect_null(.connectorStartupMessage())
 })

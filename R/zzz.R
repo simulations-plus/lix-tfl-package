@@ -32,11 +32,13 @@
 
 #' Startup message for a failed load-time initialization of the connectors
 #'
-#' @return The message, or `NULL` if the initialization did not fail.
+#' @return The message, or `NULL` if the initialization did not fail or the
+#'   connectors have been initialized since (e.g. the namespace was loaded via
+#'   `::`, the user fixed the folder and read a project, then attached it).
 #' @noRd
 .connectorStartupMessage <- function() {
 	err <- .tflState$connectorInitError
-	if (is.null(err)) return(NULL)
+	if (is.null(err) || .connectorsInitialized()) return(NULL)
 	restart <- .zipLoaded()
 	paste0(
 		"MonolixSuiteTFL: ", err, "\n",
