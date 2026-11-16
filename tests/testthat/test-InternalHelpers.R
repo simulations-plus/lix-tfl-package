@@ -87,11 +87,18 @@ test_that(".connectorInitHelp explains how to set the MonolixSuite folder", {
 	withr::local_options(TFLMonolixSuite.lixoftPath = NULL)
 	help <- .connectorInitHelp()
 	expect_match(help, "lixoft.ini", fixed = TRUE)
-	expect_match(help, "options(TFLMonolixSuite.lixoftPath", fixed = TRUE)
-	expect_match(help, "initializeLixoftConnectors(path =", fixed = TRUE)
-	expect_match(help, "otherwise R must be restarted first", fixed = TRUE)
+	# the option only takes effect at package load, so it must be set before library();
+	# in an already-loaded session the connectors must be initialized before styleTFL()
+	expect_match(help, "restart R and set options(TFLMonolixSuite.lixoftPath = \"<MonolixSuite folder>\") before library(MonolixSuiteTFL)", fixed = TRUE)
+	expect_match(help, "in this session, call lixoftConnectors::initializeLixoftConnectors(path = \"<MonolixSuite folder>\") before using styleTFL()", fixed = TRUE)
+	expect_match(help, "after that, R must be restarted first", fixed = TRUE)
 	expect_no_match(help, "Restart R, then", fixed = TRUE)
-	expect_match(.connectorInitHelp(restart = TRUE), "Restart R, then to use", fixed = TRUE)
+
+	restart <- .connectorInitHelp(restart = TRUE)
+	expect_match(restart, "Restart R, then either:", fixed = TRUE)
+	expect_match(restart, "set options(TFLMonolixSuite.lixoftPath = \"<MonolixSuite folder>\") before library(MonolixSuiteTFL)", fixed = TRUE)
+	expect_match(restart, "initializeLixoftConnectors(path = \"<MonolixSuite folder>\") before using styleTFL()", fixed = TRUE)
+	expect_no_match(restart, "in this session", fixed = TRUE)
 
 	withr::local_options(TFLMonolixSuite.lixoftPath = "D:/Lixoft/MonolixSuite2024R1")
 	expect_match(.connectorInitHelp(), "currently \"D:/Lixoft/MonolixSuite2024R1\"", fixed = TRUE)

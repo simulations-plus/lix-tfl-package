@@ -371,17 +371,30 @@ utils::globalVariables(c("."))
 		paste0("The MonolixSuite installation folder is read from lixoft.ini, which ",
 					 "points to the most recently launched MonolixSuite version.\n")
 	}
-	paste0(
-		cause,
-		if (restart) "Restart R, then " else "",
-		if (restart) "to " else "To ",
-		"use the MonolixSuite installation in another folder, either:\n",
-		"  - set options(TFLMonolixSuite.lixoftPath = \"<MonolixSuite folder>\") ",
-		"(add it to your .Rprofile to keep it), or\n",
-		"  - call lixoftConnectors::initializeLixoftConnectors(path = \"<MonolixSuite folder>\").\n",
-		"Do this before styleTFL() is used or flextable/officer is loaded",
-		if (restart) "." else "; otherwise R must be restarted first."
-	)
+	# The option is only read when the connectors are initialized (at package
+	# load, or when a function reads a project file), not when it is set; so
+	# setting it in a session where the package is already loaded and then using
+	# styleTFL() (which loads zip) would still require a restart. Hence: the
+	# option goes before library(), and within a loaded session the connectors
+	# must be initialized explicitly before styleTFL().
+	optionStep <- paste0(
+		"set options(TFLMonolixSuite.lixoftPath = \"<MonolixSuite folder>\") before ",
+		"library(MonolixSuiteTFL) (add it to your .Rprofile to keep it)")
+	initStep <- paste0(
+		"call lixoftConnectors::initializeLixoftConnectors(path = \"<MonolixSuite folder>\") ",
+		"before using styleTFL() or loading flextable or officer")
+	if (restart) {
+		steps <- paste0(
+			"Restart R, then either:\n",
+			"  - ", optionStep, ", or\n",
+			"  - ", initStep, ".")
+	} else {
+		steps <- paste0(
+			"To use the MonolixSuite installation in another folder, either:\n",
+			"  - restart R and ", optionStep, ", or\n",
+			"  - in this session, ", initStep, " (after that, R must be restarted first).")
+	}
+	paste0(cause, steps)
 }
 
 #' Initialize the lixoftConnectors, using the `TFLMonolixSuite.lixoftPath` option
