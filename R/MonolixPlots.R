@@ -566,14 +566,17 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 								 size  = preferences$point$size)
 	}
 
-	# Faceting: use facet_grid when split is active, otherwise facet_wrap by parameter
+	# Faceting: use facet_grid when split is active, otherwise facet_wrap by parameter.
+	# axes/axis.labels need ggplot2 >= 3.5.0; added conditionally so 3.4.x still runs.
+	ax_args <- if (utils::packageVersion("ggplot2") >= "3.5.0")
+		list(axes = "all", axis.labels = "all_y") else list()
 	if (has_split) {
-		p <- p + ggplot2::facet_grid(split ~ parameter, scales = "free",
-												axes = "all", axis.labels = "all_y")
+		fg_args <- c(list(split ~ parameter, scales = "free"), ax_args)
+		p <- p + do.call(ggplot2::facet_grid, fg_args)
 	} else {
-		p <- p + ggplot2::facet_wrap(~ parameter, ncol = settings$ncol, scales = "free",
-												strip.position = "bottom",
-												axes = "all", axis.labels = "all_y")
+		fw_args <- c(list(~ parameter, ncol = settings$ncol, scales = "free",
+											strip.position = "bottom"), ax_args)
+		p <- p + do.call(ggplot2::facet_wrap, fw_args)
 	}
 
 	p <- p +
