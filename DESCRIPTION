@@ -10,7 +10,10 @@ Authors@R: c(
     person(given = "Chloe",
       family = "Bracis",
       email = "chloe.bracis@simulations-plus.com",
-      role = c("aut","cre"))
+      role = c("aut")),
+    person(given = "MonolixSuite Team",
+      email = "monolixsuite-pe@simulations-plus.com",
+      role = c("cre"))
       )
 Maintainer: MonolixSuite Team <monolixsuite-pe@simulations-plus.com>
 Description: Provides helper functions to assemble tables, figures, and listings

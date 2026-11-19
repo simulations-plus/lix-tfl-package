@@ -457,6 +457,7 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 	preferences$identityLine       <- modifyList(eval(default_preferences)$identityLine,
 																							 if (is.null(preferences$identityLine)) list() else preferences$identityLine)
 	preferences$confidenceInterval <- modifyList(eval(default_preferences)$confidenceInterval,
+																							 if (is.null(preferences$confidenceInterval)) list() else preferences$confidenceInterval)
 
 	#-----------------------------------------------------------------------------
 	# Input validation

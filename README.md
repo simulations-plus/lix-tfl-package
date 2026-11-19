@@ -5,8 +5,9 @@ reporting with the Monolix and PKanalix applications of MonolixSuite.
 
 The package reads a loaded Monolix or PKanalix project through
 `lixoftConnectors` and turns the results into report ready tables, listings, and
-plots. Tables and listings are returned as `flextable` objects, so they can be
-dropped straight into Word or PowerPoint reports via `officer`.
+plots. The table and listing builders return data frames; pass them through
+`styleTFL()` to get `flextable` objects that drop straight into Word or
+PowerPoint reports via `officer`.
 
 ## Installation
 
@@ -40,15 +41,16 @@ library(lixoftConnectors)
 initializeLixoftConnectors(software = "monolix")
 loadProject("path/to/project.mlxtran")
 
-# Population parameter estimates with uncertainty
-tablePopulationParameterEstimates()
+# Population parameter estimates with uncertainty, as a report ready flextable
+styleTFL(tablePopulationParameterEstimates())
 
 # QQ plot of standardized random effects
 plotQQStandardizedRandomEffects()
 ```
 
-Every table and listing function returns a styled `flextable`. Use `styleTFL()`
-to apply the same formatting to your own data frames.
+Every table and listing function returns a data frame. Pass it through
+`styleTFL()` to produce a report ready `flextable`; `styleTFL()` also styles
+your own data frames.
 
 ## What's included
 
