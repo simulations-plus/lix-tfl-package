@@ -1268,18 +1268,4 @@ styleTFL <- function(data,
 # Booktabs table style = theme_booktabs()
 # Box table style      = theme_box(ft)
 # Thron table style    = theme_tron()
-# Custom theme example
-my_custom_theme <- function(ft) {
-	ft <- flextable::border_remove(ft)
-	ft <- flextable::bg(ft, bg = "#AABFE4", part = "header")
-	ft <- flextable::bold(ft, part = "header")
-	ft <- flextable::fontsize(ft, size = 12, part = "all")
-	ft <- flextable::hline_bottom(ft,
-																border = officer::fp_border(color = "black", width = 2.5),
-																part = "header")
-	ft <- flextable::hline_bottom(ft,
-																border = officer::fp_border(color = "black", width = 1),
-																part = "body")
-	ft
-}
 ################################################################################
