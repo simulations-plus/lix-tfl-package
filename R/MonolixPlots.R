@@ -457,35 +457,6 @@ plotQQStandardizedRandomEffects <- function(parameters  = NULL,
 	preferences$identityLine       <- modifyList(eval(default_preferences)$identityLine,
 																							 if (is.null(preferences$identityLine)) list() else preferences$identityLine)
 	preferences$confidenceInterval <- modifyList(eval(default_preferences)$confidenceInterval,
-																							 if (is.null(preferences$confidenceInterval)) list() else preferences$confidenceInterval)
-
-	# Debugging: Uncomment to test with fixed values
-	# parameters = c("Cl", "V")
-	# settings <- list(
-	#   indivEstimate      = "simulated",
-	#   identityLine       = TRUE,
-	#   confidenceInterval = TRUE,
-	#   legend             = TRUE,
-	#   grid               = TRUE,
-	#   level              = 0.95,
-	#   variabilityLevel   = "OCCevid",
-	#   ncol               = 2)
-	#
-	# preferences <- list(
-	#   point = list(
-	#     color = "#4682B4",
-	#     size  = 1.5),
-	#   identityLine = list(
-	#     color     = "#000000",
-	#     linewidth = 0.7,
-	#     label     = "Identity"),
-	#   confidenceInterval = list(
-	#     color     = "#000000",
-	#     linewidth = 0.725,
-	#     linetype  = "dashed",
-	#     label     = "CI"))
-	#
-	# stratify <- list()
 
 	#-----------------------------------------------------------------------------
 	# Input validation
